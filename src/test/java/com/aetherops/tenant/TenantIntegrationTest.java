@@ -97,7 +97,7 @@ class TenantIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.content").isArray())
-            .andExpect(jsonPath("$.data.totalElements").value(2));
+            .andExpect(jsonPath("$.data.page.totalElements").value(2));
     }
 
     @Test
