@@ -7,6 +7,8 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.service.IncidentService;
+import com.aetherops.postmortem.model.PostmortemDraftResponse;
+import com.aetherops.postmortem.service.PostmortemService;
 import com.aetherops.runbook.model.RunbookSuggestionResponse;
 import com.aetherops.runbook.service.RunbookService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +34,7 @@ public class IncidentController {
     private final EvidencePackService evidencePackService;
     private final AIAnalysisService aiAnalysisService;
     private final RunbookService runbookService;
+    private final PostmortemService postmortemService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -101,5 +104,23 @@ public class IncidentController {
         @RequestParam UUID tenantId
     ) {
         return ApiResponse.success(runbookService.getLatest(id, tenantId));
+    }
+
+    @PostMapping("/{id}/postmortem")
+    @Operation(summary = "Generate a structured postmortem draft for the incident. Each call creates a new version. Enriched automatically if an AI analysis exists.")
+    public ApiResponse<PostmortemDraftResponse> generatePostmortem(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(postmortemService.generate(id, tenantId));
+    }
+
+    @GetMapping("/{id}/postmortem/latest")
+    @Operation(summary = "Get the most recently generated postmortem draft for the incident.")
+    public ApiResponse<PostmortemDraftResponse> getLatestPostmortem(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(postmortemService.getLatest(id, tenantId));
     }
 }
