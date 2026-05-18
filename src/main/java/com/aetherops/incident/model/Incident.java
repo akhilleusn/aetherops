@@ -23,6 +23,12 @@ public class Incident {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    @Column(name = "project_id")
+    private UUID projectId;
+
     @Column(nullable = false, length = 500)
     private String title;
 
@@ -42,6 +48,21 @@ public class Incident {
 
     @Column(length = 50)
     private String environment;
+
+    @Column(nullable = false, length = 64)
+    private String fingerprint;
+
+    @Column(name = "event_count", nullable = false)
+    private int eventCount;
+
+    @Column(name = "first_seen_at", nullable = false, updatable = false)
+    private Instant firstSeenAt;
+
+    @Column(name = "last_seen_at", nullable = false)
+    private Instant lastSeenAt;
+
+    @Column(name = "latest_event_id")
+    private UUID latestEventId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

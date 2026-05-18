@@ -1,6 +1,8 @@
 package com.aetherops.incident.controller;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.evidence.model.IncidentEvidencePackResponse;
+import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.service.IncidentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,10 +25,11 @@ import java.util.UUID;
 public class IncidentController {
 
     private final IncidentService incidentService;
+    private final EvidencePackService evidencePackService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Create a new incident")
+    @Operation(summary = "Manually create an incident")
     public ApiResponse<IncidentResponse> create(@Valid @RequestBody CreateIncidentRequest request) {
         return ApiResponse.success(incidentService.create(request));
     }
@@ -38,21 +41,32 @@ public class IncidentController {
     }
 
     @GetMapping
-    @Operation(summary = "List incidents with optional filtering by status and serviceId")
+    @Operation(summary = "List incidents for a tenant, with optional filters")
     public ApiResponse<Page<IncidentResponse>> list(
+        @RequestParam UUID tenantId,
         @RequestParam(required = false) IncidentStatus status,
         @RequestParam(required = false) String serviceId,
-        @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+        @RequestParam(required = false) IncidentSeverity severity,
+        @PageableDefault(size = 20, sort = "lastSeenAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ApiResponse.success(incidentService.findAll(status, serviceId, pageable));
+        return ApiResponse.success(incidentService.findAll(tenantId, status, serviceId, severity, pageable));
     }
 
     @PatchMapping("/{id}")
-    @Operation(summary = "Update incident title, description, status, or severity")
+    @Operation(summary = "Update incident status, severity, title, or description")
     public ApiResponse<IncidentResponse> update(
         @PathVariable UUID id,
         @Valid @RequestBody UpdateIncidentRequest request
     ) {
         return ApiResponse.success(incidentService.update(id, request));
+    }
+
+    @GetMapping("/{id}/evidence-pack")
+    @Operation(summary = "Get the evidence pack for an incident")
+    public ApiResponse<IncidentEvidencePackResponse> getEvidencePack(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(evidencePackService.getEvidencePack(id, tenantId));
     }
 }

@@ -2,17 +2,14 @@ package com.aetherops.incident.repository;
 
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.util.Optional;
 import java.util.UUID;
 
-public interface IncidentRepository extends JpaRepository<Incident, UUID> {
+public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSpecificationExecutor<Incident> {
 
-    Page<Incident> findByStatus(IncidentStatus status, Pageable pageable);
-
-    Page<Incident> findByServiceId(String serviceId, Pageable pageable);
-
-    Page<Incident> findByStatusAndServiceId(IncidentStatus status, String serviceId, Pageable pageable);
+    Optional<Incident> findByTenantIdAndFingerprintAndStatus(
+        UUID tenantId, String fingerprint, IncidentStatus status);
 }

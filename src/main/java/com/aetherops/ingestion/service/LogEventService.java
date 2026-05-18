@@ -1,5 +1,6 @@
 package com.aetherops.ingestion.service;
 
+import com.aetherops.incident.service.IncidentGroupingService;
 import com.aetherops.ingestion.model.LogEvent;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogEventResponse;
@@ -22,6 +23,7 @@ public class LogEventService {
 
     private final LogEventRepository logEventRepository;
     private final SecretMaskingService secretMaskingService;
+    private final IncidentGroupingService incidentGroupingService;
 
     @Transactional
     public LogEventResponse ingest(LogEventRequest request) {
@@ -46,6 +48,9 @@ public class LogEventService {
         LogEvent saved = logEventRepository.save(event);
         log.info("Ingested log event id={} tenant={} service={} level={}",
             saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getLevel());
+
+        incidentGroupingService.findOrCreate(saved);
+
         return toResponse(saved);
     }
 

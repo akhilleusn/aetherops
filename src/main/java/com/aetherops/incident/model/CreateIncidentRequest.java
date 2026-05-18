@@ -7,10 +7,17 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateIncidentRequest {
+
+    @NotNull(message = "tenantId is required")
+    private UUID tenantId;
+
+    private UUID projectId;
 
     @NotBlank(message = "title is required")
     @Size(max = 500, message = "title must not exceed 500 characters")
