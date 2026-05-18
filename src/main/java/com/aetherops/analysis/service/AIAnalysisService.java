@@ -20,6 +20,7 @@ public class AIAnalysisService {
     private final EvidencePackService evidencePackService;
     private final AIProvider aiProvider;
     private final AIAnalysisRepository aiAnalysisRepository;
+    private final AnalysisEvaluationService evaluationService;
 
     /**
      * Each call creates a new AIAnalysis row (append-only).
@@ -55,7 +56,19 @@ public class AIAnalysisService {
         log.info("Created AI analysis id={} incidentId={} confidence={} evidenceCount={}",
             saved.getId(), incidentId, saved.getConfidenceScore(), pack.getTotalEvidenceCount());
 
-        return toResponse(saved);
+        AIAnalysisResponse response = toResponse(saved);
+
+        AnalysisEvaluationResult evaluation = evaluationService.evaluate(response, pack);
+        if (!evaluation.isPassed()) {
+            log.warn("AI analysis id={} failed evaluation: riskLevel={} issues=[{}]",
+                saved.getId(), evaluation.getRiskLevel(),
+                String.join("; ", evaluation.getIssues()));
+        } else {
+            log.debug("AI analysis id={} passed all {} evaluation checks",
+                saved.getId(), evaluation.getChecksPerformed());
+        }
+
+        return response;
     }
 
     private AIAnalysisContext buildContext(IncidentEvidencePackResponse pack) {
