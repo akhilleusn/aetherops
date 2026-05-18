@@ -1,5 +1,7 @@
 package com.aetherops.incident.controller;
 
+import com.aetherops.analysis.model.AIAnalysisResponse;
+import com.aetherops.analysis.service.AIAnalysisService;
 import com.aetherops.common.response.ApiResponse;
 import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
@@ -26,6 +28,7 @@ public class IncidentController {
 
     private final IncidentService incidentService;
     private final EvidencePackService evidencePackService;
+    private final AIAnalysisService aiAnalysisService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -68,5 +71,14 @@ public class IncidentController {
         @RequestParam UUID tenantId
     ) {
         return ApiResponse.success(evidencePackService.getEvidencePack(id, tenantId));
+    }
+
+    @PostMapping("/{id}/analyze")
+    @Operation(summary = "Run AI analysis on the incident's evidence pack. Each call creates a new analysis.")
+    public ApiResponse<AIAnalysisResponse> analyze(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(aiAnalysisService.analyze(id, tenantId));
     }
 }
