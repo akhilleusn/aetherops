@@ -133,16 +133,79 @@ class EvidencePackIntegrationTest {
                 org.hamcrest.Matchers.containsString("[REDACTED]")));
     }
 
+    // (g) Evidence pack returns full incident context
+    @Test
+    void evidencePack_returnsFullIncidentContext() throws Exception {
+        ingestEvent(TENANT_A, "checkout-svc", LogLevel.ERROR, "Payment gateway timeout");
+
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
+            .andExpect(jsonPath("$.data.tenantId").value(TENANT_A.toString()))
+            .andExpect(jsonPath("$.data.serviceId").value("checkout-svc"))
+            .andExpect(jsonPath("$.data.title").isNotEmpty())
+            .andExpect(jsonPath("$.data.severity").value("MEDIUM"))
+            .andExpect(jsonPath("$.data.status").value("OPEN"))
+            .andExpect(jsonPath("$.data.firstSeen").isNotEmpty())
+            .andExpect(jsonPath("$.data.lastSeen").isNotEmpty());
+    }
+
+    // (h) totalEvidenceCount in API response matches number of ingested events
+    @Test
+    void evidencePack_totalCountMatchesNumberOfIngestedEvents() throws Exception {
+        ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
+        ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
+        ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
+
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalEvidenceCount").value(3))
+            .andExpect(jsonPath("$.data.evidence.length()").value(3));
+    }
+
+    // (i) Evidence items are ordered newest first (deterministic timestamps)
+    @Test
+    void evidenceItems_areOrderedNewestFirst() throws Exception {
+        Instant older = Instant.now().minusSeconds(120);
+        Instant newer = Instant.now();
+
+        ingestEventAt(TENANT_A, "shipping-svc", LogLevel.ERROR, "Delivery failed", older);
+        ingestEventAt(TENANT_A, "shipping-svc", LogLevel.ERROR, "Delivery failed", newer);
+
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        String body = mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.evidence.length()").value(2))
+            .andReturn().getResponse().getContentAsString();
+
+        Instant first  = Instant.parse(objectMapper.readTree(body).at("/data/evidence/0/timestamp").asText());
+        Instant second = Instant.parse(objectMapper.readTree(body).at("/data/evidence/1/timestamp").asText());
+        assertThat(first).isAfter(second);
+    }
+
     // --- helper ---
 
     private void ingestEvent(UUID tenantId, String serviceId, LogLevel level, String message)
         throws Exception {
+        ingestEventAt(tenantId, serviceId, level, message, Instant.now());
+    }
+
+    private void ingestEventAt(UUID tenantId, String serviceId, LogLevel level, String message,
+                                Instant occurredAt) throws Exception {
         LogEventRequest req = new LogEventRequest();
         req.setTenantId(tenantId);
         req.setServiceId(serviceId);
         req.setLevel(level);
         req.setMessage(message);
-        req.setOccurredAt(Instant.now());
+        req.setOccurredAt(occurredAt);
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)

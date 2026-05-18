@@ -16,7 +16,9 @@ public class IncidentEvidencePackResponse {
     private UUID incidentId;
     private UUID tenantId;
     private UUID projectId;
+    private String title;
     private String serviceId;
+    private String environment;
     private IncidentSeverity severity;
     private IncidentStatus status;
     private Instant firstSeen;
