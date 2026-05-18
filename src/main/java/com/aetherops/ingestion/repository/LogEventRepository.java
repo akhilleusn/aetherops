@@ -10,9 +10,11 @@ import java.util.UUID;
 
 public interface LogEventRepository extends JpaRepository<LogEvent, UUID> {
 
-    Page<LogEvent> findByServiceId(String serviceId, Pageable pageable);
+    Page<LogEvent> findByTenantId(UUID tenantId, Pageable pageable);
 
-    Page<LogEvent> findByLevel(LogLevel level, Pageable pageable);
+    Page<LogEvent> findByTenantIdAndServiceId(UUID tenantId, String serviceId, Pageable pageable);
 
-    Page<LogEvent> findByServiceIdAndLevel(String serviceId, LogLevel level, Pageable pageable);
+    Page<LogEvent> findByTenantIdAndLevel(UUID tenantId, LogLevel level, Pageable pageable);
+
+    Page<LogEvent> findByTenantIdAndServiceIdAndLevel(UUID tenantId, String serviceId, LogLevel level, Pageable pageable);
 }

@@ -11,6 +11,8 @@ import java.util.UUID;
 public class LogEventResponse {
 
     private UUID id;
+    private UUID tenantId;
+    private UUID projectId;
     private String serviceId;
     private String environment;
     private LogLevel level;

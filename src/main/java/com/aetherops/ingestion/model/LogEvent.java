@@ -22,6 +22,12 @@ public class LogEvent {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    @Column(name = "project_id")
+    private UUID projectId;
+
     @Column(name = "service_id", nullable = false, length = 100)
     private String serviceId;
 

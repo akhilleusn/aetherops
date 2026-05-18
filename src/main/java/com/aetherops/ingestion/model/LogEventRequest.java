@@ -8,14 +8,20 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogEventRequest {
 
+    @NotNull(message = "tenantId is required")
+    private UUID tenantId;
+
+    private UUID projectId;
+
     @NotBlank(message = "serviceId is required")
-    @Size(max = 100, message = "serviceId must not exceed 100 characters")
+    @Size(min = 2, max = 100, message = "serviceId must be between 2 and 100 characters")
     private String serviceId;
 
     @Size(max = 50)

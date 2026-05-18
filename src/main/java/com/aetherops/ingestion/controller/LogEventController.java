@@ -16,6 +16,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/v1/events")
 @RequiredArgsConstructor
@@ -32,12 +34,13 @@ public class LogEventController {
     }
 
     @GetMapping
-    @Operation(summary = "List log events with optional filtering by serviceId and level")
+    @Operation(summary = "List log events for a tenant, with optional filtering by serviceId and level")
     public ApiResponse<Page<LogEventResponse>> list(
+        @RequestParam UUID tenantId,
         @RequestParam(required = false) String serviceId,
         @RequestParam(required = false) LogLevel level,
         @PageableDefault(size = 20, sort = "occurredAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ApiResponse.success(logEventService.findAll(serviceId, level, pageable));
+        return ApiResponse.success(logEventService.findAll(tenantId, serviceId, level, pageable));
     }
 }

@@ -13,6 +13,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -29,6 +31,8 @@ public class LogEventService {
             : null;
 
         LogEvent event = LogEvent.builder()
+            .tenantId(request.getTenantId())
+            .projectId(request.getProjectId())
             .serviceId(request.getServiceId())
             .environment(request.getEnvironment())
             .level(request.getLevel())
@@ -40,27 +44,36 @@ public class LogEventService {
             .build();
 
         LogEvent saved = logEventRepository.save(event);
-        log.info("Ingested log event id={} service={} level={}", saved.getId(), saved.getServiceId(), saved.getLevel());
+        log.info("Ingested log event id={} tenant={} service={} level={}",
+            saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getLevel());
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
-    public Page<LogEventResponse> findAll(String serviceId, LogLevel level, Pageable pageable) {
+    public Page<LogEventResponse> findAll(UUID tenantId, String serviceId, LogLevel level, Pageable pageable) {
         if (serviceId != null && level != null) {
-            return logEventRepository.findByServiceIdAndLevel(serviceId, level, pageable).map(this::toResponse);
+            return logEventRepository
+                .findByTenantIdAndServiceIdAndLevel(tenantId, serviceId, level, pageable)
+                .map(this::toResponse);
         }
         if (serviceId != null) {
-            return logEventRepository.findByServiceId(serviceId, pageable).map(this::toResponse);
+            return logEventRepository
+                .findByTenantIdAndServiceId(tenantId, serviceId, pageable)
+                .map(this::toResponse);
         }
         if (level != null) {
-            return logEventRepository.findByLevel(level, pageable).map(this::toResponse);
+            return logEventRepository
+                .findByTenantIdAndLevel(tenantId, level, pageable)
+                .map(this::toResponse);
         }
-        return logEventRepository.findAll(pageable).map(this::toResponse);
+        return logEventRepository.findByTenantId(tenantId, pageable).map(this::toResponse);
     }
 
     private LogEventResponse toResponse(LogEvent event) {
         return LogEventResponse.builder()
             .id(event.getId())
+            .tenantId(event.getTenantId())
+            .projectId(event.getProjectId())
             .serviceId(event.getServiceId())
             .environment(event.getEnvironment())
             .level(event.getLevel())
