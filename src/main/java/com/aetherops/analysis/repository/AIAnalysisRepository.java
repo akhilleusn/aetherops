@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface AIAnalysisRepository extends JpaRepository<AIAnalysis, UUID> {
 
     List<AIAnalysis> findByIncidentIdOrderByCreatedAtDesc(UUID incidentId);
+
+    long countByIncidentId(UUID incidentId);
 }

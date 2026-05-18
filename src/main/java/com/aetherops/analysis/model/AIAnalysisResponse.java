@@ -19,6 +19,10 @@ public class AIAnalysisResponse {
     /** Decimal 0.0–1.0. Example: 0.35 = 35% confidence. */
     private double confidenceScore;
     private String severity;
+    /** Which analysis run this is for the incident. First run = 1, increments on each re-analysis. */
+    private int analysisVersion;
+    /** Number of evidence items the analysis was based on. */
+    private int evidenceCount;
     private List<String> evidenceRefs;
     private List<String> unknowns;
     private List<String> recommendedNextChecks;

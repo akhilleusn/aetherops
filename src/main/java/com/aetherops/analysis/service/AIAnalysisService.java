@@ -34,6 +34,8 @@ public class AIAnalysisService {
         AIAnalysisContext context = buildContext(pack);
         AIAnalysisResult result   = aiProvider.analyze(context);
 
+        int version = (int) aiAnalysisRepository.countByIncidentId(incidentId) + 1;
+
         AIAnalysis saved = aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
             .incidentId(incidentId)
             .tenantId(tenantId)
@@ -46,6 +48,8 @@ public class AIAnalysisService {
             .recommendedNextChecks(result.getRecommendedNextChecks())
             .model(result.getModel())
             .promptVersion(result.getPromptVersion())
+            .analysisVersion(version)
+            .evidenceCount(pack.getTotalEvidenceCount())
             .build());
 
         log.info("Created AI analysis id={} incidentId={} confidence={} evidenceCount={}",
@@ -92,6 +96,8 @@ public class AIAnalysisService {
             .recommendedNextChecks(analysis.getRecommendedNextChecks())
             .model(analysis.getModel())
             .promptVersion(analysis.getPromptVersion())
+            .analysisVersion(analysis.getAnalysisVersion())
+            .evidenceCount(analysis.getEvidenceCount())
             .createdAt(analysis.getCreatedAt())
             .build();
     }

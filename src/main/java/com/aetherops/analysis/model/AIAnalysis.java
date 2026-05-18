@@ -55,6 +55,14 @@ public class AIAnalysis {
     @Column(name = "recommended_next_checks", columnDefinition = "TEXT")
     private List<String> recommendedNextChecks;
 
+    /** Increments with each analysis run for the same incident. Starts at 1. */
+    @Column(name = "analysis_version", nullable = false)
+    private int analysisVersion;
+
+    /** Number of evidence items available when this analysis was generated. */
+    @Column(name = "evidence_count", nullable = false)
+    private int evidenceCount;
+
     @Column(length = 100)
     private String model;
 

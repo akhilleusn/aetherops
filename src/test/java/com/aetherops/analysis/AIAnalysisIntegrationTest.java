@@ -194,6 +194,85 @@ class AIAnalysisIntegrationTest {
         assertThat(analyses).extracting("incidentId").containsOnly(incidentId);
     }
 
+    // (i) First call has analysisVersion=1 and evidenceCount matches ingested events
+    @Test
+    void analyze_firstCallHasVersionOneAndCorrectEvidenceCount() throws Exception {
+        ingestEvent(TENANT_A, "worker-svc", LogLevel.ERROR, "Job processing failed");
+        ingestEvent(TENANT_A, "worker-svc", LogLevel.ERROR, "Job processing failed");
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.analysisVersion").value(1))
+            .andExpect(jsonPath("$.data.evidenceCount").value(2));
+    }
+
+    // (j) Second call on the same incident increments analysisVersion to 2
+    @Test
+    void analyze_secondCallIncrementsVersion() throws Exception {
+        ingestEvent(TENANT_A, "notification-svc", LogLevel.ERROR, "Email delivery failed");
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.analysisVersion").value(1));
+
+        mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.analysisVersion").value(2));
+    }
+
+    // (k) likelyCause contains the evidence item ID cited in evidenceRefs
+    @Test
+    void analyze_likelyCauseContainsEvidenceItemId() throws Exception {
+        ingestEvent(TENANT_A, "db-svc", LogLevel.ERROR, "Query execution timeout");
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode root         = objectMapper.readTree(body).at("/data");
+        String   likelyCause  = root.at("/likelyCause").asText();
+        String   evidenceRef  = root.at("/evidenceRefs/0").asText();
+
+        assertThat(likelyCause).isNotBlank();
+        assertThat(likelyCause).contains(evidenceRef);
+    }
+
+    // (l) No raw secret appears in summary or likelyCause individually
+    @Test
+    void analyze_noRawSecretInSummaryOrLikelyCause() throws Exception {
+        String rawToken = "eyJhbGciOiJSUzI1NiJ9.hardened.secret";
+        ingestEvent(TENANT_A, "gateway-svc", LogLevel.ERROR, "Auth failed: Bearer " + rawToken);
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode data        = objectMapper.readTree(body).at("/data");
+        String   summary     = data.at("/summary").asText();
+        String   likelyCause = data.at("/likelyCause").asText();
+
+        assertThat(summary).doesNotContain(rawToken);
+        assertThat(likelyCause).doesNotContain(rawToken);
+        assertThat(summary + likelyCause).contains("[REDACTED]");
+
+        // also verify broader unsafe-keyword check covers extended set
+        String checks = data.at("/recommendedNextChecks").toString().toLowerCase();
+        assertThat(checks).doesNotContain("wipe");
+        assertThat(checks).doesNotContain("purge");
+        assertThat(checks).doesNotContain("shutdown");
+        assertThat(checks).doesNotContain("flush");
+        assertThat(checks).doesNotContain("format");
+    }
+
     // --- helper ---
 
     private void ingestEvent(UUID tenantId, String serviceId, LogLevel level, String message)
