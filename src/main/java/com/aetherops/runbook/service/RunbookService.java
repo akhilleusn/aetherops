@@ -6,6 +6,8 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.runbook.model.*;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
+import com.aetherops.usage.model.UsageType;
+import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ public class RunbookService {
     private final RunbookGenerator runbookGenerator;
     private final RunbookEvaluationService evaluationService;
     private final RunbookSuggestionRepository runbookSuggestionRepository;
+    private final UsageLimitService usageLimitService;
 
     /**
      * Each call creates a new RunbookSuggestion row (append-only).
@@ -30,6 +33,7 @@ public class RunbookService {
      */
     @Transactional
     public RunbookSuggestionResponse generate(UUID incidentId, UUID tenantId) {
+        usageLimitService.checkAndIncrement(tenantId, UsageType.RUNBOOK_GENERATION);
         IncidentEvidencePackResponse pack = evidencePackService.getEvidencePack(incidentId, tenantId);
         AIAnalysisContext context = buildContext(pack);
         RunbookGenerationResult result = runbookGenerator.generate(context);

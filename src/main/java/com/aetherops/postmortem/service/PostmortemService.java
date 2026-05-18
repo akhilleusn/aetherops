@@ -8,6 +8,8 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.postmortem.model.*;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
+import com.aetherops.usage.model.UsageType;
+import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class PostmortemService {
     private final PostmortemDraftGenerator draftGenerator;
     private final PostmortemEvaluationService evaluationService;
     private final PostmortemDraftRepository postmortemDraftRepository;
+    private final UsageLimitService usageLimitService;
 
     /**
      * Each call creates a new PostmortemDraft row (append-only).
@@ -35,6 +38,7 @@ public class PostmortemService {
      */
     @Transactional
     public PostmortemDraftResponse generate(UUID incidentId, UUID tenantId) {
+        usageLimitService.checkAndIncrement(tenantId, UsageType.POSTMORTEM_GENERATION);
         IncidentEvidencePackResponse pack = evidencePackService.getEvidencePack(incidentId, tenantId);
         AIAnalysisContext incidentContext = buildContext(pack);
 

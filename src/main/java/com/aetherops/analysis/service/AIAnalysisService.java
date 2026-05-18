@@ -4,6 +4,8 @@ import com.aetherops.analysis.model.*;
 import com.aetherops.analysis.repository.AIAnalysisRepository;
 import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
+import com.aetherops.usage.model.UsageType;
+import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ public class AIAnalysisService {
     private final AIProvider aiProvider;
     private final AIAnalysisRepository aiAnalysisRepository;
     private final AnalysisEvaluationService evaluationService;
+    private final UsageLimitService usageLimitService;
 
     /**
      * Each call creates a new AIAnalysis row (append-only).
@@ -29,6 +32,7 @@ public class AIAnalysisService {
      */
     @Transactional
     public AIAnalysisResponse analyze(UUID incidentId, UUID tenantId) {
+        usageLimitService.checkAndIncrement(tenantId, UsageType.AI_ANALYSIS);
         // Tenant isolation is enforced here — throws ResourceNotFoundException on mismatch
         IncidentEvidencePackResponse pack = evidencePackService.getEvidencePack(incidentId, tenantId);
 
