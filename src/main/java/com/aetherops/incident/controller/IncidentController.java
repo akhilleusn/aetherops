@@ -7,6 +7,8 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.service.IncidentService;
+import com.aetherops.runbook.model.RunbookSuggestionResponse;
+import com.aetherops.runbook.service.RunbookService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +31,7 @@ public class IncidentController {
     private final IncidentService incidentService;
     private final EvidencePackService evidencePackService;
     private final AIAnalysisService aiAnalysisService;
+    private final RunbookService runbookService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -80,5 +83,23 @@ public class IncidentController {
         @RequestParam UUID tenantId
     ) {
         return ApiResponse.success(aiAnalysisService.analyze(id, tenantId));
+    }
+
+    @PostMapping("/{id}/runbook")
+    @Operation(summary = "Generate a safe, evidence-aware runbook suggestion for the incident. Each call creates a new version.")
+    public ApiResponse<RunbookSuggestionResponse> generateRunbook(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(runbookService.generate(id, tenantId));
+    }
+
+    @GetMapping("/{id}/runbook/latest")
+    @Operation(summary = "Get the most recently generated runbook suggestion for the incident.")
+    public ApiResponse<RunbookSuggestionResponse> getLatestRunbook(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(runbookService.getLatest(id, tenantId));
     }
 }
