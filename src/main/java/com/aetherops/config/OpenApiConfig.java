@@ -14,7 +14,7 @@ public class OpenApiConfig {
         return new OpenAPI()
             .info(new Info()
                 .title("AetherOps API")
-                .description("AI-assisted backend reliability platform — log ingestion, incident management, and secret masking.")
+                .description("AI-assisted incident investigation for backend teams — evidence-backed analysis, safe runbook suggestions, structured postmortem drafts, and per-tenant usage metering. AI provider: mock-v1 (no external API calls).")
                 .version("v0.1.0")
                 // TODO: add API key security scheme when auth is introduced
                 .contact(new Contact()
