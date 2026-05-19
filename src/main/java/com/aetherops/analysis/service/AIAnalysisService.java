@@ -4,6 +4,9 @@ import com.aetherops.analysis.model.*;
 import com.aetherops.analysis.repository.AIAnalysisRepository;
 import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
+import com.aetherops.audit.model.AuditAction;
+import com.aetherops.audit.model.AuditStatus;
+import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,7 @@ public class AIAnalysisService {
     private final AIAnalysisRepository aiAnalysisRepository;
     private final AnalysisEvaluationService evaluationService;
     private final UsageLimitService usageLimitService;
+    private final AuditLogService auditLogService;
 
     /**
      * Each call creates a new AIAnalysis row (append-only).
@@ -61,6 +65,12 @@ public class AIAnalysisService {
             saved.getId(), incidentId, saved.getConfidenceScore(), pack.getTotalEvidenceCount());
 
         AIAnalysisResponse response = toResponse(saved);
+
+        auditLogService.record(
+            tenantId, AuditAction.ANALYSIS_GENERATED, AuditStatus.SUCCESS,
+            "INCIDENT", incidentId,
+            "AI analysis v" + saved.getAnalysisVersion() + " generated for incident " + incidentId
+        );
 
         AnalysisEvaluationResult evaluation = evaluationService.evaluate(response, pack);
         if (!evaluation.isPassed()) {

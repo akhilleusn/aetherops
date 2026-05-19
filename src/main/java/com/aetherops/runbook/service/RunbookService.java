@@ -6,6 +6,9 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.runbook.model.*;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
+import com.aetherops.audit.model.AuditAction;
+import com.aetherops.audit.model.AuditStatus;
+import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +29,7 @@ public class RunbookService {
     private final RunbookEvaluationService evaluationService;
     private final RunbookSuggestionRepository runbookSuggestionRepository;
     private final UsageLimitService usageLimitService;
+    private final AuditLogService auditLogService;
 
     /**
      * Each call creates a new RunbookSuggestion row (append-only).
@@ -54,6 +58,12 @@ public class RunbookService {
             saved.getId(), incidentId, version, result.getSteps().size(), result.getGenerationBasis());
 
         RunbookSuggestionResponse response = toResponse(saved);
+
+        auditLogService.record(
+            tenantId, AuditAction.RUNBOOK_GENERATED, AuditStatus.SUCCESS,
+            "INCIDENT", incidentId,
+            "Runbook v" + saved.getRunbookVersion() + " generated for incident " + incidentId
+        );
 
         RunbookEvaluationResult evaluation = evaluationService.evaluate(response, pack);
         if (!evaluation.isPassed()) {

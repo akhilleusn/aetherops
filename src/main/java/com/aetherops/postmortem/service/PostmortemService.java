@@ -8,6 +8,9 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.postmortem.model.*;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
+import com.aetherops.audit.model.AuditAction;
+import com.aetherops.audit.model.AuditStatus;
+import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +33,7 @@ public class PostmortemService {
     private final PostmortemEvaluationService evaluationService;
     private final PostmortemDraftRepository postmortemDraftRepository;
     private final UsageLimitService usageLimitService;
+    private final AuditLogService auditLogService;
 
     /**
      * Each call creates a new PostmortemDraft row (append-only).
@@ -69,6 +73,12 @@ public class PostmortemService {
             saved.getId(), incidentId, version, saved.isAnalysisEnriched());
 
         PostmortemDraftResponse response = toResponse(saved);
+
+        auditLogService.record(
+            tenantId, AuditAction.POSTMORTEM_GENERATED, AuditStatus.SUCCESS,
+            "INCIDENT", incidentId,
+            "Postmortem draft v" + saved.getDraftVersion() + " generated for incident " + incidentId
+        );
 
         PostmortemEvaluationResult evaluation = evaluationService.evaluate(response, pack);
         if (!evaluation.isPassed()) {
