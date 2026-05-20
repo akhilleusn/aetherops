@@ -1,0 +1,42 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-aetherops_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB:       ${POSTGRES_DB:-aetherops}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aetherops_user}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aetherops:
+    build: .
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      DB_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aetherops}
+      DB_USERNAME: ${POSTGRES_USER:-aetherops_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      SERVER_PORT: 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  sample-app:
+    build: ./sample-app
+    ports:
+      - "9090:9090"
+
+volumes:
+  pgdata:

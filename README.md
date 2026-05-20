@@ -6,6 +6,40 @@ The AI layer currently uses a deterministic mock provider (`mock-v1`). The inter
 
 ---
 
+## Quick Start (Docker)
+
+No Java or PostgreSQL installation required.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose plugin)
+- `curl` and `jq` — for the demo script
+
+### 1. Start the stack
+
+```bash
+docker compose up -d
+```
+
+> **First run** downloads base images and builds both JARs inside Docker (~3–5 minutes). Subsequent starts take ~10 seconds.
+
+### 2. Run the failure demo
+
+```bash
+./demo/run-demo.sh
+```
+
+The script creates a tenant, registers a project and API key, simulates payment service failures, and drives the full incident → evidence → AI analysis → runbook → postmortem pipeline. Open [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) to explore the API interactively.
+
+### 3. Stop
+
+```bash
+docker compose down       # stop containers, keep data
+docker compose down -v    # stop containers and delete all data
+```
+
+---
+
 ## What it does today
 
 - **Tenant management** — register tenants, assign plans (FREE / STARTER / TEAM / GROWTH)
@@ -27,8 +61,7 @@ The AI layer currently uses a deterministic mock provider (`mock-v1`). The inter
 - **No dashboard or frontend UI** — API only
 - **No OpenTelemetry or distributed tracing** — trace and span IDs are stored on log events but not used for analysis
 - **No autonomous remediation** — the system only suggests; it never executes actions
-- **No Docker setup** — local development requires a running PostgreSQL instance and manual `export` of environment variables
-- **No email, Slack, or webhook notifications**
+- **No email, Slack, or webhook notifications** — alerting is a planned addition
 
 ---
 
@@ -130,7 +163,7 @@ mvn test
 
 Tests use an H2 in-memory database with `@ActiveProfiles("test")`. No PostgreSQL instance is needed. Flyway is disabled in the test profile; Hibernate creates the schema from entity annotations using `ddl-auto: create-drop`.
 
-Current status: **110 tests, 0 failures.**
+Current status: **134 tests, 0 failures.**
 
 ---
 
