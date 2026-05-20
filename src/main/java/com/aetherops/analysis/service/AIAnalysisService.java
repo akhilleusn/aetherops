@@ -85,6 +85,16 @@ public class AIAnalysisService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public AIAnalysisResponse getLatest(UUID incidentId, UUID tenantId) {
+        return aiAnalysisRepository
+            .findTopByIncidentIdOrderByCreatedAtDesc(incidentId)
+            .filter(a -> tenantId.equals(a.getTenantId()))
+            .map(this::toResponse)
+            .orElseThrow(() -> new com.aetherops.common.exception.ResourceNotFoundException(
+                "No analysis found for incident " + incidentId));
+    }
+
     private AIAnalysisContext buildContext(IncidentEvidencePackResponse pack) {
         List<AIAnalysisContext.EvidenceContext> evidenceContexts = pack.getEvidence().stream()
             .map(item -> AIAnalysisContext.EvidenceContext.builder()

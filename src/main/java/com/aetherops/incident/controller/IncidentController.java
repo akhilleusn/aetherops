@@ -89,6 +89,15 @@ public class IncidentController {
         return ApiResponse.success(aiAnalysisService.analyze(id, tenantId));
     }
 
+    @GetMapping("/{id}/analyze/latest")
+    @Operation(summary = "Get the most recently generated AI analysis for the incident.")
+    public ApiResponse<AIAnalysisResponse> getLatestAnalysis(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(aiAnalysisService.getLatest(id, tenantId));
+    }
+
     @PostMapping("/{id}/runbook")
     @Operation(summary = "Generate a safe, evidence-aware runbook suggestion for the incident. Each call creates a new version.")
     public ApiResponse<RunbookSuggestionResponse> generateRunbook(

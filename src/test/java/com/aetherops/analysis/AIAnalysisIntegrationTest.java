@@ -273,6 +273,36 @@ class AIAnalysisIntegrationTest {
         assertThat(checks).doesNotContain("format");
     }
 
+    // (m) GET analyze/latest returns the most recently created analysis
+    @Test
+    void getLatestAnalysis_returnsLatest() throws Exception {
+        ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Timeout on checkout");
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/incidents/{id}/analyze/latest", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
+            .andExpect(jsonPath("$.data.analysisVersion").value(1))
+            .andExpect(jsonPath("$.data.summary").isNotEmpty());
+    }
+
+    // (n) GET analyze/latest returns 404 when no analysis exists yet
+    @Test
+    void getLatestAnalysis_noAnalysisYet_returns404() throws Exception {
+        ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Timeout on checkout");
+        UUID incidentId = incidentRepository.findAll().get(0).getId();
+
+        mockMvc.perform(get("/api/v1/incidents/{id}/analyze/latest", incidentId)
+                .param("tenantId", TENANT_A.toString()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status").value(404));
+    }
+
     // --- helper ---
 
     private void ingestEvent(UUID tenantId, String serviceId, LogLevel level, String message)

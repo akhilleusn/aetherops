@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AetherOps</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #fff; --border: #e2e8f0;
+  --text: #1e293b; --muted: #64748b;
+  --primary: #2563eb; --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui,-apple-system,'Segoe UI',sans-serif; font-size: 14px; line-height: 1.5; background: var(--bg); color: var(--text); }
+
+/* ── Header ── */
+header { background: #0f172a; color: #f8fafc; position: sticky; top: 0; z-index: 10; }
+.hdr { max-width: 1100px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 16px; }
+.logo { font-size: 17px; font-weight: 700; color: #f8fafc; text-decoration: none; cursor: pointer; }
+.logo em { font-style: normal; color: #60a5fa; }
+.tenant-bar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.tenant-bar label { font-size: 12px; color: #94a3b8; }
+.tenant-bar input { width: 300px; padding: 5px 10px; border-radius: 5px; border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 12px; font-family: 'Courier New', monospace; }
+.tenant-bar input::placeholder { color: #475569; }
+.tbtn { padding: 5px 14px; background: var(--primary); color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.tbtn:hover { background: #1d4ed8; }
+
+/* ── Layout ── */
+main { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+/* ── Card ── */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; overflow: hidden; }
+.card-hdr { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.card-body { padding: 20px; }
+
+/* ── Table ── */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); border-bottom: 1px solid var(--border); }
+td { padding: 11px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr.row:hover { background: #f8fafc; cursor: pointer; }
+.tc { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--primary); }
+
+/* ── Badges ── */
+.badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+.sev-CRITICAL { background:#fef2f2; color:#dc2626; border-color:#fca5a5; }
+.sev-HIGH     { background:#fff7ed; color:#ea580c; border-color:#fdba74; }
+.sev-MEDIUM   { background:#fefce8; color:#ca8a04; border-color:#fde047; }
+.sev-LOW      { background:#f0fdf4; color:#16a34a; border-color:#86efac; }
+.st-OPEN          { background:#eff6ff; color:#2563eb; }
+.st-INVESTIGATING { background:#f5f3ff; color:#7c3aed; }
+.st-RESOLVED      { background:#f0fdf4; color:#16a34a; }
+.st-CLOSED        { background:#f8fafc; color:#64748b; }
+.lv-ERROR { color:#dc2626; font-weight:700; }
+.lv-WARN  { color:#ca8a04; font-weight:700; }
+.lv-FATAL { color:#7c3aed; font-weight:700; }
+.lv-INFO  { color:#2563eb; }
+.lv-DEBUG { color:#64748b; }
+.ver { font-size: 11px; color: var(--muted); background: #f1f5f9; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+.enriched { font-size: 11px; font-weight: 700; color: #16a34a; background: #f0fdf4; border: 1px solid #86efac; padding: 2px 7px; border-radius: 9999px; }
+
+/* ── Incident hero ── */
+.hero { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 24px; margin-bottom: 16px; }
+.hero-title { font-size: 16px; font-weight: 600; margin-bottom: 10px; line-height: 1.4; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); }
+.hero-meta span { display: flex; align-items: center; gap: 5px; }
+
+/* ── Confidence bar ── */
+.conf-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.conf-bg { flex: 1; height: 7px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 4px; background: #2563eb; }
+.conf-lbl { font-size: 13px; font-weight: 700; min-width: 34px; text-align: right; }
+
+/* ── Detail grid ── */
+.dg { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+.dl { font-weight: 600; color: var(--muted); }
+.blist { list-style: none; }
+.blist li { padding: 3px 0 3px 14px; position: relative; font-size: 13px; }
+.blist li::before { content: '·'; position: absolute; left: 0; color: var(--muted); }
+
+/* ── Evidence items ── */
+.ev-item { display: grid; grid-template-columns: 52px 160px 1fr; gap: 0 10px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; align-items: start; }
+.ev-item:last-child { border-bottom: none; }
+.ev-ts { color: var(--muted); font-size: 12px; }
+
+/* ── Runbook ── */
+.phase-hdr { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); padding: 10px 0 6px; border-top: 1px solid var(--border); margin-top: 4px; }
+.rb-step { display: grid; grid-template-columns: 22px 1fr; gap: 0 10px; margin-bottom: 10px; }
+.rb-n { font-size: 12px; font-weight: 700; color: var(--muted); padding-top: 1px; }
+.rb-action { font-size: 13px; font-weight: 500; }
+.rb-rat { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ── Timeline ── */
+.tl-entry { display: grid; grid-template-columns: 155px 1fr; gap: 0 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+.tl-entry:last-child { border-bottom: none; }
+.tl-ts { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+/* ── Buttons ── */
+.btn { padding: 5px 13px; border-radius: 5px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 500; }
+.btn:hover { background: #f8fafc; }
+.btn-p { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-p:hover { background: #1d4ed8; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* ── Back link ── */
+.back { display: inline-flex; align-items: center; gap: 5px; color: var(--primary); text-decoration: none; font-size: 13px; font-weight: 500; margin-bottom: 14px; }
+.back:hover { text-decoration: underline; }
+
+/* ── States ── */
+.loading { padding: 40px; text-align: center; color: var(--muted); }
+.empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+.empty h2 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.none { padding: 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.err-banner { background:#fef2f2; border:1px solid #fca5a5; color:#dc2626; padding:12px 16px; border-radius:var(--radius); font-size:13px; margin-bottom:16px; }
+
+/* ── List header ── */
+.lh { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.lh h1 { font-size: 20px; font-weight: 700; }
+.lh-cnt { font-size: 13px; color: var(--muted); }
+
+/* ── Welcome ── */
+.welcome { max-width: 520px; margin: 80px auto; text-align: center; }
+.welcome h2 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+.welcome p { color: var(--muted); margin-bottom: 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr">
+    <a class="logo" onclick="goHome()">Aether<em>Ops</em></a>
+    <div class="tenant-bar">
+      <label for="ti">Tenant</label>
+      <input id="ti" type="text" placeholder="paste tenant UUID here…" onkeydown="if(event.key==='Enter')loadTenant()">
+      <button class="tbtn" onclick="loadTenant()">Load</button>
+    </div>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<script>
+'use strict';
+
+// ── state ────────────────────────────────────────────────────────────────────
+let tenantId = localStorage.getItem('ao_tenant') || '';
+
+// ── bootstrap ────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  document.getElementById('ti').value = tenantId;
+  route();
+});
+window.addEventListener('hashchange', route);
+
+function route() {
+  const h = location.hash.slice(1);
+  if (!tenantId) { renderWelcome(); return; }
+  if (h.startsWith('incident/')) renderDetail(h.slice(9));
+  else renderList();
+}
+
+function goHome() {
+  location.hash = '';
+  if (!tenantId) renderWelcome(); else renderList();
+}
+
+function loadTenant() {
+  const v = document.getElementById('ti').value.trim();
+  if (!v) return;
+  tenantId = v;
+  localStorage.setItem('ao_tenant', tenantId);
+  location.hash = '';
+  renderList();
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) { const e = await r.json().catch(() => null); const err = new Error(r.statusText); err.status = r.status; err.body = e; throw err; }
+  return r.json();
+}
+async function post(path) {
+  const r = await fetch(path, {method:'POST'});
+  if (!r.ok) { const e = await r.json().catch(() => null); const err = new Error(r.statusText); err.status = r.status; err.body = e; throw err; }
+  return r.json();
+}
+
+// ── utils ─────────────────────────────────────────────────────────────────────
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function rel(iso) {
+  if (!iso) return '—';
+  const d = Date.now() - new Date(iso).getTime();
+  if (d < 60000) return 'just now';
+  if (d < 3600000) return Math.floor(d/60000) + 'm ago';
+  if (d < 86400000) return Math.floor(d/3600000) + 'h ago';
+  return Math.floor(d/86400000) + 'd ago';
+}
+function ts(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toISOString().replace('T',' ').replace(/\.\d+Z$/,' UTC');
+}
+function sevBadge(s) { return `<span class="badge sev-${esc(s)}">${esc(s)}</span>`; }
+function stBadge(s)  { return `<span class="badge st-${esc(s)}">${esc(s)}</span>`; }
+function bullets(arr, fallback) {
+  if (!arr || !arr.length) return `<span style="color:var(--muted)">${fallback||'—'}</span>`;
+  return `<ul class="blist">${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+}
+
+// ── welcome ───────────────────────────────────────────────────────────────────
+function renderWelcome() {
+  document.getElementById('app').innerHTML = `
+    <div class="welcome">
+      <h2>Welcome to AetherOps</h2>
+      <p>Enter a tenant UUID in the header and click <strong>Load</strong> to see incidents.</p>
+      <p style="margin-top:12px;font-size:13px;color:#94a3b8">
+        Run <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">./demo/run-demo.sh</code>
+        to generate demo data with a tenant ID.
+      </p>
+    </div>`;
+}
+
+// ── incidents list ────────────────────────────────────────────────────────────
+async function renderList() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Loading incidents…</div>';
+  try {
+    const d = await api(`/api/v1/incidents?tenantId=${tenantId}&size=50`);
+    const list = d.data?.content ?? [];
+    if (!list.length) {
+      app.innerHTML = `<div class="lh"><h1>Incidents</h1></div>
+        <div class="empty"><h2>No incidents found</h2>
+        <p>Ingest some ERROR log events for this tenant to get started.</p></div>`;
+      return;
+    }
+    const open = list.filter(i => i.status === 'OPEN').length;
+    const rows = list.map(i => `
+      <tr class="row" onclick="location.hash='incident/${i.id}'">
+        <td><div class="tc">${esc(i.title)}</div></td>
+        <td>${sevBadge(i.severity)}</td>
+        <td>${stBadge(i.status)}</td>
+        <td style="text-align:right;color:var(--muted)">${i.eventCount}</td>
+        <td style="color:var(--muted)">${rel(i.firstSeenAt)}</td>
+        <td style="color:var(--muted)">${rel(i.lastSeenAt)}</td>
+      </tr>`).join('');
+    app.innerHTML = `
+      <div class="lh">
+        <h1>Incidents</h1>
+        <span class="lh-cnt">${list.length} total &nbsp;·&nbsp; ${open} open</span>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr>
+            <th>Title</th><th>Severity</th><th>Status</th>
+            <th style="text-align:right">Events</th><th>First seen</th><th>Last seen</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    app.innerHTML = `<div class="err-banner">Failed to load incidents: ${esc(e.message)}</div>`;
+  }
+}
+
+// ── incident detail ───────────────────────────────────────────────────────────
+async function renderDetail(id) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading">Loading…</div>';
+
+  const [incR, packR, analysisR, runbookR, postmortemR] = await Promise.allSettled([
+    api(`/api/v1/incidents/${id}`),
+    api(`/api/v1/incidents/${id}/evidence-pack?tenantId=${tenantId}`),
+    api(`/api/v1/incidents/${id}/analyze/latest?tenantId=${tenantId}`),
+    api(`/api/v1/incidents/${id}/runbook/latest?tenantId=${tenantId}`),
+    api(`/api/v1/incidents/${id}/postmortem/latest?tenantId=${tenantId}`)
+  ]);
+
+  if (incR.status === 'rejected') {
+    app.innerHTML = `<div class="err-banner">Failed to load incident: ${esc(incR.reason.message)}</div>`;
+    return;
+  }
+
+  const inc = incR.value.data;
+  const pack = packR.status === 'fulfilled' ? packR.value.data : null;
+  const analysis = analysisR.status === 'fulfilled' ? analysisR.value.data : null;
+  const runbook = runbookR.status === 'fulfilled' ? runbookR.value.data : null;
+  const pm = postmortemR.status === 'fulfilled' ? postmortemR.value.data : null;
+
+  app.innerHTML = `
+    <a class="back" href="#">← Back to incidents</a>
+    ${heroHtml(inc)}
+    ${evidenceHtml(pack)}
+    ${analysisHtml(analysis, id)}
+    ${runbookHtml(runbook, id)}
+    ${postmortemHtml(pm, id)}`;
+}
+
+// ── hero ──────────────────────────────────────────────────────────────────────
+function heroHtml(i) {
+  return `
+    <div class="hero">
+      <div class="hero-title">${esc(i.title)}</div>
+      <div class="hero-meta">
+        <span>${sevBadge(i.severity)}</span>
+        <span>${stBadge(i.status)}</span>
+        <span>service: <strong>${esc(i.serviceId)}</strong></span>
+        <span>${i.eventCount} event${i.eventCount===1?'':'s'}</span>
+        <span style="color:#cbd5e1">|</span>
+        <span>first: ${rel(i.firstSeenAt)}</span>
+        <span>last: ${rel(i.lastSeenAt)}</span>
+        ${i.environment ? `<span>env: ${esc(i.environment)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+// ── evidence ──────────────────────────────────────────────────────────────────
+function evidenceHtml(pack) {
+  if (!pack) return `<div class="card"><div class="card-hdr"><span class="card-title">Evidence Pack</span></div><div class="none">No evidence available.</div></div>`;
+  const items = (pack.evidence || []).map(e => `
+    <div class="ev-item">
+      <span class="lv-${esc(e.level)}">${esc(e.level)}</span>
+      <span class="ev-ts">${ts(e.timestamp)}</span>
+      <span>${esc(e.summary)}</span>
+    </div>`).join('');
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Evidence Pack</span>
+        <span style="font-size:12px;color:var(--muted)">${pack.totalEvidenceCount} item${pack.totalEvidenceCount===1?'':'s'}</span>
+      </div>
+      <div class="card-body">${items || '<div class="none">No evidence items.</div>'}</div>
+    </div>`;
+}
+
+// ── analysis ──────────────────────────────────────────────────────────────────
+function analysisHtml(a, id) {
+  const action = `<button class="btn btn-sm btn-p" onclick="runAnalysis('${id}')">Run New Analysis</button>`;
+  if (!a) return `
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">AI Analysis</span>${action}</div>
+      <div class="none">No analysis yet. Click "Run New Analysis" to generate one.</div>
+    </div>`;
+  const pct = Math.round(a.confidenceScore * 100);
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">AI Analysis <span class="ver">v${a.analysisVersion}</span></span>
+        ${action}
+      </div>
+      <div class="card-body">
+        <div class="conf-wrap">
+          <div class="conf-bg"><div class="conf-fill" style="width:${pct}%"></div></div>
+          <span class="conf-lbl">${pct}%</span>
+          <span style="font-size:12px;color:var(--muted)">confidence &nbsp;·&nbsp; ${a.evidenceCount} evidence item${a.evidenceCount===1?'':'s'}</span>
+        </div>
+        <div class="dg">
+          <span class="dl">Summary</span><span>${esc(a.summary)}</span>
+          <span class="dl">Likely cause</span><span>${esc(a.likelyCause)}</span>
+        </div>
+        <div class="dg">
+          <span class="dl">Unknowns</span><span>${bullets(a.unknowns)}</span>
+          <span class="dl">Next checks</span><span>${bullets(a.recommendedNextChecks)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">model: ${esc(a.model)} &nbsp;·&nbsp; generated: ${rel(a.createdAt)}</div>
+      </div>
+    </div>`;
+}
+
+// ── runbook ───────────────────────────────────────────────────────────────────
+function runbookHtml(rb, id) {
+  const action = `<button class="btn btn-sm btn-p" onclick="runRunbook('${id}')">Generate New Runbook</button>`;
+  if (!rb) return `
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Runbook</span>${action}</div>
+      <div class="none">No runbook yet. Click "Generate New Runbook" to create one.</div>
+    </div>`;
+
+  const phases = {};
+  (rb.steps||[]).forEach(s => { (phases[s.phase]=(phases[s.phase]||[])).push(s); });
+
+  let n = 0;
+  const stepsHtml = Object.entries(phases).map(([phase, steps]) => `
+    <div class="phase-hdr">${esc(phase)}</div>
+    ${steps.map(s => `
+      <div class="rb-step">
+        <span class="rb-n">${++n}</span>
+        <div>
+          <div class="rb-action">${esc(s.action)}</div>
+          ${s.rationale ? `<div class="rb-rat">${esc(s.rationale)}</div>` : ''}
+        </div>
+      </div>`).join('')}`).join('');
+
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Runbook <span class="ver">v${rb.runbookVersion}</span> <span style="font-size:11px;color:var(--muted)">${(rb.steps||[]).length} steps</span></span>
+        ${action}
+      </div>
+      <div class="card-body">${stepsHtml}</div>
+    </div>`;
+}
+
+// ── postmortem ────────────────────────────────────────────────────────────────
+function postmortemHtml(pm, id) {
+  const action = `<button class="btn btn-sm btn-p" onclick="runPostmortem('${id}')">Generate New Postmortem</button>`;
+  if (!pm) return `
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Postmortem Draft</span>${action}</div>
+      <div class="none">No postmortem yet. Click "Generate New Postmortem" to create one.</div>
+    </div>`;
+
+  const tlRows = (pm.timeline||[]).map(e => `
+    <div class="tl-entry">
+      <span class="tl-ts">${ts(e.timestamp)}</span>
+      <span>${esc(e.description)}</span>
+    </div>`).join('');
+
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">
+          Postmortem Draft <span class="ver">v${pm.draftVersion}</span>
+          ${pm.analysisEnriched ? '<span class="enriched">AI-enriched</span>' : ''}
+        </span>
+        ${action}
+      </div>
+      <div class="card-body">
+        <div class="dg">
+          <span class="dl">Summary</span><span>${esc(pm.incidentSummary)}</span>
+          <span class="dl">Likely cause</span><span>${esc(pm.likelyCause)}</span>
+          <span class="dl">Impact</span><span>${esc(pm.impact)}</span>
+        </div>
+        <div class="dg">
+          <span class="dl">Data gaps</span><span>${bullets(pm.dataGaps)}</span>
+          <span class="dl">Follow-up</span><span>${bullets(pm.followUpActions)}</span>
+        </div>
+        ${tlRows ? `
+          <div style="margin-top:12px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Timeline</div>
+            ${tlRows}
+          </div>` : ''}
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">generated: ${rel(pm.createdAt)} &nbsp;·&nbsp; ${pm.evidenceCount} evidence item${pm.evidenceCount===1?'':'s'}</div>
+      </div>
+    </div>`;
+}
+
+// ── actions ───────────────────────────────────────────────────────────────────
+async function runAnalysis(id) {
+  try { await post(`/api/v1/incidents/${id}/analyze?tenantId=${tenantId}`); renderDetail(id); }
+  catch(e) { alert('Analysis failed: ' + e.message); }
+}
+async function runRunbook(id) {
+  try { await post(`/api/v1/incidents/${id}/runbook?tenantId=${tenantId}`); renderDetail(id); }
+  catch(e) { alert('Runbook generation failed: ' + e.message); }
+}
+async function runPostmortem(id) {
+  try { await post(`/api/v1/incidents/${id}/postmortem?tenantId=${tenantId}`); renderDetail(id); }
+  catch(e) { alert('Postmortem generation failed: ' + e.message); }
+}
+</script>
+</body>
+</html>
