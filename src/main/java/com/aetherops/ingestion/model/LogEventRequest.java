@@ -15,7 +15,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class LogEventRequest {
 
-    @NotNull(message = "tenantId is required")
     private UUID tenantId;
 
     private UUID projectId;

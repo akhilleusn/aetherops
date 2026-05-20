@@ -1,5 +1,7 @@
 package com.aetherops.ingestion.controller;
 
+import com.aetherops.apikey.service.ApiKeyService;
+import com.aetherops.common.exception.MissingTenantIdException;
 import com.aetherops.common.response.ApiResponse;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogEventResponse;
@@ -25,11 +27,22 @@ import java.util.UUID;
 public class LogEventController {
 
     private final LogEventService logEventService;
+    private final ApiKeyService   apiKeyService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Ingest a log event from a backend service")
-    public ApiResponse<LogEventResponse> ingest(@Valid @RequestBody LogEventRequest request) {
+    @Operation(summary = "Ingest a log event — authenticate via X-Api-Key header or tenantId in body")
+    public ApiResponse<LogEventResponse> ingest(
+        @Valid @RequestBody LogEventRequest request,
+        @RequestHeader(value = "X-Api-Key", required = false) String apiKey
+    ) {
+        if (apiKey != null) {
+            var key = apiKeyService.resolve(apiKey);
+            request.setTenantId(key.getTenantId());
+            request.setProjectId(key.getProjectId());
+        } else if (request.getTenantId() == null) {
+            throw new MissingTenantIdException();
+        }
         return ApiResponse.success(logEventService.ingest(request));
     }
 

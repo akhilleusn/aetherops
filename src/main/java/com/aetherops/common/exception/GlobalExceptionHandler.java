@@ -4,6 +4,8 @@ import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ErrorResponse;
+import com.aetherops.common.exception.InvalidApiKeyException;
+import com.aetherops.common.exception.MissingTenantIdException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,29 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .body(ErrorResponse.of(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(MissingTenantIdException.class)
+    public ResponseEntity<ErrorResponse> handleMissingTenantId(
+        MissingTenantIdException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            .body(ErrorResponse.withDetails(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "Validation failed",
+                request.getRequestURI(),
+                java.util.Map.of("tenantId", ex.getMessage())
+            ));
+    }
+
+    @ExceptionHandler(InvalidApiKeyException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidApiKey(
+        InvalidApiKeyException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
