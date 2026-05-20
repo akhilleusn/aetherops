@@ -8,6 +8,9 @@ import com.aetherops.common.response.ApiResponse;
 import com.aetherops.project.model.CreateProjectRequest;
 import com.aetherops.project.model.Project;
 import com.aetherops.project.service.ProjectService;
+import com.aetherops.service.model.CreateServiceRequest;
+import com.aetherops.service.model.Service;
+import com.aetherops.service.service.ServiceRegistryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,8 +27,9 @@ import java.util.UUID;
 @Tag(name = "Projects", description = "Manage projects and API keys")
 public class ProjectController {
 
-    private final ProjectService projectService;
-    private final ApiKeyService  apiKeyService;
+    private final ProjectService         projectService;
+    private final ApiKeyService          apiKeyService;
+    private final ServiceRegistryService serviceRegistryService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -69,5 +73,25 @@ public class ProjectController {
         @RequestParam UUID tenantId
     ) {
         apiKeyService.revoke(projectId, tenantId, keyId);
+    }
+
+    @PostMapping("/{projectId}/services")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Register a service under a project")
+    public ApiResponse<Service> createService(
+        @PathVariable UUID projectId,
+        @RequestParam UUID tenantId,
+        @Valid @RequestBody CreateServiceRequest request
+    ) {
+        return ApiResponse.success(serviceRegistryService.create(projectId, tenantId, request));
+    }
+
+    @GetMapping("/{projectId}/services")
+    @Operation(summary = "List services registered under a project")
+    public ApiResponse<List<Service>> listServices(
+        @PathVariable UUID projectId,
+        @RequestParam UUID tenantId
+    ) {
+        return ApiResponse.success(serviceRegistryService.listByProject(projectId, tenantId));
     }
 }

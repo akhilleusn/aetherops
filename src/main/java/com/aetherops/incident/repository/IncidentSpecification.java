@@ -32,4 +32,10 @@ public final class IncidentSpecification {
             ? cb.conjunction()
             : cb.equal(root.get("severity"), severity);
     }
+
+    public static Specification<Incident> hasProjectId(UUID projectId) {
+        return (root, query, cb) -> projectId == null
+            ? cb.conjunction()
+            : cb.equal(root.get("projectId"), projectId);
+    }
 }

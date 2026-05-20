@@ -58,13 +58,15 @@ public class IncidentService {
 
     @Transactional(readOnly = true)
     public Page<IncidentResponse> findAll(
-        UUID tenantId, IncidentStatus status, String serviceId, IncidentSeverity severity, Pageable pageable
+        UUID tenantId, IncidentStatus status, String serviceId,
+        IncidentSeverity severity, UUID projectId, Pageable pageable
     ) {
         Specification<Incident> spec = Specification
             .where(IncidentSpecification.hasTenant(tenantId))
             .and(IncidentSpecification.hasStatus(status))
             .and(IncidentSpecification.hasServiceId(serviceId))
-            .and(IncidentSpecification.hasSeverity(severity));
+            .and(IncidentSpecification.hasSeverity(severity))
+            .and(IncidentSpecification.hasProjectId(projectId));
 
         return incidentRepository.findAll(spec, pageable).map(this::toResponse);
     }

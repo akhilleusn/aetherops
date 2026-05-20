@@ -7,6 +7,7 @@ import com.aetherops.ingestion.model.LogEventResponse;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.masking.service.SecretMaskingService;
+import com.aetherops.service.service.ServiceRegistryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -21,9 +22,10 @@ import java.util.UUID;
 @Slf4j
 public class LogEventService {
 
-    private final LogEventRepository logEventRepository;
-    private final SecretMaskingService secretMaskingService;
+    private final LogEventRepository      logEventRepository;
+    private final SecretMaskingService    secretMaskingService;
     private final IncidentGroupingService incidentGroupingService;
+    private final ServiceRegistryService  serviceRegistryService;
 
     @Transactional
     public LogEventResponse ingest(LogEventRequest request) {
@@ -50,6 +52,12 @@ public class LogEventService {
             saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getLevel());
 
         incidentGroupingService.findOrCreate(saved);
+
+        if (saved.getProjectId() != null) {
+            serviceRegistryService.findOrRegister(
+                saved.getTenantId(), saved.getProjectId(),
+                saved.getServiceId(), saved.getEnvironment());
+        }
 
         return toResponse(saved);
     }

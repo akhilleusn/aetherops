@@ -56,9 +56,10 @@ public class IncidentController {
         @RequestParam(required = false) IncidentStatus status,
         @RequestParam(required = false) String serviceId,
         @RequestParam(required = false) IncidentSeverity severity,
+        @RequestParam(required = false) UUID projectId,
         @PageableDefault(size = 20, sort = "lastSeenAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ApiResponse.success(incidentService.findAll(tenantId, status, serviceId, severity, pageable));
+        return ApiResponse.success(incidentService.findAll(tenantId, status, serviceId, severity, projectId, pageable));
     }
 
     @PatchMapping("/{id}")
