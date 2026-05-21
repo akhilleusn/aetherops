@@ -55,7 +55,7 @@ docker compose down -v    # stop containers and delete all data
 
 ## What it does not do yet
 
-- **No real LLM API** — the AI provider is a deterministic mock; no calls to Claude, GPT-4, or any other model
+- **Real AI via Claude (optional)** — set `ANTHROPIC_API_KEY=sk-ant-...` in your `.env` or environment to enable `claude-sonnet-4-20250514`; the deterministic mock provider is used automatically when the key is absent
 - **No authentication** — all endpoints are open; API key security is a planned addition
 - **No billing** — `aiMonthlyBudgetCents` exists on the tenant model but is not wired to any payment processor
 - **No dashboard or frontend UI** — API only
