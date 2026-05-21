@@ -214,11 +214,31 @@ function renderWelcome() {
     <div class="welcome">
       <h2>Welcome to AetherOps</h2>
       <p>Enter a tenant UUID in the header and click <strong>Load</strong> to see incidents.</p>
-      <p style="margin-top:12px;font-size:13px;color:#94a3b8">
-        Run <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">./demo/run-demo.sh</code>
-        to generate demo data with a tenant ID.
+      <div id="demo-btn-wrap" style="margin-top:20px"></div>
+      <p style="margin-top:16px;font-size:13px;color:#94a3b8">
+        Or run <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">./demo/run-demo.sh</code>
+        locally to generate demo data.
       </p>
     </div>`;
+  // probe demo endpoint — show button only when demo mode is active
+  fetch('/api/v1/demo/tenant')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d) return;
+      document.getElementById('demo-btn-wrap').innerHTML =
+        `<button class="btn btn-p" onclick="useDemoTenant('${d.data.id}')">
+           Use Demo Account (${esc(String(d.data.plan))})
+         </button>`;
+    })
+    .catch(() => {});
+}
+
+function useDemoTenant(id) {
+  document.getElementById('ti').value = id;
+  tenantId = id;
+  localStorage.setItem('ao_tenant', id);
+  location.hash = '';
+  renderList();
 }
 
 // ── incidents list ────────────────────────────────────────────────────────────

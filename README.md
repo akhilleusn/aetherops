@@ -6,6 +6,26 @@ The AI layer currently uses a deterministic mock provider (`mock-v1`). The inter
 
 ---
 
+## Live Demo
+
+AetherOps is deployed on Railway at:
+
+**[https://aetherops.up.railway.app](https://aetherops.up.railway.app)**
+
+Open the dashboard and click **"Use Demo Account"** — the demo tenant is pre-created and ready to explore.
+
+| URL | Description |
+|-----|-------------|
+| `https://aetherops.up.railway.app` | Dashboard |
+| `https://aetherops.up.railway.app/swagger-ui.html` | Swagger UI |
+| `https://aetherops.up.railway.app/api/v1/demo/tenant` | Demo tenant ID (JSON) |
+
+The demo account runs on the **STARTER plan** (50 AI analyses / 50 runbooks / 25 postmortems per month). Usage limits are enforced — no runaway costs. Data is retained for 30 days.
+
+> **Note:** The live deployment uses the deterministic mock AI provider unless `ANTHROPIC_API_KEY` is set in the Railway environment.
+
+---
+
 ## Quick Start (Docker)
 
 No Java or PostgreSQL installation required.
