@@ -18,3 +18,7 @@ spring:
     serialization:
       write-dates-as-timestamps: false
     time-zone: UTC
+
+app:
+  jwt:
+    secret: aetherops-test-secret-key-minimum-32-chars-long

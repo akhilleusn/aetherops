@@ -4,7 +4,9 @@ import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ErrorResponse;
+import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.InvalidApiKeyException;
+import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.MissingTenantIdException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +64,24 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 java.util.Map.of("tenantId", ex.getMessage())
             ));
+    }
+
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateEmail(
+        DuplicateEmailException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentials(
+        InvalidCredentialsException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(InvalidApiKeyException.class)

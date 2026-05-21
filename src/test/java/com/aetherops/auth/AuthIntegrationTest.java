@@ -1,0 +1,207 @@
+package com.aetherops.auth;
+
+import com.aetherops.auth.model.LoginRequest;
+import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.repository.UserRepository;
+import com.aetherops.auth.service.JwtService;
+import com.aetherops.tenant.model.CreateTenantRequest;
+import com.aetherops.tenant.model.Plan;
+import com.aetherops.tenant.repository.TenantRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class AuthIntegrationTest {
+
+    @Autowired MockMvc mockMvc;
+    @Autowired ObjectMapper objectMapper;
+    @Autowired UserRepository userRepository;
+    @Autowired TenantRepository tenantRepository;
+    @Autowired JwtService jwtService;
+
+    private UUID tenantId;
+
+    @BeforeEach
+    void setUp() {
+        userRepository.deleteAll();
+        tenantRepository.deleteAll();
+        var tenant = tenantRepository.save(
+            com.aetherops.tenant.model.Tenant.builder()
+                .name("Test Corp")
+                .plan(Plan.STARTER)
+                .aiMonthlyBudgetCents(0)
+                .retentionDays(30)
+                .build()
+        );
+        tenantId = tenant.getId();
+    }
+
+    // ── register ──────────────────────────────────────────────────────────
+
+    @Test
+    void register_validRequest_returns201WithToken() throws Exception {
+        var req = new RegisterRequest("alice@example.com", "password123", tenantId);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.token").isNotEmpty())
+            .andExpect(jsonPath("$.data.userId").isNotEmpty())
+            .andExpect(jsonPath("$.data.email").value("alice@example.com"))
+            .andExpect(jsonPath("$.data.role").value("MEMBER"))
+            .andExpect(jsonPath("$.data.tenantId").value(tenantId.toString()));
+    }
+
+    @Test
+    void register_tokenContainsCorrectClaims() throws Exception {
+        var req = new RegisterRequest("bob@example.com", "password123", tenantId);
+
+        String body = mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+
+        String token = objectMapper.readTree(body).path("data").path("token").asText();
+        assertThat(jwtService.extractEmail(token)).isEqualTo("bob@example.com");
+        assertThat(jwtService.extractTenantId(token)).isEqualTo(tenantId);
+    }
+
+    @Test
+    void register_duplicateEmail_returns409() throws Exception {
+        var req = new RegisterRequest("dup@example.com", "password123", tenantId);
+        String body = objectMapper.writeValueAsString(req);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.status").value(409));
+    }
+
+    @Test
+    void register_invalidEmail_returns422() throws Exception {
+        var req = new RegisterRequest("not-an-email", "password123", tenantId);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.details.email").isNotEmpty());
+    }
+
+    @Test
+    void register_shortPassword_returns422() throws Exception {
+        var req = new RegisterRequest("carol@example.com", "short", tenantId);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.details.password").isNotEmpty());
+    }
+
+    @Test
+    void register_unknownTenant_returns404() throws Exception {
+        var req = new RegisterRequest("dave@example.com", "password123", UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isNotFound());
+    }
+
+    // ── login ─────────────────────────────────────────────────────────────
+
+    @Test
+    void login_validCredentials_returns200WithToken() throws Exception {
+        var regReq = new RegisterRequest("eve@example.com", "mypassword", tenantId);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(regReq)))
+            .andExpect(status().isCreated());
+
+        var loginReq = new LoginRequest("eve@example.com", "mypassword");
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginReq)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.token").isNotEmpty())
+            .andExpect(jsonPath("$.data.email").value("eve@example.com"));
+    }
+
+    @Test
+    void login_wrongPassword_returns401() throws Exception {
+        var regReq = new RegisterRequest("frank@example.com", "correctpass", tenantId);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(regReq)))
+            .andExpect(status().isCreated());
+
+        var loginReq = new LoginRequest("frank@example.com", "wrongpass");
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginReq)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    void login_unknownEmail_returns401() throws Exception {
+        var loginReq = new LoginRequest("nobody@example.com", "anypassword");
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginReq)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.message").value("Invalid email or password"));
+    }
+
+    @Test
+    void login_unknownEmail_sameErrorShapeAsWrongPassword() throws Exception {
+        // Both wrong-email and wrong-password must return the same message to avoid leaking account existence
+        var regReq = new RegisterRequest("grace@example.com", "correctpass", tenantId);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(regReq)))
+            .andExpect(status().isCreated());
+
+        String wrongPassBody = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest("grace@example.com", "badpass"))))
+            .andReturn().getResponse().getContentAsString();
+
+        String unknownBody = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest("unknown@example.com", "badpass"))))
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode wrongPassNode = objectMapper.readTree(wrongPassBody);
+        JsonNode unknownNode = objectMapper.readTree(unknownBody);
+
+        assertThat(wrongPassNode.path("message").asText())
+            .isEqualTo(unknownNode.path("message").asText());
+    }
+}
