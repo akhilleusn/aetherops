@@ -74,6 +74,9 @@ app:
   rate-limit:
     requests-per-window: 100
     window-seconds: 60
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL:}
+  dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
 
 logging:
   level:

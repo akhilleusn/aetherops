@@ -4,6 +4,7 @@ import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
+import com.aetherops.slack.SlackNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -21,11 +22,11 @@ import java.util.UUID;
 public class IncidentService {
 
     private final IncidentRepository incidentRepository;
+    private final SlackNotifier      slackNotifier;
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request) {
         Instant now = Instant.now();
-        // Manual incidents get a random fingerprint so they are never auto-merged.
         String fingerprint = UUID.randomUUID().toString().replace("-", "");
 
         Incident incident = Incident.builder()
@@ -46,6 +47,11 @@ public class IncidentService {
         Incident saved = incidentRepository.save(incident);
         log.info("Created incident id={} tenant={} service={} severity={}",
             saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getSeverity());
+
+        if (saved.getSeverity().isAlertable()) {
+            slackNotifier.notify(saved);
+        }
+
         return toResponse(saved);
     }
 
@@ -76,6 +82,8 @@ public class IncidentService {
         Incident incident = incidentRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
 
+        IncidentSeverity previousSeverity = incident.getSeverity();
+
         if (request.getTitle() != null)       incident.setTitle(request.getTitle());
         if (request.getDescription() != null) incident.setDescription(request.getDescription());
         if (request.getSeverity() != null)    incident.setSeverity(request.getSeverity());
@@ -86,7 +94,15 @@ public class IncidentService {
             }
         }
 
-        return toResponse(incidentRepository.save(incident));
+        Incident saved = incidentRepository.save(incident);
+
+        if (request.getSeverity() != null
+            && saved.getSeverity().isAlertable()
+            && !previousSeverity.isAlertable()) {
+            slackNotifier.notify(saved);
+        }
+
+        return toResponse(saved);
     }
 
     private IncidentResponse toResponse(Incident incident) {

@@ -10,6 +10,7 @@ import com.aetherops.incident.model.IncidentStatus;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEvent;
 import com.aetherops.ingestion.model.LogLevel;
+import com.aetherops.slack.SlackNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,8 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class IncidentGroupingService {
 
-    private final IncidentRepository incidentRepository;
-    private final EvidenceItemRepository evidenceItemRepository;
+    private final IncidentRepository      incidentRepository;
+    private final EvidenceItemRepository  evidenceItemRepository;
+    private final SlackNotifier           slackNotifier;
 
     @Transactional
     public void findOrCreate(LogEvent event) {
@@ -63,6 +65,10 @@ public class IncidentGroupingService {
         log.info("Created incident id={} tenant={} service={} severity={} fingerprint={}",
             saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getSeverity(), fingerprint);
 
+        if (saved.getSeverity().isAlertable()) {
+            slackNotifier.notify(saved);
+        }
+
         attachEvidence(saved, event);
     }
 
@@ -70,13 +76,20 @@ public class IncidentGroupingService {
         incident.setEventCount(incident.getEventCount() + 1);
         incident.setLastSeenAt(event.getOccurredAt());
         incident.setLatestEventId(event.getId());
-        incident.setSeverity(escalatedSeverity(incident.getSeverity(), incident.getEventCount(), event.getLevel()));
 
-        incidentRepository.save(incident);
+        IncidentSeverity previousSeverity = incident.getSeverity();
+        IncidentSeverity newSeverity = escalatedSeverity(previousSeverity, incident.getEventCount(), event.getLevel());
+        incident.setSeverity(newSeverity);
+
+        Incident saved = incidentRepository.save(incident);
         log.info("Updated incident id={} eventCount={} severity={}",
-            incident.getId(), incident.getEventCount(), incident.getSeverity());
+            saved.getId(), saved.getEventCount(), saved.getSeverity());
 
-        attachEvidence(incident, event);
+        if (newSeverity.isAlertable() && !previousSeverity.isAlertable()) {
+            slackNotifier.notify(saved);
+        }
+
+        attachEvidence(saved, event);
     }
 
     private void attachEvidence(Incident incident, LogEvent event) {
