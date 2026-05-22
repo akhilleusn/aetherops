@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AetherOps — AI Incident Intelligence for Backend Teams</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{transition:background-color 0.3s,color 0.3s}
+[data-theme="light"]{
+--bg:#faf9f7;--bg2:#f2f0eb;--bg3:#e8e4dc;--card:#ffffff;
+--border:#ddd8cc;--border2:#c9c0ae;
+--text:#0d1320;--text2:#2a3245;--muted:#6b7080;--dim:#9aa0ae;
+--gold:#b8952a;--gold2:#9a7c20;
+}
+[data-theme="dark"]{
+--bg:#080e18;--bg2:#0d1520;--bg3:#121e2e;--card:#0f1a28;
+--border:#1e2d3f;--border2:#2a3d52;
+--text:#f0ead8;--text2:#c8bfa8;--muted:#7a8898;--dim:#4a5668;
+--gold:#c9a84c;--gold2:#b8952a;
+}
+body{background:var(--bg);color:var(--text);font-family:'Georgia',serif;line-height:1.6;min-height:100vh}
+a{text-decoration:none}
+
+/* NAV */
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 2.5rem;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
+.logo{font-size:1.2rem;font-weight:700;color:var(--text);font-family:'Georgia',serif}
+.logo span{color:var(--gold)}
+.nav-links{display:flex;gap:2rem;font-size:0.875rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.nav-links a{color:var(--muted);transition:color 0.2s}
+.nav-links a:hover{color:var(--text)}
+.nav-right{display:flex;align-items:center;gap:1rem}
+.theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.theme-btn:hover{border-color:var(--gold);color:var(--gold)}
+.theme-btn i{font-size:15px}
+.nav-cta{background:var(--gold);color:#fff;padding:0.5rem 1.25rem;border-radius:4px;font-size:0.875rem;font-weight:500;cursor:pointer;border:none;font-family:-apple-system,sans-serif;transition:background 0.2s}
+.nav-cta:hover{background:var(--gold2)}
+
+/* HERO */
+.hero{max-width:820px;margin:0 auto;padding:5.5rem 2.5rem 4.5rem;text-align:center}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:-apple-system,sans-serif;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:2rem;padding-bottom:0.5rem;border-bottom:1px solid var(--gold)}
+h1{font-size:3.25rem;font-weight:700;letter-spacing:-0.03em;line-height:1.08;margin-bottom:1.5rem;color:var(--text);font-family:'Georgia',serif}
+h1 em{font-style:italic;color:var(--gold)}
+.hero-sub{font-size:1.0625rem;color:var(--muted);max-width:520px;margin:0 auto 2.5rem;line-height:1.75;font-family:-apple-system,sans-serif}
+.hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.btn-gold{background:var(--gold);color:#fff;padding:0.8rem 2rem;border-radius:4px;font-size:0.9375rem;font-weight:500;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:8px;font-family:-apple-system,sans-serif;transition:background 0.2s}
+.btn-gold:hover{background:var(--gold2)}
+.btn-outline{background:transparent;color:var(--text);padding:0.8rem 2rem;border-radius:4px;font-size:0.9375rem;cursor:pointer;border:1px solid var(--border2);display:inline-flex;align-items:center;gap:8px;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.btn-outline:hover{border-color:var(--gold);color:var(--gold)}
+
+/* TERMINAL — always dark */
+.terminal{max-width:660px;margin:3.5rem auto 0;background:#080e18;border:1px solid #1e3050;border-radius:8px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.25)}
+.terminal-bar{display:flex;align-items:center;gap:8px;padding:0.75rem 1rem;border-bottom:1px solid #1e3050;background:#0a1422}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tbar-title{font-size:0.75rem;color:#4a6080;margin-left:8px;font-family:monospace}
+.terminal-body{padding:1.25rem 1.5rem;font-family:'Courier New',monospace;font-size:0.8rem;line-height:1.9;text-align:left}
+.tc-dim{color:#3a5070}.tc-cmd{color:#7ab8f5}.tc-gold{color:#c9a84c}.tc-green{color:#3dd68c}.tc-amber{color:#f5a623}.tc-red{color:#f05252}.tc-white{color:#e0ddd5}.tc-muted{color:#6080a0}
+
+.divider{border:none;border-top:1px solid var(--border);margin:0}
+
+/* SECTIONS */
+.section{padding:4.5rem 2.5rem;max-width:1060px;margin:0 auto}
+.section-eyebrow{font-family:-apple-system,sans-serif;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:0.75rem;display:flex;align-items:center;gap:8px}
+.section-eyebrow::before{content:'';display:block;width:20px;height:1px;background:var(--gold)}
+.section-title{font-size:1.875rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:0.75rem;color:var(--text);font-family:'Georgia',serif}
+.section-sub{font-size:0.9375rem;color:var(--muted);max-width:480px;line-height:1.75;font-family:-apple-system,sans-serif}
+
+/* FEATURES */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:3rem;background:var(--border)}
+.feature{background:var(--card);padding:1.75rem;transition:background 0.2s}
+.feature:hover{background:var(--bg2)}
+.feature-num{font-family:'Georgia',serif;font-size:1.5rem;font-weight:700;color:var(--gold);opacity:0.6;margin-bottom:0.75rem;line-height:1}
+.feature h3{font-size:0.9375rem;font-weight:600;margin-bottom:0.5rem;color:var(--text);font-family:-apple-system,sans-serif}
+.feature p{font-size:0.8375rem;color:var(--muted);line-height:1.65;font-family:-apple-system,sans-serif}
+
+/* HOW IT WORKS */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);margin-top:3rem;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.flow-step{padding:1.6rem 1rem;text-align:center;border-right:1px solid var(--border);background:var(--card)}
+.flow-step:last-child{border-right:none}
+.step-num{font-family:'Georgia',serif;font-size:1.25rem;font-weight:700;color:var(--gold);margin-bottom:0.6rem}
+.flow-step h4{font-size:0.875rem;font-weight:600;margin-bottom:0.3rem;color:var(--text);font-family:-apple-system,sans-serif}
+.flow-step p{font-size:0.775rem;color:var(--muted);line-height:1.5;font-family:-apple-system,sans-serif}
+
+/* QUOTE — always dark navy */
+.quote-section{background:#080e18;padding:4rem 2.5rem;text-align:center}
+.quote{max-width:640px;margin:0 auto}
+.quote-mark{font-family:'Georgia',serif;font-size:4rem;color:#c9a84c;opacity:0.4;line-height:1;margin-bottom:-0.5rem}
+.quote p{font-family:'Georgia',serif;font-size:1.1875rem;color:#c8bfa8;line-height:1.7;margin-bottom:1rem;font-style:italic}
+.quote-author{font-size:0.8125rem;color:#5a7090;font-family:-apple-system,sans-serif;letter-spacing:0.06em;text-transform:uppercase}
+
+/* PRICING */
+.pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:3rem}
+.plan{padding:1.75rem;position:relative;font-family:-apple-system,sans-serif;transition:background 0.2s}
+[data-theme="light"] .plan{background:#ffffff}
+[data-theme="light"] .plan:hover{background:#f8f6f1}
+[data-theme="dark"]  .plan{background:#0f1a28}
+[data-theme="dark"]  .plan:hover{background:#121e30}
+
+/* light: starter+growth = warm gold */
+[data-theme="light"] .plan.starter,
+[data-theme="light"] .plan.growth{background:#fdf6e0 !important}
+[data-theme="light"] .plan.starter:hover,
+[data-theme="light"] .plan.growth:hover{background:#f8edc8 !important}
+
+/* dark: starter+growth = navy blue */
+[data-theme="dark"] .plan.starter,
+[data-theme="dark"] .plan.growth{background:#0d1b2e !important}
+[data-theme="dark"] .plan.starter:hover,
+[data-theme="dark"] .plan.growth:hover{background:#111f34 !important}
+
+.plan-badge{display:inline-block;background:var(--gold);color:#fff;font-size:0.6875rem;font-weight:600;padding:0.2rem 0.65rem;border-radius:3px;letter-spacing:0.06em;margin-bottom:0.75rem}
+.plan-name{font-size:0.75rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;color:var(--muted)}
+[data-theme="light"] .plan.starter .plan-name,
+[data-theme="light"] .plan.growth  .plan-name{color:#8a6c10}
+[data-theme="dark"]  .plan.starter .plan-name,
+[data-theme="dark"]  .plan.growth  .plan-name{color:#6080a0}
+
+.plan-price{font-size:2rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:0.25rem;font-family:'Georgia',serif;color:var(--text)}
+[data-theme="light"] .plan.starter .plan-price,
+[data-theme="light"] .plan.growth  .plan-price{color:#7a5c10}
+[data-theme="dark"]  .plan.starter .plan-price,
+[data-theme="dark"]  .plan.growth  .plan-price{color:#f0ead8}
+.plan-price span{font-size:0.875rem;font-weight:400;font-family:-apple-system,sans-serif;color:var(--muted)}
+[data-theme="dark"] .plan.starter .plan-price span,
+[data-theme="dark"] .plan.growth  .plan-price span{color:#6080a0}
+
+.plan-desc{font-size:0.8125rem;margin-bottom:1.25rem;line-height:1.5;color:var(--muted)}
+[data-theme="dark"] .plan.starter .plan-desc,
+[data-theme="dark"] .plan.growth  .plan-desc{color:#6080a0}
+
+.plan-features{list-style:none;margin-bottom:1.5rem}
+.plan-features li{font-size:0.8125rem;padding:0.275rem 0;display:flex;align-items:center;gap:8px;color:var(--muted)}
+[data-theme="dark"] .plan.starter .plan-features li,
+[data-theme="dark"] .plan.growth  .plan-features li{color:#8aabb8}
+.plan-features li i{font-size:14px;flex-shrink:0;color:var(--gold)}
+
+.plan-btn{width:100%;padding:0.65rem;border-radius:4px;font-size:0.875rem;font-weight:500;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s;letter-spacing:0.02em;border:1px solid var(--border2);background:transparent;color:var(--text)}
+.plan-btn:hover{border-color:var(--gold);color:var(--gold)}
+.plan.starter .plan-btn,
+.plan.growth  .plan-btn{background:var(--gold) !important;border-color:var(--gold) !important;color:#fff !important}
+.plan.starter .plan-btn:hover,
+.plan.growth  .plan-btn:hover{background:var(--gold2) !important;border-color:var(--gold2) !important}
+
+/* TRUST */
+.trust{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:2rem;margin-top:3rem}
+.trust-item h4{font-size:0.875rem;font-weight:600;margin-bottom:0.3rem;color:var(--text);font-family:-apple-system,sans-serif;display:flex;align-items:center;gap:8px}
+.trust-item h4 i{color:var(--gold);font-size:16px}
+.trust-item p{font-size:0.8125rem;color:var(--muted);line-height:1.6;font-family:-apple-system,sans-serif}
+
+/* CTA */
+.cta-section{text-align:center;padding:5rem 2.5rem;max-width:620px;margin:0 auto}
+.cta-section h2{font-size:2.125rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:1rem;color:var(--text);font-family:'Georgia',serif}
+.cta-section p{color:var(--muted);font-size:0.9375rem;margin-bottom:2.25rem;line-height:1.75;font-family:-apple-system,sans-serif}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align-items:center;justify-content:space-between;font-size:0.8125rem;color:var(--dim);font-family:-apple-system,sans-serif}
+.footer-links{display:flex;gap:1.75rem}
+.footer-links a{color:var(--dim);text-decoration:none;transition:color 0.2s}
+.footer-links a:hover{color:var(--gold)}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Aether<span>Ops</span></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#pricing">Pricing</a>
+    <a href="/swagger-ui.html">Docs</a>
+  </div>
+  <div class="nav-right">
+    <button class="theme-btn" onclick="toggleTheme()">
+      <i class="ti ti-sun" id="themeIcon"></i>
+      <span id="themeLabel">Light</span>
+    </button>
+    <button class="nav-cta">Request access</button>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-eyebrow"><i class="ti ti-activity-heartbeat" aria-hidden="true"></i> AI-powered incident intelligence</div>
+  <h1>Stop reading logs.<br><em>Understand</em> what broke.</h1>
+  <p class="hero-sub">AetherOps turns backend failures into evidence-backed AI investigations — with confidence scores, explicit unknowns, and safe runbooks. Built for Spring Boot teams.</p>
+  <div class="hero-actions">
+    <button class="btn-gold"><i class="ti ti-arrow-right" aria-hidden="true"></i> Request early access</button>
+    <button class="btn-outline" onclick="window.location.href='/swagger-ui.html'"><i class="ti ti-player-play" aria-hidden="true"></i> See live demo</button>
+  </div>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+      <span class="tbar-title">AetherOps — incident analysis</span>
+    </div>
+    <div class="terminal-body">
+      <div><span class="tc-dim">$</span> <span class="tc-cmd">aetherops</span> <span class="tc-white">analyze</span> <span class="tc-gold">4b9eb6c0</span></div>
+      <div style="margin-top:0.4rem"><span class="tc-amber">&#9888;</span> <span class="tc-white">[HIGH] payment-svc: database connection pool exhausted</span></div>
+      <div><span class="tc-dim">  events: 3 &middot; severity: </span><span class="tc-red">HIGH</span><span class="tc-dim"> &middot; confidence: </span><span class="tc-white">55%</span></div>
+      <div style="margin-top:0.6rem"><span class="tc-muted">&#8212; AI Analysis &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;</span></div>
+      <div><span class="tc-dim">  cause:</span> <span class="tc-white">HikariCP pool saturation</span> <span class="tc-dim">[bb7620fb]</span></div>
+      <div><span class="tc-dim">  unknown:</span> <span class="tc-amber">No metrics &middot; No distributed traces</span></div>
+      <div style="margin-top:0.6rem"><span class="tc-muted">&#8212; Safe next steps &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;</span></div>
+      <div><span class="tc-green">  &#10003;</span> <span class="tc-white">Check HikariCP pool metrics (read-only)</span></div>
+      <div><span class="tc-green">  &#10003;</span> <span class="tc-white">Review slow query logs for connection holders</span></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section" id="features">
+  <div class="section-eyebrow">Why AetherOps</div>
+  <div class="section-title">Evidence first. Not guesswork.</div>
+  <div class="section-sub">Most AI tools give confident answers without proof. AetherOps only says what the evidence supports — and tells you what it cannot determine.</div>
+  <div class="features">
+    <div class="feature"><div class="feature-num">01</div><h3>Evidence-cited answers</h3><p>Every AI claim references a specific log evidence ID. No hallucinations passed through silently.</p></div>
+    <div class="feature"><div class="feature-num">02</div><h3>Honest unknowns</h3><p>When metrics or traces are missing, AetherOps says so. Confidence capped at 65% for log-only analysis.</p></div>
+    <div class="feature"><div class="feature-num">03</div><h3>Safe runbooks only</h3><p>Every suggested step is read-only and non-destructive. No DROP TABLE, no restart loops.</p></div>
+    <div class="feature"><div class="feature-num">04</div><h3>Secrets never reach AI</h3><p>JWT tokens, passwords, and API keys redacted before any AI sees them.</p></div>
+    <div class="feature"><div class="feature-num">05</div><h3>Multi-tenant isolation</h3><p>Every query scoped to your tenant. Cross-tenant access is structurally impossible.</p></div>
+    <div class="feature"><div class="feature-num">06</div><h3>Postmortems in seconds</h3><p>Generate structured postmortem drafts from evidence automatically.</p></div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section" id="how">
+  <div class="section-eyebrow">How it works</div>
+  <div class="section-title">From failure to understanding in minutes.</div>
+  <div class="section-sub">Send logs via API key. AetherOps handles grouping, analysis, runbooks, and postmortems automatically.</div>
+  <div class="flow">
+    <div class="flow-step"><div class="step-num">I</div><h4>Ingest</h4><p>Send log events via API key. Secrets masked before storage.</p></div>
+    <div class="flow-step"><div class="step-num">II</div><h4>Group</h4><p>Related failures fingerprinted and grouped into one incident.</p></div>
+    <div class="flow-step"><div class="step-num">III</div><h4>Analyze</h4><p>AI examines evidence. Returns cited analysis with confidence.</p></div>
+    <div class="flow-step"><div class="step-num">IV</div><h4>Runbook</h4><p>Safe read-only troubleshooting steps from evidence.</p></div>
+    <div class="flow-step"><div class="step-num">V</div><h4>Postmortem</h4><p>Structured incident report drafted automatically.</p></div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<div class="quote-section">
+  <div class="quote">
+    <div class="quote-mark">&ldquo;</div>
+    <p>When something breaks at 2am, engineers need answers backed by evidence &mdash; not confident-sounding guesses. AetherOps is built on that principle.</p>
+    <div class="quote-author">AetherOps &mdash; built for backend teams</div>
+  </div>
+</div>
+
+<section class="section" id="pricing">
+  <div class="section-eyebrow">Pricing</div>
+  <div class="section-title">Simple, transparent pricing.</div>
+  <div class="section-sub">Start free. Upgrade as your team grows. AI usage limits enforced automatically &mdash; no surprise bills.</div>
+  <div class="pricing">
+    <div class="plan">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">$0<span>/mo</span></div>
+      <div class="plan-desc">For solo developers and side projects.</div>
+      <ul class="plan-features">
+        <li><i class="ti ti-check"></i>7-day retention</li>
+        <li><i class="ti ti-check"></i>10 AI analyses/month</li>
+        <li><i class="ti ti-check"></i>Incident grouping</li>
+        <li><i class="ti ti-check"></i>Evidence packs</li>
+      </ul>
+      <button class="plan-btn">Get started free</button>
+    </div>
+    <div class="plan starter">
+      <div class="plan-badge">Most popular</div>
+      <div class="plan-name">Starter</div>
+      <div class="plan-price">$49<span>/mo</span></div>
+      <div class="plan-desc">For small teams shipping to production.</div>
+      <ul class="plan-features">
+        <li><i class="ti ti-check"></i>14-day retention</li>
+        <li><i class="ti ti-check"></i>50 AI analyses/month</li>
+        <li><i class="ti ti-check"></i>Runbook generation</li>
+        <li><i class="ti ti-check"></i>Postmortem drafts</li>
+        <li><i class="ti ti-check"></i>Slack alerting</li>
+        <li><i class="ti ti-check"></i>JWT authentication</li>
+      </ul>
+      <button class="plan-btn">Request access</button>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Team</div>
+      <div class="plan-price">$299<span>/mo</span></div>
+      <div class="plan-desc">For growing teams with multiple services.</div>
+      <ul class="plan-features">
+        <li><i class="ti ti-check"></i>30-day retention</li>
+        <li><i class="ti ti-check"></i>200 AI analyses/month</li>
+        <li><i class="ti ti-check"></i>Multi-project support</li>
+        <li><i class="ti ti-check"></i>Audit logs</li>
+        <li><i class="ti ti-check"></i>Priority support</li>
+      </ul>
+      <button class="plan-btn">Request access</button>
+    </div>
+    <div class="plan growth">
+      <div class="plan-name">Growth</div>
+      <div class="plan-price">$999<span>/mo</span></div>
+      <div class="plan-desc">For agencies and larger engineering teams.</div>
+      <ul class="plan-features">
+        <li><i class="ti ti-check"></i>90-day retention</li>
+        <li><i class="ti ti-check"></i>1000 AI analyses/month</li>
+        <li><i class="ti ti-check"></i>SSO / OAuth login</li>
+        <li><i class="ti ti-check"></i>SLA guarantee</li>
+        <li><i class="ti ti-check"></i>Dedicated support</li>
+      </ul>
+      <button class="plan-btn">Contact us</button>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="section">
+  <div class="section-eyebrow">Trust &amp; Security</div>
+  <div class="section-title">Built for production from day one.</div>
+  <div class="section-sub">Security and tenant isolation are product features &mdash; not afterthoughts.</div>
+  <div class="trust">
+    <div class="trust-item"><h4><i class="ti ti-lock"></i>SHA-256 API keys</h4><p>Raw keys never stored. Only hashes in the database.</p></div>
+    <div class="trust-item"><h4><i class="ti ti-eye-off"></i>Secret masking</h4><p>Passwords and tokens redacted before storage and AI.</p></div>
+    <div class="trust-item"><h4><i class="ti ti-building"></i>Tenant isolation</h4><p>Every query scoped. Cross-tenant access impossible.</p></div>
+    <div class="trust-item"><h4><i class="ti ti-activity"></i>Audit logs</h4><p>Every AI operation logged permanently.</p></div>
+    <div class="trust-item"><h4><i class="ti ti-gauge"></i>Rate limiting</h4><p>100 req/min per API key. Abuse prevented at ingestion.</p></div>
+    <div class="trust-item"><h4><i class="ti ti-test-pipe"></i>200 tests</h4><p>Every feature backed by real PostgreSQL integration tests.</p></div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="cta-section">
+  <h2>Ready to stop reading logs?</h2>
+  <p>Join the early access list. We are onboarding backend teams one by one and iterating on real feedback.</p>
+  <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+    <button class="btn-gold"><i class="ti ti-arrow-right"></i> Request early access</button>
+    <button class="btn-outline"><i class="ti ti-brand-github"></i> View on GitHub</button>
+  </div>
+</section>
+
+<footer>
+  <div class="logo">Aether<span>Ops</span></div>
+  <div class="footer-links">
+    <a href="#">Privacy</a><a href="#">Terms</a><a href="/swagger-ui.html">Docs</a><a href="#">Status</a>
+  </div>
+  <div>&copy; 2026 AetherOps</div>
+</footer>
+
+<script>
+function toggleTheme(){
+  var html=document.documentElement;
+  var isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  document.getElementById('themeIcon').className=isDark?'ti ti-moon':'ti ti-sun';
+  document.getElementById('themeLabel').textContent=isDark?'Light':'Dark';
+}
+</script>
+</body>
+</html>

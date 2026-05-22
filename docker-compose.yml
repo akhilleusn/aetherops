@@ -23,8 +23,9 @@ services:
       DB_USERNAME:       ${POSTGRES_USER:-aetherops_user}
       DB_PASSWORD:       ${POSTGRES_PASSWORD:-change_me}
       SERVER_PORT:       8080
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:}
-      DEMO_MODE:         ${DEMO_MODE:}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-aetherops-local-dev-secret-key-minimum-32-chars}
+      DEMO_MODE:         ${DEMO_MODE:-false}
     depends_on:
       postgres:
         condition: service_healthy
