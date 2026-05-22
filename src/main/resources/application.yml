@@ -71,6 +71,9 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiry-hours: 24
+  rate-limit:
+    requests-per-window: 100
+    window-seconds: 60
 
 logging:
   level:

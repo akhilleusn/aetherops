@@ -22,3 +22,6 @@ spring:
 app:
   jwt:
     secret: aetherops-test-secret-key-minimum-32-chars-long
+  rate-limit:
+    requests-per-window: 10000
+    window-seconds: 60

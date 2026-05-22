@@ -2,13 +2,16 @@ package com.aetherops.ingestion.controller;
 
 import com.aetherops.apikey.service.ApiKeyService;
 import com.aetherops.common.exception.MissingTenantIdException;
+import com.aetherops.common.exception.RateLimitExceededException;
 import com.aetherops.common.response.ApiResponse;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogEventResponse;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.service.LogEventService;
+import com.aetherops.ratelimit.RateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -28,21 +31,38 @@ public class LogEventController {
 
     private final LogEventService logEventService;
     private final ApiKeyService   apiKeyService;
+    private final RateLimiter     rateLimiter;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Ingest a log event — authenticate via X-Api-Key header or tenantId in body")
     public ApiResponse<LogEventResponse> ingest(
         @Valid @RequestBody LogEventRequest request,
-        @RequestHeader(value = "X-Api-Key", required = false) String apiKey
+        @RequestHeader(value = "X-Api-Key", required = false) String apiKey,
+        HttpServletResponse response
     ) {
+        String rateLimitKey;
+
         if (apiKey != null) {
             var key = apiKeyService.resolve(apiKey);
             request.setTenantId(key.getTenantId());
             request.setProjectId(key.getProjectId());
-        } else if (request.getTenantId() == null) {
+            rateLimitKey = "key:" + key.getId();
+        } else if (request.getTenantId() != null) {
+            rateLimitKey = "tenant:" + request.getTenantId();
+        } else {
             throw new MissingTenantIdException();
         }
+
+        RateLimiter.Result rl = rateLimiter.tryConsume(rateLimitKey);
+        response.setHeader("X-RateLimit-Limit",     String.valueOf(rateLimiter.getLimit()));
+        response.setHeader("X-RateLimit-Remaining", String.valueOf(rl.remaining()));
+        response.setHeader("X-RateLimit-Reset",     String.valueOf(rl.resetAt()));
+
+        if (!rl.allowed()) {
+            throw new RateLimitExceededException();
+        }
+
         return ApiResponse.success(logEventService.ingest(request));
     }
 

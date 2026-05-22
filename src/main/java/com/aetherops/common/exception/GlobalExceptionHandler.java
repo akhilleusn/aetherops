@@ -8,6 +8,7 @@ import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.MissingTenantIdException;
+import com.aetherops.common.exception.RateLimitExceededException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +65,15 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 java.util.Map.of("tenantId", ex.getMessage())
             ));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimit(
+        RateLimitExceededException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .body(ErrorResponse.of(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(DuplicateEmailException.class)
