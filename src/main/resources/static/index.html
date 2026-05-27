@@ -18,7 +18,7 @@ body { font-family: system-ui,-apple-system,'Segoe UI',sans-serif; font-size: 14
 header { background: #0f172a; color: #f8fafc; position: sticky; top: 0; z-index: 10; }
 .hdr { max-width: 1100px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 16px; }
 .logo { font-size: 17px; font-weight: 700; color: #f8fafc; text-decoration: none; cursor: pointer; }
-.logo em { font-style: normal; color: #60a5fa; }
+.logo span { color: #60a5fa; }
 .tenant-bar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .tenant-bar label { font-size: 12px; color: #94a3b8; }
 .tenant-bar input { width: 300px; padding: 5px 10px; border-radius: 5px; border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 12px; font-family: 'Courier New', monospace; }
@@ -135,7 +135,7 @@ tr.row:hover { background: #f8fafc; cursor: pointer; }
 
 <header>
   <div class="hdr">
-    <a class="logo" onclick="goHome()">Aether<em>Ops</em></a>
+    <a class="logo" onclick="goHome()">Aether<span>Ops</span></a>
     <div class="tenant-bar">
       <label for="ti">Tenant</label>
       <input id="ti" type="text" placeholder="paste tenant UUID here…" onkeydown="if(event.key==='Enter')loadTenant()">
