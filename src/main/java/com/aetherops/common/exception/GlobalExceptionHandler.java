@@ -4,6 +4,7 @@ import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ErrorResponse;
+import com.aetherops.common.exception.AccountLockedException;
 import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
@@ -74,6 +75,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .body(ErrorResponse.of(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity<ErrorResponse> handleAccountLocked(
+        AccountLockedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.LOCKED)
+            .body(ErrorResponse.of(HttpStatus.LOCKED, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(DuplicateEmailException.class)

@@ -4,6 +4,7 @@ import com.aetherops.auth.model.LoginRequest;
 import com.aetherops.auth.model.RegisterRequest;
 import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.auth.service.JwtService;
+import com.aetherops.auth.service.LoginAttemptService;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
@@ -21,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -34,6 +36,7 @@ class AuthIntegrationTest {
     @Autowired UserRepository userRepository;
     @Autowired TenantRepository tenantRepository;
     @Autowired JwtService jwtService;
+    @Autowired LoginAttemptService loginAttemptService;
 
     private UUID tenantId;
 
@@ -177,6 +180,97 @@ class AuthIntegrationTest {
                 .content(objectMapper.writeValueAsString(loginReq)))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.message").value("Invalid email or password"));
+    }
+
+    // ── lockout ───────────────────────────────────────────────────────────
+
+    @Test
+    void login_locksAfter5FailedAttempts() throws Exception {
+        String email = "locktest-" + UUID.randomUUID() + "@example.com";
+        loginAttemptService.recordSuccess(email); // ensure clean state
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", tenantId))))
+            .andExpect(status().isCreated());
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+                .andExpect(status().isUnauthorized());
+        }
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+            .andExpect(status().isLocked());
+    }
+
+    @Test
+    void lockedAccount_returns423WithLockMessage() throws Exception {
+        String email = "lockmsg-" + UUID.randomUUID() + "@example.com";
+        loginAttemptService.recordSuccess(email);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", tenantId))))
+            .andExpect(status().isCreated());
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+                .andExpect(status().isUnauthorized());
+        }
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+            .andExpect(status().isLocked())
+            .andExpect(jsonPath("$.message", containsString("Account locked. Try again in")));
+    }
+
+    @Test
+    void successfulLogin_resetsFailedCounter() throws Exception {
+        String email = "lockreset-" + UUID.randomUUID() + "@example.com";
+        loginAttemptService.recordSuccess(email);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", tenantId))))
+            .andExpect(status().isCreated());
+
+        // 4 failures
+        for (int i = 0; i < 4; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+                .andExpect(status().isUnauthorized());
+        }
+        // success resets counter
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest(email, "correctpass"))))
+            .andExpect(status().isOk());
+
+        // first failure after reset must be 401, not 423
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void firstFourFailures_stillReturn401() throws Exception {
+        String email = "lock4-" + UUID.randomUUID() + "@example.com";
+        loginAttemptService.recordSuccess(email);
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", tenantId))))
+            .andExpect(status().isCreated());
+
+        for (int i = 0; i < 4; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new LoginRequest(email, "wrongpass"))))
+                .andExpect(status().isUnauthorized());
+        }
     }
 
     @Test
