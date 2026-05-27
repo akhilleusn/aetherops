@@ -77,6 +77,9 @@ app:
   slack:
     webhook-url: ${SLACK_WEBHOOK_URL:}
   dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
+  resend:
+    api-key: ${RESEND_API_KEY:}
+    from-address: ${RESEND_FROM_ADDRESS:noreply@aetherops.io}
 
 logging:
   level:

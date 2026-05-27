@@ -1,9 +1,12 @@
 package com.aetherops.auth.controller;
 
 import com.aetherops.auth.model.AuthResponse;
+import com.aetherops.auth.model.ForgotPasswordRequest;
 import com.aetherops.auth.model.LoginRequest;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.ResetPasswordRequest;
 import com.aetherops.auth.service.AuthService;
+import com.aetherops.auth.service.PasswordResetService;
 import com.aetherops.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -31,5 +35,19 @@ public class AuthController {
     @Operation(summary = "Login and receive a JWT token")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.success(authService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    @Operation(summary = "Request a password reset email")
+    public ApiResponse<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetService.requestReset(request.email());
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(summary = "Reset password using a valid reset token")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.resetPassword(request.token(), request.newPassword());
+        return ApiResponse.success(null);
     }
 }
