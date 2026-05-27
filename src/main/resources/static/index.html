@@ -25,6 +25,11 @@ header { background: #0f172a; color: #f8fafc; position: sticky; top: 0; z-index:
 .tenant-bar input::placeholder { color: #475569; }
 .tbtn { padding: 5px 14px; background: var(--primary); color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .tbtn:hover { background: #1d4ed8; }
+.user-bar { display: flex; align-items: center; gap: 8px; margin-left: 12px; border-left: 1px solid #334155; padding-left: 12px; }
+.nav-email { font-size: 12px; color: #94a3b8; }
+.nav-role { font-size: 11px; font-weight: 700; background: #1e293b; color: #60a5fa; padding: 2px 7px; border-radius: 9999px; border: 1px solid #334155; }
+.logout-btn { padding: 5px 12px; background: transparent; color: #94a3b8; border: 1px solid #334155; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.logout-btn:hover { background: #1e293b; color: #f8fafc; }
 
 /* ── Layout ── */
 main { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
@@ -136,6 +141,11 @@ tr.row:hover { background: #f8fafc; cursor: pointer; }
       <input id="ti" type="text" placeholder="paste tenant UUID here…" onkeydown="if(event.key==='Enter')loadTenant()">
       <button class="tbtn" onclick="loadTenant()">Load</button>
     </div>
+    <div class="user-bar">
+      <span class="nav-email" id="nav-email"></span>
+      <span class="nav-role"  id="nav-role"></span>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
   </div>
 </header>
 
@@ -144,11 +154,22 @@ tr.row:hover { background: #f8fafc; cursor: pointer; }
 <script>
 'use strict';
 
+// ── auth guard ────────────────────────────────────────────────────────────────
+(function() {
+  if (!localStorage.getItem('ao_token')) {
+    window.location.replace('/login.html');
+  }
+})();
+
 // ── state ────────────────────────────────────────────────────────────────────
-let tenantId = localStorage.getItem('ao_tenant') || '';
+let tenantId = localStorage.getItem('ao_tenant') || localStorage.getItem('ao_tenant_id') || '';
 
 // ── bootstrap ────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
+  const email = localStorage.getItem('ao_email') || '';
+  const role  = localStorage.getItem('ao_role')  || '';
+  document.getElementById('nav-email').textContent = email;
+  document.getElementById('nav-role').textContent  = role;
   document.getElementById('ti').value = tenantId;
   route();
 });
@@ -175,14 +196,26 @@ function loadTenant() {
   renderList();
 }
 
+// ── auth helpers ──────────────────────────────────────────────────────────────
+function authHeader() {
+  const token = localStorage.getItem('ao_token');
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+function logout() {
+  ['ao_token','ao_email','ao_role','ao_tenant_id'].forEach(k => localStorage.removeItem(k));
+  window.location.replace('/login.html');
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(path) {
-  const r = await fetch(path);
+  const r = await fetch(path, { headers: authHeader() });
+  if (r.status === 401) { logout(); return; }
   if (!r.ok) { const e = await r.json().catch(() => null); const err = new Error(r.statusText); err.status = r.status; err.body = e; throw err; }
   return r.json();
 }
 async function post(path) {
-  const r = await fetch(path, {method:'POST'});
+  const r = await fetch(path, { method: 'POST', headers: authHeader() });
+  if (r.status === 401) { logout(); return; }
   if (!r.ok) { const e = await r.json().catch(() => null); const err = new Error(r.statusText); err.status = r.status; err.body = e; throw err; }
   return r.json();
 }

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign In — AetherOps</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #0f172a;
+  color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.logo { font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 28px; text-align: center; }
+.logo em { font-style: normal; color: #60a5fa; }
+.card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  padding: 32px;
+  width: 100%;
+  max-width: 400px;
+}
+h2 { font-size: 18px; font-weight: 700; margin-bottom: 24px; color: #f8fafc; }
+.field { margin-bottom: 16px; }
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+input[type=email], input[type=password] {
+  width: 100%;
+  padding: 9px 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f8fafc;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+input[type=email]:focus, input[type=password]:focus { border-color: #2563eb; }
+input::placeholder { color: #475569; }
+.btn-submit {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background .15s;
+}
+.btn-submit:hover { background: #1d4ed8; }
+.btn-submit:disabled { background: #1e3a5f; cursor: not-allowed; }
+.err {
+  background: #2d1515;
+  border: 1px solid #7f1d1d;
+  color: #fca5a5;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
+.footer-link a { color: #60a5fa; text-decoration: none; }
+.footer-link a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="logo">Aether<em>Ops</em></div>
+<div class="card">
+  <h2>Sign In</h2>
+  <div class="err" id="err"></div>
+  <div class="field">
+    <label for="email">Email</label>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+  </div>
+  <button class="btn-submit" id="btn" onclick="doLogin()">Sign In</button>
+</div>
+<div class="footer-link">Don't have an account? <a href="/register.html">Register</a></div>
+
+<script>
+'use strict';
+
+if (localStorage.getItem('ao_token')) {
+  window.location.replace('/index.html');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const btn      = document.getElementById('btn');
+
+  hideErr();
+  if (!email || !password) { showErr('Email and password are required.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  try {
+    const r = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body?.success) {
+      showErr(body?.message || 'Invalid email or password.');
+      return;
+    }
+    const d = body.data;
+    localStorage.setItem('ao_token',     d.token);
+    localStorage.setItem('ao_email',     d.email);
+    localStorage.setItem('ao_role',      d.role);
+    localStorage.setItem('ao_tenant_id', d.tenantId);
+    window.location.replace('/index.html');
+  } catch (_) {
+    showErr('Could not reach the server. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideErr() {
+  document.getElementById('err').style.display = 'none';
+}
+</script>
+</body>
+</html>
