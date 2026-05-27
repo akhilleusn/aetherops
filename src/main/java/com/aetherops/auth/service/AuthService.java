@@ -51,19 +51,24 @@ public class AuthService {
         }
         User user = userRepository.findByEmail(req.email())
             .orElseThrow(InvalidCredentialsException::new);
+        if (user.getPasswordHash() == null) {
+            throw new InvalidCredentialsException();
+        }
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             loginAttemptService.recordFailure(req.email());
             throw new InvalidCredentialsException();
         }
         loginAttemptService.recordSuccess(req.email());
+        return issueResponse(user);
+    }
 
+    public AuthResponse issueResponse(User user) {
         if (user.isTwoFaEnabled()) {
             return AuthResponse.builder()
                 .requiresTwoFactor(true)
                 .partialToken(jwtService.generatePartialToken(user))
                 .build();
         }
-
         return buildResponse(user);
     }
 

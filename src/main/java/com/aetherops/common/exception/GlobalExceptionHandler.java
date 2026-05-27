@@ -9,6 +9,8 @@ import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.InvalidResetTokenException;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
+import com.aetherops.common.exception.GoogleAuthNotConfiguredException;
+import com.aetherops.common.exception.InvalidGoogleTokenException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
 import com.aetherops.common.exception.RateLimitExceededException;
@@ -133,6 +135,24 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidGoogleTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidGoogleToken(
+        InvalidGoogleTokenException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(GoogleAuthNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleAuthNotConfigured(
+        GoogleAuthNotConfiguredException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

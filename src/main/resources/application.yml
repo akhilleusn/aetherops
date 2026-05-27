@@ -82,6 +82,8 @@ app:
     from-address: ${RESEND_FROM_ADDRESS:noreply@aetherops.io}
   totp:
     encryption-key: ${TOTP_ENCRYPTION_KEY:00000000000000000000000000000000}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
 
 logging:
   level:
