@@ -1,5 +1,19 @@
 # AetherOps
-> AI-powered backend incident investigation platform — evidence-first analysis, honest unknowns, safe runbooks.![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen)![Java](https://img.shields.io/badge/Java-17-orange)![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-green)![License](https://img.shields.io/badge/license-MIT-blue)
-## What is AetherOps?
-AetherOps turns backend failures into evidence-backed AI investigations. Unlike tools that give confident-sounding answers without proof, AetherOps only says what the evidence supports — and explicitly tells you what it cannot determine.
-**Every AI claim references a specific log evidence ID. No hallucinations passed through silently.**
+AI-powered backend incident investigation platform.
+## Features
+- Evidence-cited AI analysis with confidence scores
+- JWT authentication, 2FA/TOTP, Google OAuth
+- Account lockout, password reset via email
+- Rate limiting, Slack alerting, audit logs
+- Multi-tenant isolation, secret masking
+- 247 integration tests, 0 failures
+## Quick Start
+```bash
+git clone https://github.com/akhilleusn/aetherops.git
+cd aetherops
+docker compose up -d
+```
+## Tech Stack
+Java 17 · Spring Boot 3.4 · PostgreSQL · Docker · JWT · Anthropic AI
+## License
+MIT
