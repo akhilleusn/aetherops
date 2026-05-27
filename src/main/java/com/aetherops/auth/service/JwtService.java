@@ -44,6 +44,28 @@ public class JwtService {
             .compact();
     }
 
+    public String generatePartialToken(User user) {
+        Instant now = Instant.now();
+        Instant exp = now.plus(5, ChronoUnit.MINUTES);
+        return Jwts.builder()
+            .subject(user.getId().toString())
+            .claim("email", user.getEmail())
+            .claim("scope", "2fa_pending")
+            .issuedAt(Date.from(now))
+            .expiration(Date.from(exp))
+            .signWith(key)
+            .compact();
+    }
+
+    public boolean isPartialToken(String token) {
+        try {
+            String scope = getClaims(token).get("scope", String.class);
+            return "2fa_pending".equals(scope);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public Instant getExpiresAt(int hours) {
         return Instant.now().plus(hours, ChronoUnit.HOURS);
     }

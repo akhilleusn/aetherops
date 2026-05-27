@@ -54,6 +54,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        if (jwtService.isPartialToken(token)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            objectMapper.writeValue(
+                response.getOutputStream(),
+                ErrorResponse.of(HttpStatus.UNAUTHORIZED, "Full authentication required", request.getRequestURI())
+            );
+            return;
+        }
+
         String email = jwtService.extractEmail(token);
         String role = jwtService.extractRole(token).name();
 

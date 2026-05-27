@@ -15,4 +15,6 @@ public class AuthResponse {
     private UUID tenantId;
     private String email;
     private String role;
+    private Boolean requiresTwoFactor;
+    private String partialToken;
 }

@@ -9,8 +9,11 @@ import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.InvalidResetTokenException;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
+import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
 import com.aetherops.common.exception.RateLimitExceededException;
+import com.aetherops.common.exception.TwoFaAlreadyEnabledException;
+import com.aetherops.common.exception.TwoFaNotEnabledException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,6 +93,33 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidResetTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidResetToken(
         InvalidResetTokenException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidTotpCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidTotpCode(
+        InvalidTotpCodeException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(TwoFaAlreadyEnabledException.class)
+    public ResponseEntity<ErrorResponse> handleTwoFaAlreadyEnabled(
+        TwoFaAlreadyEnabledException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(TwoFaNotEnabledException.class)
+    public ResponseEntity<ErrorResponse> handleTwoFaNotEnabled(
+        TwoFaNotEnabledException ex,
         HttpServletRequest request
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

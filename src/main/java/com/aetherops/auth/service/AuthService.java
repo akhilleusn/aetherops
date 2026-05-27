@@ -56,10 +56,18 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
         loginAttemptService.recordSuccess(req.email());
+
+        if (user.isTwoFaEnabled()) {
+            return AuthResponse.builder()
+                .requiresTwoFactor(true)
+                .partialToken(jwtService.generatePartialToken(user))
+                .build();
+        }
+
         return buildResponse(user);
     }
 
-    private AuthResponse buildResponse(User user) {
+    public AuthResponse buildResponse(User user) {
         String token = jwtService.generateToken(user);
         return AuthResponse.builder()
             .token(token)

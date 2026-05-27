@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enable 2FA — AetherOps</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #0f172a;
+  color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.logo { font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 28px; text-align: center; }
+.logo span { color: #60a5fa; }
+.card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+}
+h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #f8fafc; }
+.subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+.step { margin-bottom: 24px; }
+.step-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 8px;
+}
+.qr-wrap { display: flex; justify-content: center; margin: 16px 0; }
+#qr-canvas { border-radius: 6px; background: #fff; padding: 8px; }
+.secret-box {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: #94a3b8;
+  margin-top: 8px;
+  text-align: center;
+}
+.backup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+.backup-code {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: monospace;
+  font-size: 13px;
+  color: #94a3b8;
+  text-align: center;
+}
+.warn {
+  background: #27180a;
+  border: 1px solid #7c4a00;
+  color: #fbbf24;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-top: 10px;
+}
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+input[type=text] {
+  width: 100%;
+  padding: 9px 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f8fafc;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  letter-spacing: 4px;
+  text-align: center;
+  transition: border-color .15s;
+}
+input[type=text]:focus { border-color: #2563eb; }
+.btn-submit {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background .15s;
+}
+.btn-submit:hover { background: #1d4ed8; }
+.btn-submit:disabled { background: #1e3a5f; cursor: not-allowed; }
+.err {
+  background: #2d1515;
+  border: 1px solid #7f1d1d;
+  color: #fca5a5;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.ok {
+  background: #052e16;
+  border: 1px solid #166534;
+  color: #86efac;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
+.footer-link a { color: #60a5fa; text-decoration: none; }
+.footer-link a:hover { text-decoration: underline; }
+#setup-content { display: none; }
+</style>
+</head>
+<body>
+
+<div class="logo">Aether<span>Ops</span></div>
+<div class="card">
+  <h2>Enable Two-Factor Auth</h2>
+  <p class="subtitle">Protect your account with a time-based authenticator app.</p>
+  <div class="err" id="err"></div>
+  <div class="ok"  id="ok"></div>
+
+  <div id="setup-content">
+    <div class="step">
+      <div class="step-label">Step 1 — Scan QR Code</div>
+      <p style="font-size:13px;color:#94a3b8">Open your authenticator app (Google Authenticator, Authy, etc.) and scan the code below.</p>
+      <div class="qr-wrap"><canvas id="qr-canvas"></canvas></div>
+      <p style="font-size:12px;color:#64748b;text-align:center;margin-top:4px">Can't scan? Enter this key manually:</p>
+      <div class="secret-box" id="secret-text"></div>
+    </div>
+
+    <div class="step">
+      <div class="step-label">Step 2 — Save Backup Codes</div>
+      <p style="font-size:13px;color:#94a3b8">Store these codes somewhere safe. Each can be used once if you lose your device.</p>
+      <div class="backup-grid" id="backup-grid"></div>
+      <div class="warn">These codes will not be shown again. Save them now.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-label">Step 3 — Confirm Setup</div>
+      <div class="field" style="margin-bottom:0">
+        <label for="totp-code">Enter the 6-digit code from your app</label>
+        <input id="totp-code" type="text" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+      </div>
+      <button class="btn-submit" id="btn-confirm" onclick="doConfirm()">Enable 2FA</button>
+    </div>
+  </div>
+</div>
+<div class="footer-link"><a href="/index.html">Back to dashboard</a></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+'use strict';
+
+const token = localStorage.getItem('ao_token');
+if (!token) { window.location.replace('/login.html'); }
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doConfirm(); });
+
+(async function init() {
+  try {
+    const r = await fetch('/api/v1/auth/2fa/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body?.success) {
+      showErr(body?.message || 'Failed to load 2FA setup. Please try again.');
+      return;
+    }
+    const d = body.data;
+
+    document.getElementById('secret-text').textContent = d.secret;
+
+    new QRCode(document.getElementById('qr-canvas'), {
+      text: d.qrCodeUrl,
+      width: 180,
+      height: 180,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+
+    const grid = document.getElementById('backup-grid');
+    d.backupCodes.forEach(code => {
+      const el = document.createElement('div');
+      el.className = 'backup-code';
+      el.textContent = code;
+      grid.appendChild(el);
+    });
+
+    document.getElementById('setup-content').style.display = 'block';
+  } catch (_) {
+    showErr('Could not reach the server. Please try again.');
+  }
+})();
+
+async function doConfirm() {
+  const code = document.getElementById('totp-code').value.trim();
+  const btn  = document.getElementById('btn-confirm');
+  hideMessages();
+  if (!code) { showErr('Please enter the 6-digit code.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+
+  try {
+    const r = await fetch('/api/v1/auth/2fa/verify-setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ code })
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body?.success) {
+      showErr(body?.message || 'Invalid code. Please try again.');
+      return;
+    }
+    showOk('Two-factor authentication is now enabled! Redirecting…');
+    setTimeout(() => window.location.replace('/index.html'), 2000);
+  } catch (_) {
+    showErr('Could not reach the server. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enable 2FA';
+  }
+}
+
+function showErr(msg) { const el = document.getElementById('err'); el.textContent = msg; el.style.display = 'block'; }
+function showOk(msg)  { const el = document.getElementById('ok');  el.textContent = msg; el.style.display = 'block'; }
+function hideMessages() {
+  document.getElementById('err').style.display = 'none';
+  document.getElementById('ok').style.display  = 'none';
+}
+</script>
+</body>
+</html>

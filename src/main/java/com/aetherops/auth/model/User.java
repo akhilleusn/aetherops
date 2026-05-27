@@ -35,6 +35,12 @@ public class User {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
+    @Column(name = "totp_secret", length = 512)
+    private String totpSecret;
+
+    @Column(name = "two_fa_enabled", nullable = false)
+    private boolean twoFaEnabled;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

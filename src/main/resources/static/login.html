@@ -83,25 +83,53 @@ input::placeholder { color: #475569; }
 .footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
 .footer-link a { color: #60a5fa; text-decoration: none; }
 .footer-link a:hover { text-decoration: underline; }
+input[type=text] {
+  width: 100%;
+  padding: 9px 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f8fafc;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+  letter-spacing: 4px;
+  text-align: center;
+}
+input[type=text]:focus { border-color: #2563eb; }
+.totp-hint { font-size: 12px; color: #64748b; margin-top: 6px; text-align: center; }
 </style>
 </head>
 <body>
 
 <div class="logo">Aether<em>Ops</em></div>
 <div class="card">
-  <h2>Sign In</h2>
+  <h2 id="card-title">Sign In</h2>
   <div class="err" id="err"></div>
-  <div class="field">
-    <label for="email">Email</label>
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+
+  <div id="step-password">
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-submit" id="btn" onclick="doLogin()">Sign In</button>
   </div>
-  <div class="field">
-    <label for="password">Password</label>
-    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+
+  <div id="step-totp" style="display:none">
+    <div class="field">
+      <label for="totp-code">Authentication Code</label>
+      <input id="totp-code" type="text" placeholder="000000" maxlength="8" autocomplete="one-time-code" inputmode="numeric">
+      <p class="totp-hint">Enter the 6-digit code from your authenticator app, or an 8-character backup code.</p>
+    </div>
+    <button class="btn-submit" id="btn-totp" onclick="doVerifyTotp()">Verify</button>
   </div>
-  <button class="btn-submit" id="btn" onclick="doLogin()">Sign In</button>
 </div>
-<div class="footer-link">Don't have an account? <a href="/register.html">Register</a></div>
+<div class="footer-link" id="footer-link">Don't have an account? <a href="/register.html">Register</a></div>
 
 <script>
 'use strict';
@@ -110,7 +138,14 @@ if (localStorage.getItem('ao_token')) {
   window.location.replace('/index.html');
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+let _partialToken = null;
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('step-totp').style.display !== 'none') doVerifyTotp();
+    else doLogin();
+  }
+});
 
 async function doLogin() {
   const email    = document.getElementById('email').value.trim();
@@ -135,17 +170,60 @@ async function doLogin() {
       return;
     }
     const d = body.data;
-    localStorage.setItem('ao_token',     d.token);
-    localStorage.setItem('ao_email',     d.email);
-    localStorage.setItem('ao_role',      d.role);
-    localStorage.setItem('ao_tenant_id', d.tenantId);
-    window.location.replace('/index.html');
+    if (d.requiresTwoFactor) {
+      _partialToken = d.partialToken;
+      document.getElementById('step-password').style.display = 'none';
+      document.getElementById('step-totp').style.display = 'block';
+      document.getElementById('card-title').textContent = 'Two-Factor Authentication';
+      document.getElementById('footer-link').style.display = 'none';
+      document.getElementById('totp-code').focus();
+      return;
+    }
+    storeAndRedirect(d);
   } catch (_) {
     showErr('Could not reach the server. Please try again.');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Sign In';
   }
+}
+
+async function doVerifyTotp() {
+  const code    = document.getElementById('totp-code').value.trim();
+  const btn     = document.getElementById('btn-totp');
+
+  hideErr();
+  if (!code) { showErr('Please enter your authentication code.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+
+  try {
+    const r = await fetch('/api/v1/auth/2fa/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partialToken: _partialToken, code })
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body?.success) {
+      showErr(body?.message || 'Invalid authentication code.');
+      return;
+    }
+    storeAndRedirect(body.data);
+  } catch (_) {
+    showErr('Could not reach the server. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verify';
+  }
+}
+
+function storeAndRedirect(d) {
+  localStorage.setItem('ao_token',     d.token);
+  localStorage.setItem('ao_email',     d.email);
+  localStorage.setItem('ao_role',      d.role);
+  localStorage.setItem('ao_tenant_id', d.tenantId);
+  window.location.replace('/index.html');
 }
 
 function showErr(msg) {
