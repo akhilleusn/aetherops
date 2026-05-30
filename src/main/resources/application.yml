@@ -19,9 +19,8 @@ spring:
         format_sql: true
 
   flyway:
-    url: ${SPRING_DATASOURCE_URL}
-    user: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    enabled: true
+    locations: classpath:db/migration
 
   jackson:
     serialization:
