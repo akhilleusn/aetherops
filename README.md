@@ -2,6 +2,8 @@
 
 AI-powered backend incident investigation platform.
 
+**Live demo:** https://aetherops-production.up.railway.app/landing.html
+
 ## Features
 - Evidence-cited AI analysis with confidence scores
 - JWT authentication, 2FA/TOTP, Google OAuth
