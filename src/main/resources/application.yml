@@ -3,14 +3,10 @@ spring:
     name: aetherops-backend
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/aetherops}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 20000
 
   jpa:
     hibernate:
@@ -23,9 +19,9 @@ spring:
         format_sql: true
 
   flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: false
+    url: ${SPRING_DATASOURCE_URL}
+    user: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   jackson:
     serialization:
