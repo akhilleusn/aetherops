@@ -3,7 +3,7 @@ spring:
     name: aetherops-backend
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/aetherops}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/aetherops}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
