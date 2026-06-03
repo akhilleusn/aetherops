@@ -20,7 +20,7 @@ public class EmailService {
 
     public EmailService(
             @Value("${app.resend.api-key:}") String apiKey,
-            @Value("${app.resend.from-address:noreply@aetherops.io}") String fromAddress,
+            @Value("${app.resend.from-address:zeytates@gmail.com}") String fromAddress,
             RestTemplateBuilder builder) {
         this.apiKey = apiKey;
         this.fromAddress = fromAddress;

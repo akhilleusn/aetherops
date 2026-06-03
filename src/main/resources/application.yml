@@ -74,7 +74,7 @@ app:
   dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
   resend:
     api-key: ${RESEND_API_KEY:}
-    from-address: ${RESEND_FROM_ADDRESS:noreply@aetherops.io}
+    from-address: ${RESEND_FROM_ADDRESS:zeytates@gmail.com}
   totp:
     encryption-key: ${TOTP_ENCRYPTION_KEY:00000000000000000000000000000000}
   google:
