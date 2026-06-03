@@ -19,6 +19,6 @@ public class OpenApiConfig {
                 // TODO: add API key security scheme when auth is introduced
                 .contact(new Contact()
                     .name("AetherOps")
-                    .email("ops@aetherops.io")));
+                    .email("zeytates@gmail.com")));
     }
 }
