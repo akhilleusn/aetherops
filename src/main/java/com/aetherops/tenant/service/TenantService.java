@@ -1,6 +1,6 @@
 package com.aetherops.tenant.service;
 
-import com.aetherops.common.exception.ResourceNotFoundException;
+import  com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.tenant.model.*;
 import com.aetherops.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,6 @@ public class TenantService {
             .aiMonthlyBudgetCents(request.getAiMonthlyBudgetCents())
             .retentionDays(request.getRetentionDays())
             .build();
-
         Tenant saved = tenantRepository.save(tenant);
         log.info("Created tenant id={} name={} plan={}", saved.getId(), saved.getName(), saved.getPlan());
         return toResponse(saved);

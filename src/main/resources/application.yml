@@ -30,6 +30,12 @@ spring:
     default-property-inclusion: non_null
     time-zone: UTC
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
 server:
   port: ${SERVER_PORT:8080}
   error:

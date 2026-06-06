@@ -1,55 +1,51 @@
 package com.aetherops.ratelimit;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class RateLimiter {
 
     public record Result(boolean allowed, int remaining, long resetAt) {}
 
-    private static final class Bucket {
-        int count;
-        long resetAt;
-    }
-
-    private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final StringRedisTemplate redisTemplate;
     private final int limit;
     private final int windowSeconds;
 
     public RateLimiter(
-        @Value("${app.rate-limit.requests-per-window}") int limit,
-        @Value("${app.rate-limit.window-seconds}") int windowSeconds
+            StringRedisTemplate redisTemplate,
+            @Value("${app.rate-limit.requests-per-window}") int limit,
+            @Value("${app.rate-limit.window-seconds}") int windowSeconds
     ) {
+        this.redisTemplate = redisTemplate;
         this.limit = limit;
         this.windowSeconds = windowSeconds;
     }
 
     public Result tryConsume(String key) {
-        long now = Instant.now().getEpochSecond();
-        int[] count = {0};
-        long[] resetAt = {0};
+        String redisKey = "ratelimit:" + key;
 
-        buckets.compute(key, (k, existing) -> {
-            Bucket b = (existing == null || now >= existing.resetAt) ? new Bucket() : existing;
-            if (b != existing) {
-                b.resetAt = now + windowSeconds;
-                b.count = 0;
-            }
-            b.count = Math.min(b.count + 1, limit + 1);
-            count[0] = b.count;
-            resetAt[0] = b.resetAt;
-            return b;
-        });
+        Long count = redisTemplate.opsForValue().increment(redisKey);
 
-        return new Result(
-            count[0] <= limit,
-            Math.max(0, limit - count[0]),
-            resetAt[0]
-        );
+        if (count == null) {
+            count = 1L;
+        }
+
+        if (count == 1) {
+            redisTemplate.expire(redisKey, Duration.ofSeconds(windowSeconds));
+        }
+
+        Long ttl = redisTemplate.getExpire(redisKey, TimeUnit.SECONDS);
+        long resetAt = System.currentTimeMillis() / 1000 + (ttl != null && ttl > 0 ? ttl : windowSeconds);
+
+        int remaining = (int) Math.max(0, limit - count);
+        boolean allowed = count <= limit;
+
+        return new Result(allowed, remaining, resetAt);
     }
 
     public int getLimit() {
