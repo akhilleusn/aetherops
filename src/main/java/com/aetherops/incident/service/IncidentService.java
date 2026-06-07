@@ -16,13 +16,18 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.aetherops.incident.event.IncidentCreatedEvent;
+import com.aetherops.incident.event.IncidentEventPublisher;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class IncidentService {
 
     private final IncidentRepository incidentRepository;
-    private final SlackNotifier      slackNotifier;
+    private final SlackNotifier slackNotifier;
+    private final IncidentEventPublisher eventPublisher;
+
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request) {
@@ -46,7 +51,15 @@ public class IncidentService {
 
         Incident saved = incidentRepository.save(incident);
         log.info("Created incident id={} tenant={} service={} severity={}",
-            saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getSeverity());
+                saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getSeverity());
+
+        eventPublisher.publish(IncidentCreatedEvent.builder()
+                .incidentId(saved.getId())
+                .tenantId(saved.getTenantId())
+                .severity(saved.getSeverity().name())
+                .title(saved.getTitle())
+                .occurredAt(saved.getFirstSeenAt())
+                .build());
 
         if (saved.getSeverity().isAlertable()) {
             slackNotifier.notify(saved);
