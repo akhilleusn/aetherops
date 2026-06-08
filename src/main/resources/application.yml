@@ -97,6 +97,18 @@ app:
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
 
+resilience4j:
+  circuitbreaker:
+    instances:
+      anthropic-ai:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        slow-call-duration-threshold: 10s
+        slow-call-rate-threshold: 50
+        register-health-indicator: true
+
 logging:
   level:
     com.aetherops: INFO
