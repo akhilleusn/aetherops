@@ -61,13 +61,24 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: when-authorized
+      show-details: always
+      probes:
+        enabled: true
     prometheus:
+      enabled: true
+  health:
+    redis:
+      enabled: true
+    kafka:
+      enabled: true
+    db:
       enabled: true
   metrics:
     export:
       prometheus:
         enabled: true
+
+
   info:
     env:
       enabled: true
