@@ -39,8 +39,11 @@ public class IncidentController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Manually create an incident")
-    public ApiResponse<IncidentResponse> create(@Valid @RequestBody CreateIncidentRequest request) {
-        return ApiResponse.success(incidentService.create(request));
+    public ApiResponse<IncidentResponse> create(
+            @Valid @RequestBody CreateIncidentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return ApiResponse.success(incidentService.create(request, idempotencyKey));
     }
 
     @GetMapping("/{id}")

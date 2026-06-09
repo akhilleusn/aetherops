@@ -1,7 +1,10 @@
 package com.aetherops.incident.service;
 
 import com.aetherops.common.exception.ResourceNotFoundException;
+import com.aetherops.incident.event.IncidentCreatedEvent;
+import com.aetherops.incident.event.IncidentEventPublisher;
 import com.aetherops.incident.model.*;
+import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
 import com.aetherops.slack.SlackNotifier;
@@ -14,10 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
-
-import com.aetherops.incident.event.IncidentCreatedEvent;
-import com.aetherops.incident.event.IncidentEventPublisher;
 
 @Service
 @RequiredArgsConstructor
@@ -27,27 +28,38 @@ public class IncidentService {
     private final IncidentRepository incidentRepository;
     private final SlackNotifier slackNotifier;
     private final IncidentEventPublisher eventPublisher;
-
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
 
     @Transactional
-    public IncidentResponse create(CreateIncidentRequest request) {
+    public IncidentResponse create(CreateIncidentRequest request, String idempotencyKey) {
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<IdempotencyKey> existing = idempotencyKeyRepository
+                    .findByIdempotencyKeyAndTenantIdAndResourceType(
+                            idempotencyKey, request.getTenantId(), "INCIDENT");
+            if (existing.isPresent() && existing.get().getResourceId() != null) {
+                log.info("Idempotent request detected key={} returning cached response", idempotencyKey);
+                return findById(existing.get().getResourceId());
+            }
+        }
+
         Instant now = Instant.now();
         String fingerprint = UUID.randomUUID().toString().replace("-", "");
 
         Incident incident = Incident.builder()
-            .tenantId(request.getTenantId())
-            .projectId(request.getProjectId())
-            .title(request.getTitle())
-            .description(request.getDescription())
-            .status(IncidentStatus.OPEN)
-            .severity(request.getSeverity())
-            .serviceId(request.getServiceId())
-            .environment(request.getEnvironment())
-            .fingerprint(fingerprint)
-            .eventCount(1)
-            .firstSeenAt(now)
-            .lastSeenAt(now)
-            .build();
+                .tenantId(request.getTenantId())
+                .projectId(request.getProjectId())
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .status(IncidentStatus.OPEN)
+                .severity(request.getSeverity())
+                .serviceId(request.getServiceId())
+                .environment(request.getEnvironment())
+                .fingerprint(fingerprint)
+                .eventCount(1)
+                .firstSeenAt(now)
+                .lastSeenAt(now)
+                .build();
 
         Incident saved = incidentRepository.save(incident);
         log.info("Created incident id={} tenant={} service={} severity={}",
@@ -65,27 +77,36 @@ public class IncidentService {
             slackNotifier.notify(saved);
         }
 
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            idempotencyKeyRepository.save(IdempotencyKey.builder()
+                    .idempotencyKey(idempotencyKey)
+                    .tenantId(request.getTenantId())
+                    .resourceType("INCIDENT")
+                    .resourceId(saved.getId())
+                    .build());
+        }
+
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public IncidentResponse findById(UUID id) {
         return incidentRepository.findById(id)
-            .map(this::toResponse)
-            .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
     }
 
     @Transactional(readOnly = true)
     public Page<IncidentResponse> findAll(
-        UUID tenantId, IncidentStatus status, String serviceId,
-        IncidentSeverity severity, UUID projectId, Pageable pageable
+            UUID tenantId, IncidentStatus status, String serviceId,
+            IncidentSeverity severity, UUID projectId, Pageable pageable
     ) {
         Specification<Incident> spec = Specification
-            .where(IncidentSpecification.hasTenant(tenantId))
-            .and(IncidentSpecification.hasStatus(status))
-            .and(IncidentSpecification.hasServiceId(serviceId))
-            .and(IncidentSpecification.hasSeverity(severity))
-            .and(IncidentSpecification.hasProjectId(projectId));
+                .where(IncidentSpecification.hasTenant(tenantId))
+                .and(IncidentSpecification.hasStatus(status))
+                .and(IncidentSpecification.hasServiceId(serviceId))
+                .and(IncidentSpecification.hasSeverity(severity))
+                .and(IncidentSpecification.hasProjectId(projectId));
 
         return incidentRepository.findAll(spec, pageable).map(this::toResponse);
     }
@@ -93,7 +114,7 @@ public class IncidentService {
     @Transactional
     public IncidentResponse update(UUID id, UpdateIncidentRequest request) {
         Incident incident = incidentRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
 
         IncidentSeverity previousSeverity = incident.getSeverity();
 
@@ -110,8 +131,8 @@ public class IncidentService {
         Incident saved = incidentRepository.save(incident);
 
         if (request.getSeverity() != null
-            && saved.getSeverity().isAlertable()
-            && !previousSeverity.isAlertable()) {
+                && saved.getSeverity().isAlertable()
+                && !previousSeverity.isAlertable()) {
             slackNotifier.notify(saved);
         }
 
@@ -120,23 +141,23 @@ public class IncidentService {
 
     private IncidentResponse toResponse(Incident incident) {
         return IncidentResponse.builder()
-            .id(incident.getId())
-            .tenantId(incident.getTenantId())
-            .projectId(incident.getProjectId())
-            .title(incident.getTitle())
-            .description(incident.getDescription())
-            .status(incident.getStatus())
-            .severity(incident.getSeverity())
-            .serviceId(incident.getServiceId())
-            .environment(incident.getEnvironment())
-            .fingerprint(incident.getFingerprint())
-            .eventCount(incident.getEventCount())
-            .firstSeenAt(incident.getFirstSeenAt())
-            .lastSeenAt(incident.getLastSeenAt())
-            .latestEventId(incident.getLatestEventId())
-            .createdAt(incident.getCreatedAt())
-            .updatedAt(incident.getUpdatedAt())
-            .resolvedAt(incident.getResolvedAt())
-            .build();
+                .id(incident.getId())
+                .tenantId(incident.getTenantId())
+                .projectId(incident.getProjectId())
+                .title(incident.getTitle())
+                .description(incident.getDescription())
+                .status(incident.getStatus())
+                .severity(incident.getSeverity())
+                .serviceId(incident.getServiceId())
+                .environment(incident.getEnvironment())
+                .fingerprint(incident.getFingerprint())
+                .eventCount(incident.getEventCount())
+                .firstSeenAt(incident.getFirstSeenAt())
+                .lastSeenAt(incident.getLastSeenAt())
+                .latestEventId(incident.getLatestEventId())
+                .createdAt(incident.getCreatedAt())
+                .updatedAt(incident.getUpdatedAt())
+                .resolvedAt(incident.getResolvedAt())
+                .build();
     }
 }
