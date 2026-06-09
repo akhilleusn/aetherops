@@ -114,6 +114,10 @@ app:
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
 
+ip-rate-limit:
+  requests-per-window: 20
+  window-seconds: 60
+
 resilience4j:
   circuitbreaker:
     instances:
