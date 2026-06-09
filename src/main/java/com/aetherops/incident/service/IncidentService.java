@@ -8,6 +8,7 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
 import com.aetherops.slack.SlackNotifier;
+import com.aetherops.webhook.WebhookService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,7 @@ public class IncidentService {
     private final SlackNotifier slackNotifier;
     private final IncidentEventPublisher eventPublisher;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final WebhookService webhookService;
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request, String idempotencyKey) {
@@ -77,6 +79,9 @@ public class IncidentService {
             slackNotifier.notify(saved);
         }
 
+        IncidentResponse response = toResponse(saved);
+        webhookService.deliver(saved.getTenantId(), "incident.created", response);
+
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             idempotencyKeyRepository.save(IdempotencyKey.builder()
                     .idempotencyKey(idempotencyKey)
@@ -86,7 +91,7 @@ public class IncidentService {
                     .build());
         }
 
-        return toResponse(saved);
+        return response;
     }
 
     @Transactional(readOnly = true)
