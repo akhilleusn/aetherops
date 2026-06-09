@@ -17,6 +17,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import com.aetherops.auth.model.RefreshToken;
+import com.aetherops.auth.service.RefreshTokenService;
 
 import java.util.Map;
 
@@ -30,6 +32,8 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
     private final GoogleAuthService googleAuthService;
     private final GoogleTokenVerifier googleTokenVerifier;
+    private final RefreshTokenService refreshTokenService;
+
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -69,5 +73,26 @@ public class AuthController {
     public ApiResponse<Map<String, String>> googleClientId() {
         return ApiResponse.success(Map.of("clientId",
             googleTokenVerifier.isConfigured() ? googleTokenVerifier.getClientId() : ""));
+
+
     }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Refresh JWT using a valid refresh token")
+    public ApiResponse<AuthResponse> refresh(@RequestBody Map<String, String> request) {
+        String token = request.get("refreshToken");
+        RefreshToken refreshToken = refreshTokenService.validateRefreshToken(token);
+        String newJwt = authService.generateTokenForUser(refreshToken.getUserId());
+        return ApiResponse.success(AuthResponse.builder()
+                .token(newJwt)
+                .build());
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary = "Logout and revoke refresh token")
+    public ApiResponse<Void> logout(@RequestBody Map<String, String> request) {
+        refreshTokenService.revokeRefreshToken(request.get("refreshToken"));
+        return ApiResponse.success(null);
+    }
+
 }
