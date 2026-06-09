@@ -1,5 +1,7 @@
 package com.aetherops.analysis.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
 import com.aetherops.analysis.model.*;
 import com.aetherops.analysis.repository.AIAnalysisRepository;
 import com.aetherops.evidence.model.IncidentEvidencePackResponse;
@@ -14,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.UUID;
 
@@ -29,6 +30,7 @@ public class AIAnalysisService {
     private final AnalysisEvaluationService evaluationService;
     private final UsageLimitService usageLimitService;
     private final AuditLogService auditLogService;
+    private final MeterRegistry meterRegistry;
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
     @Transactional
@@ -59,6 +61,12 @@ public class AIAnalysisService {
 
         log.info("Created AI analysis id={} incidentId={} confidence={} evidenceCount={}",
                 saved.getId(), incidentId, saved.getConfidenceScore(), pack.getTotalEvidenceCount());
+
+        Counter.builder("aetherops.ai.analysis.requests")
+                .description("Number of AI analysis requests per tenant")
+                .tag("tenantId", tenantId.toString())
+                .register(meterRegistry)
+                .increment();
 
         AIAnalysisResponse response = toResponse(saved);
 
