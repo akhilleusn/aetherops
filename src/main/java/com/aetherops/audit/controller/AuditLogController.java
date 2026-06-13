@@ -1,6 +1,8 @@
 package com.aetherops.audit.controller;
 
+import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditLogResponse;
+import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -23,11 +26,15 @@ public class AuditLogController {
     private final AuditLogService auditLogService;
 
     @GetMapping("/{id}/audit-logs")
-    @Operation(summary = "List audit log entries for a tenant, sorted most recent first.")
+    @Operation(summary = "List audit log entries for a tenant with optional filters.")
     public ApiResponse<Page<AuditLogResponse>> getAuditLogs(
-        @PathVariable UUID id,
-        @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @PathVariable UUID id,
+            @RequestParam(required = false) AuditAction action,
+            @RequestParam(required = false) AuditStatus status,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ApiResponse.success(auditLogService.getAuditLogs(id, pageable));
+        return ApiResponse.success(auditLogService.getAuditLogs(id, action, status, from, to, pageable));
     }
 }
