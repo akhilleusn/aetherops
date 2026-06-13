@@ -15,7 +15,7 @@ import java.util.UUID;
 public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSpecificationExecutor<Incident> {
 
     Optional<Incident> findByTenantIdAndFingerprintAndStatus(
-        UUID tenantId, String fingerprint, IncidentStatus status);
+            UUID tenantId, String fingerprint, IncidentStatus status);
 
     long countByTenantIdAndLastSeenAtBefore(UUID tenantId, Instant cutoff);
 

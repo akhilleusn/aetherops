@@ -165,4 +165,12 @@ public class IncidentService {
                 .resolvedAt(incident.getResolvedAt())
                 .build();
     }
+    @Transactional
+    public void softDelete(UUID id) {
+        Incident incident = incidentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
+        incident.setDeletedAt(Instant.now());
+        incidentRepository.save(incident);
+        log.info("Soft deleted incident id={}", id);
+    }
 }

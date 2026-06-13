@@ -136,4 +136,13 @@ public class IncidentController {
     ) {
         return ApiResponse.success(postmortemService.getLatest(id, tenantId));
     }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Soft delete an incident")
+    public void delete(@PathVariable UUID id) {
+        incidentService.softDelete(id);
+    }
+
+
 }
