@@ -79,4 +79,31 @@ public class Incident {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    public void resolve() {
+        if (this.status == IncidentStatus.RESOLVED) {
+            throw new IllegalStateException("Incident " + id + " is already resolved");
+        }
+        this.status = IncidentStatus.RESOLVED;
+        this.resolvedAt = Instant.now();
+    }
+
+    public void escalate(IncidentSeverity newSeverity) {
+        if (newSeverity.ordinal() >= this.severity.ordinal()) {
+            throw new IllegalStateException(
+                    "Cannot escalate incident " + id + " from " + severity + " to " + newSeverity
+                            + ": target severity must be higher");
+        }
+        this.severity = newSeverity;
+    }
+
+    public void reopen() {
+        if (this.status != IncidentStatus.RESOLVED && this.status != IncidentStatus.CLOSED) {
+            throw new IllegalStateException(
+                    "Cannot reopen incident " + id + " with status " + status
+                            + ": only RESOLVED or CLOSED incidents can be reopened");
+        }
+        this.status = IncidentStatus.OPEN;
+        this.resolvedAt = null;
+    }
 }

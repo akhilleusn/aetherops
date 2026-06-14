@@ -182,6 +182,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Redisson — distributed locking -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+            <version>3.34.1</version>
+        </dependency>
+
         <!-- Prometheus metrics -->
         <dependency>
             <groupId>io.micrometer</groupId>

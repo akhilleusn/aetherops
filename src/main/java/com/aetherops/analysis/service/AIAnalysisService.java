@@ -11,7 +11,9 @@ import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,8 @@ public class AIAnalysisService {
 
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
+    @Bulkhead(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
+    @Retry(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
     @Transactional
     public AIAnalysisResponse analyze(UUID incidentId, UUID tenantId) {
         usageLimitService.checkAndIncrement(tenantId, UsageType.AI_ANALYSIS);

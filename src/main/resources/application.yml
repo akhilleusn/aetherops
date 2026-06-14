@@ -30,3 +30,33 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+analysis:
+  use-stub: false
+
+app:
+  rate-limit:
+    requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
+    window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      anthropic-ai:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+  bulkhead:
+    instances:
+      anthropic-ai:
+        max-concurrent-calls: 10
+        max-wait-duration: 100ms
+  retry:
+    instances:
+      anthropic-ai:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
