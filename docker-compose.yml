@@ -61,6 +61,8 @@ services:
       retries: 12
       start_period: 60s
 
+
+
   sample-app:
     build: ./sample-app
     ports:
@@ -68,3 +70,8 @@ services:
 
 volumes:
   pgdata:
+
+    zipkin:
+      image: openzipkin/zipkin
+      ports:
+        - "9411:9411"
