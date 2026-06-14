@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
+import com.aetherops.usage.UsageBillingService;
+
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +33,8 @@ public class AIAnalysisService {
     private final UsageLimitService usageLimitService;
     private final AuditLogService auditLogService;
     private final MeterRegistry meterRegistry;
+    private final UsageBillingService usageBillingService;
+
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
     @Transactional
@@ -67,7 +71,7 @@ public class AIAnalysisService {
                 .tag("tenantId", tenantId.toString())
                 .register(meterRegistry)
                 .increment();
-
+                 usageBillingService.record(tenantId, "AI_ANALYSIS", 1);
         AIAnalysisResponse response = toResponse(saved);
 
         auditLogService.record(
