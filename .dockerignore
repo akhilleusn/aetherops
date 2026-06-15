@@ -1,0 +1,117 @@
+# =============================================================================
+# .dockerignore — AetherOps Docker build context filter
+#
+# The multi-stage Dockerfile only needs two things from the host filesystem:
+#   1. pom.xml        — for "mvn dependency:go-offline" in the build stage
+#   2. src/           — application source code
+#
+# Everything else transmitted to the Docker daemon is pure waste: it inflates
+# build time, risks leaking secrets, and pollutes the layer cache.  Each
+# section below explains *why* those paths are excluded, not just that they
+# are.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Build artifacts
+# Excluding target/ is the single most important entry: a full Maven build
+# produces hundreds of MiBs of compiled classes, JARs, and test reports that
+# are meaningless inside the image builder context.  The build stage always
+# runs "mvn package" from scratch inside the container anyway.
+# -----------------------------------------------------------------------------
+target/
+sample-app/target/
+
+# -----------------------------------------------------------------------------
+# Version-control metadata
+# .git/ contains the full project history and can easily exceed the source
+# tree in size on long-lived repos.  It is never referenced by the build.
+# Including it also risks embedding commit SHAs and author email addresses
+# inside the image layer cache key, busting caches on every commit.
+# -----------------------------------------------------------------------------
+.git/
+.gitignore
+.gitattributes
+
+# -----------------------------------------------------------------------------
+# IDE & editor project files
+# These are developer-workstation artefacts with no meaning inside a container.
+# .idea/ in particular can include absolute host paths and per-developer
+# run configurations that would never resolve in a container environment.
+# -----------------------------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# -----------------------------------------------------------------------------
+# Documentation
+# Markdown files, the docs/ tree, and demo/ are purely informational and
+# add zero value to the runtime image.  Excluding them also means that
+# touching a README never invalidates the Docker layer cache.
+# -----------------------------------------------------------------------------
+*.md
+docs/
+demo/
+
+# -----------------------------------------------------------------------------
+# Environment & secrets
+# .env files frequently contain plaintext credentials.  Even if the current
+# .env.example has no real secrets, establishing the exclusion as a hard rule
+# prevents accidental future inclusion of a real .env file into an image that
+# might be pushed to a public registry.
+# -----------------------------------------------------------------------------
+.env
+.env.*
+.env.example
+*.env.local
+
+# -----------------------------------------------------------------------------
+# Docker Compose files
+# Compose files describe multi-container dev/prod orchestration and reference
+# environment variables, volume mounts, and port mappings that are irrelevant
+# (and potentially confusing) inside a single-container image build.
+# -----------------------------------------------------------------------------
+docker-compose*.yml
+
+# -----------------------------------------------------------------------------
+# Kubernetes manifests & CI/CD pipeline definitions
+# These define deployment topology and pipeline configuration — they are
+# consumed by kubectl and GitHub Actions respectively, not by the JVM.
+# Keeping them out of the image context also means k8s or workflow changes
+# never cause unnecessary image rebuilds.
+# -----------------------------------------------------------------------------
+kubernetes/
+.github/
+
+# -----------------------------------------------------------------------------
+# Platform-specific deployment configs
+# railway.toml, Procfile, etc. are platform shims for PaaS providers.
+# They are not part of the application runtime.
+# -----------------------------------------------------------------------------
+railway.toml
+
+# -----------------------------------------------------------------------------
+# The sample companion app
+# sample-app/ has its own independent Dockerfile and build context.
+# Including it here would transmit its entire source tree to the daemon every
+# time the main application image is built.
+# -----------------------------------------------------------------------------
+sample-app/
+
+# -----------------------------------------------------------------------------
+# Local developer tooling & temporary files
+# Test output files, log files, and OS metadata files have no place in an
+# image context.  *.tar.gz archives (e.g. milestone backups) are excluded
+# explicitly because they can be large and are never needed at build time.
+# -----------------------------------------------------------------------------
+test-output.txt
+*.log
+logs/
+*.tar.gz
+.DS_Store
+Thumbs.db
+
+# -----------------------------------------------------------------------------
+# Claude Code project memory (developer tooling, not application code)
+# -----------------------------------------------------------------------------
+.claude/

@@ -17,6 +17,7 @@ sample-app/target/
 # Logs
 *.log
 logs/
+test-output.txt
 
 # OS
 .DS_Store

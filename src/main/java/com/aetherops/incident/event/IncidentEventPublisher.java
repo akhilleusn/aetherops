@@ -20,11 +20,17 @@ public class IncidentEventPublisher {
     public void publish(IncidentCreatedEvent event) {
         try {
             String payload = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send(TOPIC, event.getIncidentId().toString(), payload);
+            kafkaTemplate.send(TOPIC, event.getIncidentId().toString(), payload)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("Failed to deliver incident.created event for incidentId={}",
+                                event.getIncidentId(), ex);
+                    }
+                });
             log.info("Published incident.created event for incidentId={} tenantId={}",
                     event.getIncidentId(), event.getTenantId());
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize IncidentCreatedEvent for incidentId={}",
+        } catch (Exception e) {
+            log.error("Failed to publish incident.created event for incidentId={}",
                     event.getIncidentId(), e);
         }
     }
