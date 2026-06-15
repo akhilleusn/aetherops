@@ -1,0 +1,259 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aetherops
+  namespace: aetherops
+  labels:
+    app: aetherops
+spec:
+  # Two replicas satisfies the PodDisruptionBudget (minAvailable: 1) while
+  # still allowing a rolling update to proceed.  The HPA will scale this up
+  # to 10 under load; setting replicas here to 2 matches hpa.minReplicas so
+  # the Deployment and HPA never fight over the replica count.
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: aetherops
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxSurge: 1 — spin up one extra pod before terminating an old one,
+      # so capacity never drops below the requested replica count.
+      maxSurge: 1
+      # maxUnavailable: 0 — never reduce available pods below `replicas`
+      # during a rollout.  Combined with the PDB this guarantees zero
+      # downtime for voluntary disruptions AND rolling updates.
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: aetherops
+      annotations:
+        # Prometheus scraping — the actuator /prometheus endpoint is already
+        # exposed in application.yml; these annotations tell a standard
+        # Prometheus Operator scrape config where to find it.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+
+    spec:
+      # ── Graceful shutdown ──────────────────────────────────────────────────
+      # Give the JVM 60 s to drain in-flight HTTP requests after SIGTERM.
+      # Spring Boot's default shutdown-phase timeout is also 30 s; setting
+      # this higher means the pod is never force-killed before Spring has
+      # finished draining.
+      terminationGracePeriodSeconds: 60
+
+      # ── Pod-level security context ─────────────────────────────────────────
+      securityContext:
+        # The Dockerfile creates UID/GID 1000 (aetherops user).  Declaring it
+        # here means Kubernetes enforces the constraint even if the image is
+        # replaced with one that forgot the USER instruction.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # fsGroup ensures that emptyDir volumes (e.g. /tmp) are group-owned
+        # by 1000 so the non-root process can write to them.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Anti-affinity ──────────────────────────────────────────────────────
+      affinity:
+        podAntiAffinity:
+          # "preferred" (soft) rather than "required" (hard) so that the
+          # scheduler can still place both pods on the same node if the
+          # cluster only has one node (e.g. dev/staging).  In production with
+          # multiple nodes the weight-100 preference strongly pushes pods apart.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: aetherops
+                # Spread across physical nodes, not just availability zones,
+                # so that a single-node failure takes at most one pod.
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: aetherops
+          image: ghcr.io/akhilleusn/aetherops:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # ── Environment variables ────────────────────────────────────────
+          # Credentials come from a Secret (never bake them into ConfigMaps or
+          # image layers).  Non-secret topology config comes from a ConfigMap.
+          # Create the Secret once with:
+          #   kubectl create secret generic aetherops-secrets \
+          #     --namespace aetherops \
+          #     --from-literal=db-url='jdbc:postgresql://...' \
+          #     --from-literal=db-username='...' \
+          #     --from-literal=db-password='...' \
+          #     --from-literal=jwt-secret='...' \
+          #     --from-literal=totp-encryption-key='...'
+          env:
+            # --- Datasource ---
+            # Spring Boot relaxed binding maps SPRING_DATASOURCE_URL →
+            # spring.datasource.url; same pattern for username and password.
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: db-url
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: db-username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: db-password
+
+            # --- JWT signing key ---
+            # app.jwt.secret is read via @Value("${app.jwt.secret}") in
+            # JwtService. Spring maps APP_JWT_SECRET → app.jwt.secret.
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: jwt-secret
+
+            # --- TOTP encryption key ---
+            # Required by TotpSecretEncryptor; no default → missing key = hard
+            # startup failure, which is the correct fail-fast behaviour.
+            - name: APP_TOTP_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: totp-encryption-key
+
+            # --- Anthropic AI (optional) ---
+            # When absent the application automatically falls back to
+            # MockAIProvider via @Conditional(AnthropicKeyPresent.class).
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aetherops-secrets
+                  key: anthropic-api-key
+                  optional: true
+
+            # --- Kafka ---
+            # Non-secret: bootstrap servers are topology config, not credentials.
+            - name: SPRING_KAFKA_BOOTSTRAPSERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: aetherops-config
+                  key: kafka-bootstrap-servers
+
+            # --- Redis ---
+            - name: SPRING_DATA_REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: aetherops-config
+                  key: redis-host
+            - name: SPRING_DATA_REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: aetherops-config
+                  key: redis-port
+
+            # --- Observability ---
+            - name: ZIPKIN_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: aetherops-config
+                  key: zipkin-endpoint
+                  optional: true
+
+          # ── Resource requests and limits ─────────────────────────────────
+          # Requests: what the scheduler reserves on the node.  Sized to give
+          # the JVM room to start (Flyway migrations + Spring context init)
+          # without over-provisioning idle capacity.
+          #
+          # Limits: the hard ceiling enforced by the cgroup.  The Dockerfile
+          # sets -XX:MaxRAMPercentage=75.0, so with a 1 Gi memory limit the
+          # heap cap is ~768 Mi, leaving ~256 Mi for Metaspace, thread stacks,
+          # and direct buffers — measured to be safe under typical load.
+          #
+          # CPU limit of 1000m (1 core) prevents a single pod from starving
+          # neighbours during a GC pause or burst.  The HPA will add replicas
+          # before any pod hits 70% CPU, so the limit is a safety cap, not a
+          # steady-state ceiling.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Liveness probe ────────────────────────────────────────────────
+          # Restarts the container if the JVM deadlocks, enters an infinite
+          # loop, or otherwise becomes unresponsive. Uses Spring Boot's
+          # dedicated /liveness indicator (enabled by
+          # management.endpoint.health.probes.enabled=true in application.yml).
+          #
+          # initialDelaySeconds: 60 — Flyway migrations on first deploy plus
+          # Spring context initialisation can take 30-60 s; starting the probe
+          # too early would cause false-positive restarts during startup.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Readiness probe ───────────────────────────────────────────────
+          # Removes the pod from the Service endpoints if it cannot serve
+          # traffic (e.g. database connection pool exhausted, downstream
+          # circuit breaker open). A shorter period than liveness catches
+          # transient degradation quickly without restarting healthy pods.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Lifecycle hook ────────────────────────────────────────────────
+          # Sleep 5 s before the JVM receives SIGTERM. This gives kube-proxy
+          # and the Ingress controller time to stop routing new connections to
+          # this pod *before* it starts shutting down. Without this gap, a
+          # small percentage of requests arriving during the endpoint-removal
+          # propagation window would hit a closing connection and fail.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+
+          # ── Container-level security context ─────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            # Spring Boot and the JVM write temporary files to /tmp.
+            # readOnlyRootFilesystem: true requires an explicit writable mount.
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}

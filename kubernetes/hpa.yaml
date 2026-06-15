@@ -1,0 +1,71 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aetherops-hpa
+  namespace: aetherops
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aetherops
+
+  # minReplicas must equal Deployment.spec.replicas so the HPA never
+  # scales below the guaranteed-available count established by the PDB.
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+    # ── CPU utilisation ──────────────────────────────────────────────────────
+    # Scale out when average CPU across all pods exceeds 70 % of the *request*
+    # (250m).  CPU is the primary signal because the JVM GC and HTTP thread
+    # pools are the dominant cost drivers for this workload.  Targeting 70 %
+    # leaves a 30 % headroom for burst traffic while a new pod is starting.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # ── Memory utilisation ───────────────────────────────────────────────────
+    # Scale out when average memory exceeds 80 % of the *request* (512 Mi).
+    # Memory is a secondary signal: JVM heap grows under load (live set) but
+    # rarely shrinks. At 80 % the heap is approaching the region where GC
+    # pressure increases sharply; adding a replica before that point prevents
+    # GC pauses from cascading into latency spikes.
+    #
+    # Note: memory-based autoscaling requires autoscaling/v2 (stable in
+    # Kubernetes 1.23+) and the metrics-server add-on installed in the cluster.
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  behavior:
+    # ── Scale-up behaviour ───────────────────────────────────────────────────
+    # React quickly to sudden traffic spikes: allow adding up to 2 pods per
+    # 60-second window.  A 0-second stabilisation window means we act on the
+    # first data point above the threshold — appropriate for latency-sensitive
+    # HTTP APIs where slow scale-up leaves users waiting.
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+
+    # ── Scale-down behaviour ─────────────────────────────────────────────────
+    # Be conservative about removing pods (300-second / 5-minute window).
+    # This prevents the "flapping" pattern where a brief traffic lull causes
+    # scale-down, then the next request burst forces scale-up again before the
+    # new pod is ready, causing a transient capacity gap.  Five minutes is long
+    # enough to confirm the load reduction is real, not a momentary quiet
+    # period between bursts.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aetherops
+  namespace: aetherops
+  labels:
+    app: aetherops
+spec:
+  # ClusterIP (default): the Service is only reachable within the cluster.
+  # External traffic arrives via the nginx Ingress (ingress.yaml), which
+  # terminates TLS and rewrites paths before forwarding to this Service.
+  # A LoadBalancer type is unnecessary and would provision an extra cloud
+  # load balancer at additional cost.
+  type: ClusterIP
+
+  selector:
+    # Must match the pod template labels in deployment.yaml exactly.
+    app: aetherops
+
+  ports:
+    - name: http
+      protocol: TCP
+      # Port the Service exposes inside the cluster (referenced by
+      # ingress.yaml backend.service.port.number: 8080).
+      port: 8080
+      # Port the container listens on (containerPort in deployment.yaml).
+      targetPort: http
