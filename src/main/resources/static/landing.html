@@ -48,6 +48,8 @@ h1 em{font-style:italic;color:var(--gold)}
 .btn-gold:hover{background:var(--gold2)}
 .btn-outline{background:transparent;color:var(--text);padding:0.8rem 2rem;border-radius:4px;font-size:0.9375rem;cursor:pointer;border:1px solid var(--border2);display:inline-flex;align-items:center;gap:8px;font-family:-apple-system,sans-serif;transition:all 0.2s}
 .btn-outline:hover{border-color:var(--gold);color:var(--gold)}
+.btn-demo{background:var(--gold);color:#fff;padding:1rem 2.25rem;border-radius:4px;font-size:1.0625rem;font-weight:600;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:10px;font-family:-apple-system,sans-serif;transition:background 0.2s;box-shadow:0 0 0 4px rgba(201,168,76,0.18)}
+.btn-demo:hover{background:var(--gold2);box-shadow:0 0 0 6px rgba(201,168,76,0.22)}
 
 /* TERMINAL — always dark */
 .terminal{max-width:660px;margin:3.5rem auto 0;background:#080e18;border:1px solid #1e3050;border-radius:8px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.25)}
@@ -185,8 +187,8 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   <h1>Stop reading logs.<br><em>Understand</em> what broke.</h1>
   <p class="hero-sub">AetherOps turns backend failures into evidence-backed AI investigations — with confidence scores, explicit unknowns, and safe runbooks. Built for Spring Boot teams.</p>
   <div class="hero-actions">
+    <button class="btn-demo" onclick="window.location.href='/dashboard.html'"><i class="ti ti-player-play" aria-hidden="true"></i> Try Demo &mdash; No signup required</button>
     <button class="btn-gold" onclick="window.open('https://docs.google.com/forms/d/e/1FAIpQLSd6OMDqgPELhF4Y1SGecgMIz5Wd4kVyS3RBzNe7kM4rOsKKWg/viewform','_blank')"><i class="ti ti-arrow-right" aria-hidden="true"></i> Request early access</button>
-    <button class="btn-outline" onclick="window.location.href='/dashboard.html'"><i class="ti ti-player-play" aria-hidden="true"></i> See live demo</button>
   </div>
   <div class="terminal">
     <div class="terminal-bar">
