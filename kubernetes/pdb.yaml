@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aetherops-pdb
+  namespace: aetherops
+spec:
+  # Guarantee at least one pod stays running during voluntary disruptions
+  # (node drains, cluster upgrades, rolling deployments). Requires a
+  # minimum replica count of 2 in the Deployment for this to be meaningful.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: aetherops

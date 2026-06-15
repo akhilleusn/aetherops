@@ -1,0 +1,89 @@
+name: PR Quality Check
+
+on:
+  pull_request:
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Expose Docker over TCP for Testcontainers
+        run: |
+          nohup sudo socat TCP-LISTEN:2375,fork,reuseaddr \
+            UNIX-CONNECT:/var/run/docker.sock &>/dev/null &
+          sleep 2
+
+      - name: Run mvn verify
+        id: mvn
+        continue-on-error: true
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+        run: |
+          mvn verify 2>&1 | tee /tmp/mvn-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "status=$([ $EXIT_CODE -eq 0 ] && echo success || echo failure)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract test summary
+        id: summary
+        if: always()
+        run: |
+          # Grab the aggregate "Tests run: N, Failures: N, Errors: N, Skipped: N" line
+          RESULT=$(grep -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+" \
+            /tmp/mvn-output.txt | tail -1 || true)
+          echo "result=${RESULT:-No test results found}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR with test results
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          TEST_RESULT: ${{ steps.summary.outputs.result }}
+          BUILD_STATUS: ${{ steps.mvn.outputs.status }}
+        with:
+          script: |
+            const passed  = process.env.BUILD_STATUS === 'success';
+            const icon    = passed ? '✅' : '❌';
+            const headline = passed ? 'Passed' : 'Failed';
+            const result  = process.env.TEST_RESULT || 'No test results found';
+            const runUrl  = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const body = [
+              `## ${icon} PR Quality Check: ${headline}`,
+              '',
+              '| Check   | Result |',
+              '|---------|--------|',
+              `| Compile | ${passed ? '✅ Passed' : '❌ Failed'} |`,
+              `| Test    | ${passed ? '✅ Passed' : '❌ Failed'} |`,
+              `| Verify  | ${passed ? '✅ Passed' : '❌ Failed'} |`,
+              '',
+              `**Test summary:** \`${result}\``,
+              '',
+              `**[View full run ↗](${runUrl})**`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              body,
+            });

@@ -1,0 +1,54 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aetherops-ingress
+  namespace: aetherops
+  annotations:
+    # Ingress class (legacy annotation kept for older nginx-ingress versions)
+    kubernetes.io/ingress.class: nginx
+    # TLS certificate provisioning via cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Force all HTTP traffic to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Enable regex path matching for rewrite rules
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Rewrite: strip the capture group wrapper, preserve full /api/... path
+    # path /(api/.*) + rewrite-target /$1 → /api/v1/foo stays /api/v1/foo
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # Upstream timeouts (seconds)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    # Max request body size (covers evidence/file uploads)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Enable upstream keepalive
+    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "32"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - aetherops.example.com
+      secretName: aetherops-tls
+  rules:
+    - host: aetherops.example.com
+      http:
+        paths:
+          # Route all /api/* traffic to the backend service.
+          # The regex capture group /(api/.*) keeps the full path intact
+          # after the rewrite-target substitution (/$1 → /api/v1/...).
+          - path: /(api/.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: aetherops
+                port:
+                  number: 8080
+          # Expose the liveness/readiness probes for external health checks
+          - path: /(actuator/health.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: aetherops
+                port:
+                  number: 8080
