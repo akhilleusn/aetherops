@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aetherops
+  labels:
+    # app.kubernetes.io/* labels follow the Kubernetes recommended label
+    # convention (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/).
+    # They enable standard tooling (Helm, kubectl, dashboards) to identify
+    # and group all resources that belong to this application without relying
+    # on name prefixes or ad-hoc conventions.
+    app.kubernetes.io/name: aetherops
+    app.kubernetes.io/part-of: aetherops
+    app.kubernetes.io/managed-by: kubectl
+    # environment label is used by network policies and monitoring rules to
+    # distinguish production namespaces from staging/dev namespaces that may
+    # live on the same cluster.
+    environment: production

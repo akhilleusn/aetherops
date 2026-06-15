@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aetherops-config
+  namespace: aetherops
+  labels:
+    app.kubernetes.io/name: aetherops
+    app.kubernetes.io/part-of: aetherops
+    app.kubernetes.io/managed-by: kubectl
+# ConfigMaps store non-sensitive configuration only.  Credentials, signing
+# keys, and API tokens belong in aetherops-secrets (secret.yaml), not here.
+# Every key below maps directly to the environment variable referenced in
+# deployment.yaml via configMapKeyRef.
+data:
+  # ── HTTP server ────────────────────────────────────────────────────────────
+  # Spring Boot reads SERVER_PORT (relaxed binding → server.port).
+  # Keeping this explicit makes port changes a ConfigMap-only operation with
+  # no image rebuild required.
+  SERVER_PORT: "8080"
+
+  # ── Spring profile ─────────────────────────────────────────────────────────
+  # Activates src/main/resources/application-production.yml (or the
+  # production stanza inside application.yml).  The production profile
+  # disables dev-only beans, enables full logging, and sets Flyway to
+  # validate rather than auto-migrate.
+  SPRING_PROFILES_ACTIVE: "production"
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  # Service name of the Redis deployment in this namespace.  Kubernetes DNS
+  # resolves <service-name>.<namespace>.svc.cluster.local; within the same
+  # namespace the short name is sufficient.
+  # Maps to spring.data.redis.host via SPRING_DATA_REDIS_HOST in deployment.yaml.
+  redis-host: "redis-service"
+
+  # Default Redis port.  Kept here so it can be overridden for deployments
+  # that run Redis on a non-standard port without touching the Deployment spec.
+  redis-port: "6379"
+
+  # ── Kafka ──────────────────────────────────────────────────────────────────
+  # Comma-separated list of bootstrap broker addresses.  A single entry is
+  # sufficient for cluster discovery; Kafka clients fetch the full broker list
+  # from the bootstrap server on first connect.
+  # Maps to spring.kafka.bootstrap-servers via SPRING_KAFKA_BOOTSTRAPSERVERS.
+  kafka-bootstrap-servers: "kafka-service:9092"
+
+  # ── Distributed tracing ────────────────────────────────────────────────────
+  # Zipkin-compatible collector endpoint consumed by Micrometer Tracing /
+  # Spring Cloud Sleuth.  Setting this to an empty string disables trace
+  # export when Zipkin is not deployed (e.g. lightweight staging environments).
+  # The secretKeyRef in deployment.yaml declares this key optional: true,
+  # so removing the key entirely also disables tracing without error.
+  zipkin-endpoint: "http://zipkin-service:9411/api/v2/spans"
