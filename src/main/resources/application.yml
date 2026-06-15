@@ -48,6 +48,9 @@ resilience4j:
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.aetherops.common.exception.UsageLimitExceededException
+          - com.aetherops.common.exception.ResourceNotFoundException
   bulkhead:
     instances:
       anthropic-ai:
@@ -60,3 +63,6 @@ resilience4j:
         wait-duration: 1s
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.aetherops.common.exception.UsageLimitExceededException
+          - com.aetherops.common.exception.ResourceNotFoundException

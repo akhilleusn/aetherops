@@ -13,11 +13,11 @@ import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,10 +41,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * This test proves the core product value in one shot and is the authoritative
  * verification of the demo flow documented in docs/demo/e2e-demo-curl.md.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class AetherOpsEndToEndFlowTest {
+class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
     @Autowired MockMvc        mockMvc;
     @Autowired ObjectMapper   objectMapper;

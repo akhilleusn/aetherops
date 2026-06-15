@@ -11,6 +11,8 @@ import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
+import com.aetherops.common.exception.ResourceNotFoundException;
+import com.aetherops.common.exception.UsageLimitExceededException;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -39,7 +41,7 @@ public class AIAnalysisService {
 
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
-    @Bulkhead(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
+    @Bulkhead(name = "anthropic-ai")
     @Retry(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
     @Transactional
     public AIAnalysisResponse analyze(UUID incidentId, UUID tenantId) {
@@ -98,6 +100,12 @@ public class AIAnalysisService {
     }
 
     public AIAnalysisResponse analyzeFallback(UUID incidentId, UUID tenantId, Exception ex) {
+        if (ex instanceof UsageLimitExceededException ule) {
+            throw ule;
+        }
+        if (ex instanceof ResourceNotFoundException rne) {
+            throw rne;
+        }
         log.warn("Circuit breaker open for AI analysis incidentId={} reason={}",
                 incidentId, ex.getMessage());
         return AIAnalysisResponse.builder()

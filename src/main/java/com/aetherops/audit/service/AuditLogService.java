@@ -7,14 +7,18 @@ import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.repository.AuditLogRepository;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.tenant.repository.TenantRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -54,8 +58,17 @@ public class AuditLogService {
         tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId));
 
-        return auditLogRepository.findFiltered(tenantId, action, status, from, to, pageable)
-                .map(this::toResponse);
+        Specification<AuditLog> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("tenantId"), tenantId));
+            if (action != null) predicates.add(cb.equal(root.get("action"), action));
+            if (status != null) predicates.add(cb.equal(root.get("status"), status));
+            if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
+            if (to != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), to));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return auditLogRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
     private AuditLogResponse toResponse(AuditLog log) {

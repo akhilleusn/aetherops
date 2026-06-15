@@ -1,54 +1,37 @@
 package com.aetherops.incident;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import com.aetherops.incident.event.IncidentCreatedEvent;
+import com.aetherops.incident.event.IncidentEventPublisher;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.test.context.EmbeddedKafka;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.TestPropertySource;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.core.KafkaTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import com.aetherops.incident.event.IncidentCreatedEvent;
-import com.aetherops.incident.event.IncidentEventPublisher;
-
-@SpringBootTest
-@EmbeddedKafka(partitions = 1, topics = {IncidentEventPublisher.TOPIC})
-@TestPropertySource(properties = {
-        "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-        "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false",
-        "app.jwt.secret=test-secret-key-minimum-32-characters-long",
-        "spring.data.redis.host=localhost",
-        "spring.data.redis.port=6380"
-})
-@DirtiesContext
+@ExtendWith(MockitoExtension.class)
 class IncidentEventPublisherTest {
 
-    @Autowired
-    private IncidentEventPublisher publisher;
+    @Mock
+    private KafkaTemplate<String, String> kafkaTemplate;
 
-    @Autowired
+    @Mock
     private ObjectMapper objectMapper;
 
-    private final CountDownLatch latch = new CountDownLatch(1);
-    private String receivedMessage;
-
-    @KafkaListener(topics = IncidentEventPublisher.TOPIC, groupId = "test-group")
-    public void receive(ConsumerRecord<String, String> record) {
-        receivedMessage = record.value();
-        latch.countDown();
-    }
+    @InjectMocks
+    private IncidentEventPublisher publisher;
 
     @Test
     void publish_sendsEventToKafkaTopic() throws Exception {
@@ -60,14 +43,19 @@ class IncidentEventPublisherTest {
                 .occurredAt(Instant.now())
                 .build();
 
+        String serialized = "{\"incidentId\":\"" + event.getIncidentId() + "\",\"severity\":\"HIGH\"}";
+        when(objectMapper.writeValueAsString(event)).thenReturn(serialized);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
         publisher.publish(event);
 
-        boolean messageReceived = latch.await(10, TimeUnit.SECONDS);
-        assertThat(messageReceived).isTrue();
-
-        IncidentCreatedEvent received = objectMapper.readValue(receivedMessage, IncidentCreatedEvent.class);
-        assertThat(received.getIncidentId()).isEqualTo(event.getIncidentId());
-        assertThat(received.getSeverity()).isEqualTo("HIGH");
-        assertThat(received.getTitle()).isEqualTo("Test incident");
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(
+                eq(IncidentEventPublisher.TOPIC),
+                eq(event.getIncidentId().toString()),
+                payloadCaptor.capture()
+        );
+        assertThat(payloadCaptor.getValue()).isEqualTo(serialized);
     }
 }

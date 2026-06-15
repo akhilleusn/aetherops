@@ -11,8 +11,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.aetherops.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -25,21 +25,12 @@ import static org.mockito.Mockito.when;
 import com.aetherops.analysis.model.AnalysisEvaluationResult;
 
 
-@SpringBootTest
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false",
-        "app.jwt.secret=test-secret-key-minimum-32-characters-long",
-        "spring.data.redis.host=localhost",
-        "spring.data.redis.port=6380",
-        "spring.kafka.bootstrap-servers=localhost:9092",
         "resilience4j.circuitbreaker.instances.anthropic-ai.sliding-window-size=5",
         "resilience4j.circuitbreaker.instances.anthropic-ai.failure-rate-threshold=50",
         "resilience4j.circuitbreaker.instances.anthropic-ai.wait-duration-in-open-state=60s"
 })
-class AIAnalysisServiceCircuitBreakerTest {
+class AIAnalysisServiceCircuitBreakerTest extends AbstractIntegrationTest {
 
     @Autowired
     private AIAnalysisService aiAnalysisService;
