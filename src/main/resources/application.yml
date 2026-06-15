@@ -1,4 +1,17 @@
 spring:
+  data:
+    redis:
+      # RedissonConfig (see RedissonConfig.java) reads these same properties so
+      # that both Lettuce (Spring Data Redis) and Redisson share one source of truth.
+      # Railway sets REDIS_HOST / REDIS_PORT; Kubernetes sets SPRING_DATA_REDIS_HOST
+      # etc. which Spring Boot maps automatically via relaxed binding.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Password intentionally omitted here. Set SPRING_DATA_REDIS_PASSWORD (or
+      # REDIS_PASSWORD read by RedissonConfig) in environments that require auth.
+      # Leaving it absent keeps the value null so neither Lettuce nor Redisson
+      # sends AUTH to an unauthenticated Redis instance.
+
   datasource:
     hikari:
       maximum-pool-size: 10
