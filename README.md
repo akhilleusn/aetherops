@@ -192,6 +192,72 @@ The HPA scales between 2 and 10 replicas based on CPU (70%) and memory (80%) uti
 
 ---
 
+## API Documentation
+
+| Endpoint | Description |
+|---|---|
+| `http://localhost:8080/swagger-ui.html` | Interactive Swagger UI — browse and execute every API endpoint |
+| `http://localhost:8080/actuator/health` | Liveness, readiness, and per-dependency health checks (DB, Redis, Kafka) |
+| `http://localhost:8080/actuator/prometheus` | Prometheus metrics scrape endpoint |
+
+Swagger UI is available in all profiles. The OpenAPI spec is generated at startup from `@Operation` and `@Schema` annotations on the controller layer.
+
+---
+
+## Project Structure
+
+```
+src/main/java/com/aetherops/
+│
+├── analysis/          # AI-powered root cause analysis
+│   ├── controller/    #   POST /api/incidents/{id}/analyze
+│   ├── service/       #   AIAnalysisService — Resilience4j circuit breaker + retry + bulkhead
+│   └── domain/        #   AIAnalysisResponse, AnalysisResult
+│
+├── audit/             # Immutable audit trail for every tenant action
+│   ├── controller/    #   GET /api/audit-logs (filterable by action, status, date range)
+│   ├── service/       #   AuditLogService — JPA Specification / Criteria API queries
+│   └── repository/    #   AuditLogRepository extends JpaSpecificationExecutor
+│
+├── auth/              # Authentication and identity
+│   ├── controller/    #   /api/auth/** — register, login, refresh, logout, password reset
+│   ├── service/       #   JwtService, TotpService, GoogleOAuthService, PasswordResetService
+│   └── filter/        #   JwtAuthenticationFilter, IpRateLimitFilter
+│
+├── incident/          # Core incident lifecycle
+│   ├── controller/    #   CRUD + grouping + status transitions
+│   ├── service/       #   IncidentService, IncidentGroupingService
+│   ├── event/         #   IncidentCreatedEvent, IncidentEventPublisher (Kafka)
+│   └── repository/    #   Multi-tenant scoped queries
+│
+├── outbox/            # Transactional Outbox pattern
+│   ├── entity/        #   OutboxEvent — persisted in same DB transaction as domain change
+│   ├── relay/         #   OutboxRelayScheduler — polls and publishes to Kafka
+│   └── repository/    #   OutboxEventRepository
+│
+├── saga/              # Distributed Saga orchestration
+│   ├── orchestrator/  #   SagaOrchestrator — step sequencing with compensations
+│   ├── step/          #   SagaStep implementations per bounded context
+│   └── log/           #   SagaLog — durable saga state for crash recovery
+│
+├── tenant/            # Multi-tenancy
+│   ├── controller/    #   Tenant provisioning and management APIs
+│   ├── service/       #   TenantService — isolation enforcement
+│   └── context/       #   TenantContextHolder (ThreadLocal tenant resolution)
+│
+├── usage/             # Usage limits and quota enforcement
+│   ├── service/       #   UsageLimitService — per-tenant quota checks
+│   └── repository/    #   UsageRecordRepository
+│
+└── webhook/           # Outbound webhook delivery
+    ├── service/       #   WebhookService — delivery with retry
+    └── repository/    #   WebhookEndpointRepository
+```
+
+---
+
 ## License
 
-[MIT](LICENSE)
+MIT License — see [LICENSE](LICENSE) for full text.
+
+Copyright (c) 2025 AetherOps
