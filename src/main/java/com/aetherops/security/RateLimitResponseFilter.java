@@ -24,12 +24,13 @@ public class RateLimitResponseFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         chain.doFilter(request, response);
 
-        String key = resolveKey(request);
-        RateLimiter.Result result = rateLimiter.peek(key);
-
-        response.setHeader("X-RateLimit-Limit", String.valueOf(rateLimiter.getLimit()));
-        response.setHeader("X-RateLimit-Remaining", String.valueOf(result.remaining()));
-        response.setHeader("X-RateLimit-Reset", String.valueOf(result.resetAt()));
+        if (response.getHeader("X-RateLimit-Remaining") == null) {
+            String key = resolveKey(request);
+            RateLimiter.Result result = rateLimiter.peek(key);
+            response.setHeader("X-RateLimit-Limit", String.valueOf(rateLimiter.getLimit()));
+            response.setHeader("X-RateLimit-Remaining", String.valueOf(result.remaining()));
+            response.setHeader("X-RateLimit-Reset", String.valueOf(result.resetAt()));
+        }
     }
 
     private String resolveKey(HttpServletRequest request) {
