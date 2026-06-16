@@ -40,6 +40,6 @@ public class SlidingWindowRateLimiterService {
         String redisKey = "swrl:" + key;
 
         Long count = redisTemplate.opsForZSet().count(redisKey, cutoffMs, nowMs);
-        return count != null ? count : 0L;
+        return count != null ? count + 1 : 1L;
     }
 }
