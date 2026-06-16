@@ -2,9 +2,9 @@ package com.aetherops.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,15 +15,21 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class OutboxService {
 
     static final String OUTBOX_TOPIC = "outbox.events";
 
     private final OutboxEventRepository repository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    public OutboxService(OutboxEventRepository repository, ObjectMapper objectMapper,
+                          @Nullable KafkaTemplate<String, String> kafkaTemplate) {
+        this.repository = repository;
+        this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
+    }
 
     @Transactional
     public OutboxEvent record(String aggregateType, UUID aggregateId, String eventType, Object payload) {
@@ -50,6 +56,7 @@ public class OutboxService {
     @Scheduled(fixedDelay = 2000)
     @Transactional
     public void relay() {
+        if (kafkaTemplate == null) return;
         List<OutboxEvent> pending = repository.findByStatusOrderByCreatedAtAsc("PENDING");
         if (pending.isEmpty()) return;
 

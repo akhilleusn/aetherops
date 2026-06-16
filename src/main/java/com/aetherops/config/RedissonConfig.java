@@ -22,7 +22,7 @@ public class RedissonConfig {
     // Read the password directly from env var rather than via spring.data.redis.password
     // so that an absent env var produces null (no AUTH) rather than empty-string AUTH,
     // which Redis rejects when no password is configured.
-    @Value("${REDIS_PASSWORD:#{null}}")
+    @Value("${REDIS_PASSWORD:${REDISPASSWORD:#{null}}}")
     private String password;
 
     @Bean(destroyMethod = "shutdown")

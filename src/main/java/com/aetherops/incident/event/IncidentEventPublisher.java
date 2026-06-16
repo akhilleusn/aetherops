@@ -1,14 +1,12 @@
 package com.aetherops.incident.event;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class IncidentEventPublisher {
 
@@ -17,7 +15,17 @@ public class IncidentEventPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
+    public IncidentEventPublisher(ObjectMapper objectMapper,
+                                   @Nullable KafkaTemplate<String, String> kafkaTemplate) {
+        this.objectMapper = objectMapper;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
     public void publish(IncidentCreatedEvent event) {
+        if (kafkaTemplate == null) {
+            log.warn("Kafka not available; skipping incident.created event for incidentId={}", event.getIncidentId());
+            return;
+        }
         try {
             String payload = objectMapper.writeValueAsString(event);
             kafkaTemplate.send(TOPIC, event.getIncidentId().toString(), payload)
