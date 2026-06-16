@@ -3,11 +3,13 @@ package com.aetherops.auth.service;
 import com.aetherops.auth.model.AuthResponse;
 import com.aetherops.auth.model.LoginRequest;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.RegistrationResult;
 import com.aetherops.auth.model.Role;
 import com.aetherops.auth.model.User;
 import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.common.exception.AccountLockedException;
 import com.aetherops.common.exception.DuplicateEmailException;
+import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.tenant.repository.TenantRepository;
@@ -26,9 +28,10 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final LoginAttemptService loginAttemptService;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
-    public AuthResponse register(RegisterRequest req) {
+    public RegistrationResult register(RegisterRequest req) {
         if (!tenantRepository.existsById(req.tenantId())) {
             throw new ResourceNotFoundException("Tenant not found: " + req.tenantId());
         }
@@ -40,9 +43,12 @@ public class AuthService {
             .passwordHash(passwordEncoder.encode(req.password()))
             .role(Role.MEMBER)
             .tenantId(req.tenantId())
+            .emailVerified(false)
             .build();
         userRepository.save(user);
-        return buildResponse(user);
+        emailVerificationService.sendVerificationEmail(user);
+        return new RegistrationResult(user.getId(),
+            "Registration successful. Please check your email to verify your account.");
     }
 
     @Transactional(readOnly = true)
@@ -60,6 +66,9 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
         loginAttemptService.recordSuccess(req.email());
+        if (!user.isEmailVerified()) {
+            throw new EmailNotVerifiedException();
+        }
         return issueResponse(user);
     }
 

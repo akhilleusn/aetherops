@@ -71,6 +71,7 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
             .passwordHash(new BCryptPasswordEncoder().encode("password123"))
             .role(Role.MEMBER)
             .tenantId(tenantId)
+            .emailVerified(true)
             .build());
         userId = user.getId();
 

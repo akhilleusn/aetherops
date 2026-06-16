@@ -27,6 +27,34 @@ public class EmailService {
         this.restTemplate = builder.build();
     }
 
+    public void sendVerificationEmail(String to, String verifyLink) {
+        if (apiKey.isBlank()) {
+            log.info("DEV MODE — email verification link for {}: {}", to, verifyLink);
+            return;
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(apiKey);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> body = Map.of(
+                "from", fromAddress,
+                "to", List.of(to),
+                "subject", "Verify your AetherOps email address",
+                "html", buildVerificationHtml(verifyLink)
+            );
+
+            restTemplate.exchange(
+                "https://api.resend.com/emails",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                String.class
+            );
+        } catch (Exception e) {
+            log.error("Failed to send verification email to {}: {}", to, e.getMessage());
+        }
+    }
+
     public void sendPasswordResetEmail(String to, String resetLink) {
         if (apiKey.isBlank()) {
             log.info("DEV MODE — password reset link for {}: {}", to, resetLink);
@@ -53,6 +81,13 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send password reset email to {}: {}", to, e.getMessage());
         }
+    }
+
+    private String buildVerificationHtml(String verifyLink) {
+        return "<p>Thank you for registering with AetherOps.</p>"
+            + "<p><a href=\"" + verifyLink + "\">Click here to verify your email address</a></p>"
+            + "<p>This link expires in <strong>24 hours</strong>.</p>"
+            + "<p>If you did not create an account, you can safely ignore this email.</p>";
     }
 
     private String buildHtml(String resetLink) {

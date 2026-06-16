@@ -63,15 +63,25 @@ public class DemoDataInitializer implements ApplicationRunner {
     }
 
     private void ensureDemoUser(UUID tenantId) {
-        if (userRepository.findByEmail(DEMO_USER_EMAIL).isPresent()) return;
-        userRepository.save(User.builder()
-            .email(DEMO_USER_EMAIL)
-            .passwordHash(passwordEncoder.encode(DEMO_USER_PASSWORD))
-            .role(Role.MEMBER)
-            .tenantId(tenantId)
-            .twoFaEnabled(false)
-            .build());
-        log.info("Created demo user: {}", DEMO_USER_EMAIL);
+        userRepository.findByEmail(DEMO_USER_EMAIL).ifPresentOrElse(
+            u -> {
+                if (!u.isEmailVerified()) {
+                    u.setEmailVerified(true);
+                    userRepository.save(u);
+                }
+            },
+            () -> {
+                userRepository.save(User.builder()
+                    .email(DEMO_USER_EMAIL)
+                    .passwordHash(passwordEncoder.encode(DEMO_USER_PASSWORD))
+                    .role(Role.MEMBER)
+                    .tenantId(tenantId)
+                    .twoFaEnabled(false)
+                    .emailVerified(true)
+                    .build());
+                log.info("Created demo user: {}", DEMO_USER_EMAIL);
+            }
+        );
     }
 
     private void ensureIncidents(UUID tenantId) {

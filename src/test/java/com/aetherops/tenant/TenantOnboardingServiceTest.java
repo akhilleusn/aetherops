@@ -1,7 +1,7 @@
 package com.aetherops.tenant;
 
-import com.aetherops.auth.model.AuthResponse;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.RegistrationResult;
 import com.aetherops.auth.service.AuthService;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
@@ -43,10 +43,8 @@ class TenantOnboardingServiceTest {
                 .plan(Plan.STARTER)
                 .build();
 
-        AuthResponse authResponse = AuthResponse.builder()
-                .userId(userId)
-                .email("admin@test.com")
-                .build();
+        RegistrationResult authResponse = new RegistrationResult(userId,
+                "Registration successful. Please check your email to verify your account.");
 
         when(tenantService.create(any(CreateTenantRequest.class))).thenReturn(tenantResponse);
         when(authService.register(any(RegisterRequest.class))).thenReturn(authResponse);
@@ -65,8 +63,8 @@ class TenantOnboardingServiceTest {
         UUID tenantId = UUID.randomUUID();
         TenantResponse tenantResponse = TenantResponse.builder()
                 .id(tenantId).name("Corp").plan(Plan.STARTER).build();
-        AuthResponse authResponse = AuthResponse.builder()
-                .userId(UUID.randomUUID()).email("a@b.com").build();
+        RegistrationResult authResponse = new RegistrationResult(UUID.randomUUID(),
+                "Registration successful. Please check your email to verify your account.");
 
         when(tenantService.create(any())).thenReturn(tenantResponse);
         when(authService.register(any())).thenReturn(authResponse);

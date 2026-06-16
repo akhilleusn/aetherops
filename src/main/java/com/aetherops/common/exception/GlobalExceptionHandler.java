@@ -6,7 +6,9 @@ import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ErrorResponse;
 import com.aetherops.common.exception.AccountLockedException;
 import com.aetherops.common.exception.DuplicateEmailException;
+import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidResetTokenException;
+import com.aetherops.common.exception.InvalidVerificationTokenException;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.GoogleAuthNotConfiguredException;
@@ -81,6 +83,24 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .body(ErrorResponse.of(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleEmailNotVerified(
+        EmailNotVerifiedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse.of(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidVerificationTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidVerificationToken(
+        InvalidVerificationTokenException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(AccountLockedException.class)

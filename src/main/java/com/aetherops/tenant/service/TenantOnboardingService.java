@@ -1,6 +1,7 @@
 package com.aetherops.tenant.service;
 
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.RegistrationResult;
 import com.aetherops.auth.service.AuthService;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
@@ -31,12 +32,12 @@ public class TenantOnboardingService {
                 new CreateTenantRequest(companyName, plan, 0, 30));
 
         // 2. create admin user for that tenant
-        var admin = authService.register(
+        RegistrationResult admin = authService.register(
                 new RegisterRequest(adminEmail, adminPassword, response.getId()));
 
         log.info("Onboarded tenant id={} name={} adminEmail={}",
                 response.getId(), companyName, adminEmail);
 
-        return new OnboardingResult(response.getId(), admin.getUserId());
+        return new OnboardingResult(response.getId(), admin.userId());
     }
 }

@@ -72,6 +72,7 @@ class TotpIntegrationTest extends AbstractIntegrationTest {
             .passwordHash(new BCryptPasswordEncoder().encode(PASSWORD))
             .role(Role.MEMBER)
             .tenantId(tenantId)
+            .emailVerified(true)
             .build());
         userId = user.getId();
     }

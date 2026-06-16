@@ -5,8 +5,10 @@ import com.aetherops.auth.model.ForgotPasswordRequest;
 import com.aetherops.auth.model.GoogleAuthRequest;
 import com.aetherops.auth.model.LoginRequest;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.RegistrationResult;
 import com.aetherops.auth.model.ResetPasswordRequest;
 import com.aetherops.auth.service.AuthService;
+import com.aetherops.auth.service.EmailVerificationService;
 import com.aetherops.auth.service.GoogleAuthService;
 import com.aetherops.auth.service.GoogleTokenVerifier;
 import com.aetherops.auth.service.PasswordResetService;
@@ -33,19 +35,27 @@ public class AuthController {
     private final GoogleAuthService googleAuthService;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final RefreshTokenService refreshTokenService;
-
+    private final EmailVerificationService emailVerificationService;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Register a new user account")
-    public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ApiResponse.success(authService.register(request));
+    @Operation(summary = "Register a new user account — a verification email will be sent")
+    public ApiResponse<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+        RegistrationResult result = authService.register(request);
+        return ApiResponse.success(Map.of("message", result.message()));
     }
 
     @PostMapping("/login")
     @Operation(summary = "Login and receive a JWT token")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.success(authService.login(request));
+    }
+
+    @GetMapping("/verify-email")
+    @Operation(summary = "Verify email address using the token sent during registration")
+    public ApiResponse<Map<String, String>> verifyEmail(@RequestParam String token) {
+        emailVerificationService.verifyEmail(token);
+        return ApiResponse.success(Map.of("message", "Email verified successfully. You can now log in."));
     }
 
     @PostMapping("/forgot-password")
@@ -73,8 +83,6 @@ public class AuthController {
     public ApiResponse<Map<String, String>> googleClientId() {
         return ApiResponse.success(Map.of("clientId",
             googleTokenVerifier.isConfigured() ? googleTokenVerifier.getClientId() : ""));
-
-
     }
 
     @PostMapping("/refresh")

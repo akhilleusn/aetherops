@@ -57,7 +57,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     // ── register ──────────────────────────────────────────────────────────
 
     @Test
-    void register_validRequest_returns201WithToken() throws Exception {
+    void register_validRequest_returns201WithPendingMessage() throws Exception {
         var req = new RegisterRequest("alice@example.com", "password123", tenantId);
 
         mockMvc.perform(post("/api/v1/auth/register")
@@ -65,26 +65,23 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                 .content(objectMapper.writeValueAsString(req)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.token").isNotEmpty())
-            .andExpect(jsonPath("$.data.userId").isNotEmpty())
-            .andExpect(jsonPath("$.data.email").value("alice@example.com"))
-            .andExpect(jsonPath("$.data.role").value("MEMBER"))
-            .andExpect(jsonPath("$.data.tenantId").value(tenantId.toString()));
+            .andExpect(jsonPath("$.data.message").value(
+                "Registration successful. Please check your email to verify your account."));
     }
 
     @Test
-    void register_tokenContainsCorrectClaims() throws Exception {
+    void register_createsUserWithUnverifiedEmail() throws Exception {
         var req = new RegisterRequest("bob@example.com", "password123", tenantId);
 
-        String body = mockMvc.perform(post("/api/v1/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+            .andExpect(status().isCreated());
 
-        String token = objectMapper.readTree(body).path("data").path("token").asText();
-        assertThat(jwtService.extractEmail(token)).isEqualTo("bob@example.com");
-        assertThat(jwtService.extractTenantId(token)).isEqualTo(tenantId);
+        var user = userRepository.findByEmail("bob@example.com").orElseThrow();
+        assertThat(user.isEmailVerified()).isFalse();
+        assertThat(user.getTenantId()).isEqualTo(tenantId);
+        assertThat(user.getEmailVerificationToken()).isNotBlank();
     }
 
     @Test
@@ -143,6 +140,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
             .andExpect(status().isCreated());
+        verifyUserEmail("eve@example.com");
 
         var loginReq = new LoginRequest("eve@example.com", "mypassword");
         mockMvc.perform(post("/api/v1/auth/login")
@@ -234,6 +232,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", tenantId))))
             .andExpect(status().isCreated());
+        verifyUserEmail(email);
 
         // 4 failures
         for (int i = 0; i < 4; i++) {
@@ -296,5 +295,14 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(wrongPassNode.path("message").asText())
             .isEqualTo(unknownNode.path("message").asText());
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────
+
+    private void verifyUserEmail(String email) {
+        userRepository.findByEmail(email).ifPresent(u -> {
+            u.setEmailVerified(true);
+            userRepository.save(u);
+        });
     }
 }

@@ -60,15 +60,17 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
 
     @Test
     void protectedEndpoint_validToken_returns2xx() throws Exception {
-        // Register a user to get a valid token
         var regReq = new RegisterRequest("sectest@example.com", "password123", tenant.getId());
-        String regBody = mockMvc.perform(post("/api/v1/auth/register")
+        mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
-            .andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString();
+            .andExpect(status().isCreated());
 
-        String token = objectMapper.readTree(regBody).path("data").path("token").asText();
+        // Register no longer returns a token — verify email directly, then generate token
+        com.aetherops.auth.model.User user = userRepository.findByEmail("sectest@example.com").orElseThrow();
+        user.setEmailVerified(true);
+        user = userRepository.save(user);
+        String token = jwtService.generateToken(user);
 
         mockMvc.perform(get("/api/v1/tenants")
                 .header("Authorization", "Bearer " + token))

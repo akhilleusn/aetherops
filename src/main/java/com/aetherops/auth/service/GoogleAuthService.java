@@ -54,6 +54,7 @@ public class GoogleAuthService {
             .googleSub(userInfo.sub())
             .role(Role.MEMBER)
             .tenantId(request.tenantId())
+            .emailVerified(true)
             .build());
 
         return authService.issueResponse(newUser);
