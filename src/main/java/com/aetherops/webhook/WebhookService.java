@@ -1,5 +1,7 @@
 package com.aetherops.webhook;
 
+import com.aetherops.config.FeatureFlag;
+import com.aetherops.config.FeatureFlagService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,7 +9,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,9 +24,16 @@ public class WebhookService {
     private final WebhookDeliveryRepository deliveryRepository;
     private final ObjectMapper objectMapper;
     private final RestClient.Builder restClientBuilder;
+    private final FeatureFlagService featureFlagService;
+    private final WebhookSignatureVerifier signatureVerifier;
 
     @Async
     public void deliver(UUID tenantId, String eventType, Object payload) {
+        if (!featureFlagService.isEnabled(FeatureFlag.WEBHOOKS, tenantId)) {
+            log.info("WEBHOOKS feature flag disabled for tenantId={}", tenantId);
+            return;
+        }
+
         List<WebhookEndpoint> endpoints = endpointRepository
                 .findByTenantIdAndActiveTrue(tenantId);
 
@@ -56,18 +67,21 @@ public class WebhookService {
         delivery.setLastAttemptAt(Instant.now());
 
         try {
+            String signature = signatureVerifier.computeHmacSha256(endpoint.getSecret(), delivery.getPayload());
+
             RestClient client = restClientBuilder.build();
             var response = client.post()
                     .uri(endpoint.getUrl())
                     .header("Content-Type", "application/json")
                     .header("X-AetherOps-Event", delivery.getEventType())
+                    .header("X-AetherOps-Signature", signature)
                     .body(delivery.getPayload())
                     .retrieve()
                     .toBodilessEntity();
 
             delivery.setStatus("SUCCESS");
             delivery.setResponseStatus(response.getStatusCode().value());
-            log.info("Webhook delivered successfully endpointId={} eventType={}",
+            log.info("Webhook delivered endpointId={} eventType={}",
                     endpoint.getId(), delivery.getEventType());
 
         } catch (Exception e) {
@@ -82,6 +96,12 @@ public class WebhookService {
     }
 
     public WebhookEndpoint register(UUID tenantId, String url, String secret) {
+        if (secret == null || secret.isBlank()) {
+            byte[] bytes = new byte[32];
+            new SecureRandom().nextBytes(bytes);
+            secret = HexFormat.of().formatHex(bytes);
+            log.info("Generated random secret for webhook endpoint tenantId={}", tenantId);
+        }
         return endpointRepository.save(WebhookEndpoint.builder()
                 .tenantId(tenantId)
                 .url(url)

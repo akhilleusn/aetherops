@@ -43,4 +43,10 @@ public class ApiKey {
 
     @Column(name = "revoked_at")
     private Instant revokedAt;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+    @Column(name = "last_used_at")
+    private Instant lastUsedAt;
 }

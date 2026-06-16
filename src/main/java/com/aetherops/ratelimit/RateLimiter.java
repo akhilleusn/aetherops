@@ -48,6 +48,16 @@ public class RateLimiter {
         return new Result(allowed, remaining, resetAt);
     }
 
+    public Result peek(String key) {
+        String redisKey = "ratelimit:" + key;
+        String raw = redisTemplate.opsForValue().get(redisKey);
+        long count = raw != null ? Long.parseLong(raw) : 0L;
+        Long ttl = redisTemplate.getExpire(redisKey, TimeUnit.SECONDS);
+        long resetAt = System.currentTimeMillis() / 1000 + (ttl != null && ttl > 0 ? ttl : windowSeconds);
+        int remaining = (int) Math.max(0, limit - count);
+        return new Result(count <= limit, remaining, resetAt);
+    }
+
     public int getLimit() {
         return limit;
     }

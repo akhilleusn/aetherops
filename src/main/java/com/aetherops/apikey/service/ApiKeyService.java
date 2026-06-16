@@ -84,8 +84,21 @@ public class ApiKeyService {
     @Transactional(readOnly = true)
     public ApiKey resolve(String rawKey) {
         String hash = sha256(rawKey);
-        return apiKeyRepository.findByKeyHashAndActiveTrue(hash)
-            .orElseThrow(InvalidApiKeyException::new);
+        ApiKey key = apiKeyRepository.findByKeyHashAndActiveTrue(hash)
+                .orElseThrow(InvalidApiKeyException::new);
+        if (key.getExpiresAt() != null && key.getExpiresAt().isBefore(Instant.now())) {
+            log.warn("API key id={} has expired at={}", key.getId(), key.getExpiresAt());
+            throw new InvalidApiKeyException();
+        }
+        return key;
+    }
+
+    @Transactional
+    public void recordLastUsed(java.util.UUID keyId) {
+        apiKeyRepository.findById(keyId).ifPresent(k -> {
+            k.setLastUsedAt(Instant.now());
+            apiKeyRepository.save(k);
+        });
     }
 
     private ApiKeyView toView(ApiKey k) {

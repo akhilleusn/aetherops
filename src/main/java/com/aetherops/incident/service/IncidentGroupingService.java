@@ -24,6 +24,7 @@ public class IncidentGroupingService {
     private final IncidentRepository      incidentRepository;
     private final EvidenceItemRepository  evidenceItemRepository;
     private final SlackNotifier           slackNotifier;
+    private final IncidentCorrelationService correlationService;
 
     @Transactional
     public void findOrCreate(LogEvent event) {
@@ -37,7 +38,12 @@ public class IncidentGroupingService {
             .findByTenantIdAndFingerprintAndStatus(event.getTenantId(), fingerprint, IncidentStatus.OPEN)
             .ifPresentOrElse(
                 existing -> updateExisting(existing, event),
-                () -> createNew(event, fingerprint)
+                () -> correlationService
+                        .correlate(event.getTenantId(), event.getServiceId(), fingerprint, event.getOccurredAt())
+                        .ifPresentOrElse(
+                            correlated -> attachEvidence(correlated, event),
+                            () -> createNew(event, fingerprint)
+                        )
             );
     }
 

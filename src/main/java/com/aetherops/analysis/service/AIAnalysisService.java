@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 import com.aetherops.usage.UsageBillingService;
+import com.aetherops.config.FeatureFlag;
+import com.aetherops.config.FeatureFlagService;
 
 
 @Service
@@ -38,6 +40,7 @@ public class AIAnalysisService {
     private final AuditLogService auditLogService;
     private final MeterRegistry meterRegistry;
     private final UsageBillingService usageBillingService;
+    private final FeatureFlagService featureFlagService;
 
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
@@ -45,6 +48,16 @@ public class AIAnalysisService {
     @Retry(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
     @Transactional
     public AIAnalysisResponse analyze(UUID incidentId, UUID tenantId) {
+        if (!featureFlagService.isEnabled(FeatureFlag.AI_ANALYSIS, tenantId)) {
+            log.info("AI_ANALYSIS feature flag disabled for tenantId={}", tenantId);
+            return AIAnalysisResponse.builder()
+                    .incidentId(incidentId)
+                    .tenantId(tenantId)
+                    .summary("AI analysis is currently disabled for this tenant.")
+                    .likelyCause("Feature disabled.")
+                    .confidenceScore(0.0)
+                    .build();
+        }
         usageLimitService.checkAndIncrement(tenantId, UsageType.AI_ANALYSIS);
         IncidentEvidencePackResponse pack = evidencePackService.getEvidencePack(incidentId, tenantId);
 

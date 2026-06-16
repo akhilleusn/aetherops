@@ -37,8 +37,8 @@ public class GatewayFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } finally {
             long durationMs = System.currentTimeMillis() - start;
-            log.info("traceId={} method={} path={} status={} durationMs={}",
-                    traceId, request.getMethod(), request.getRequestURI(),
+            log.info("traceId={} requestId={} method={} path={} status={} durationMs={}",
+                    traceId, MDC.get("requestId"), request.getMethod(), request.getRequestURI(),
                     response.getStatus(), durationMs);
             MDC.remove("traceId");
         }

@@ -10,4 +10,6 @@ import java.util.UUID;
 public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
     List<ApiKey> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
     Optional<ApiKey> findByKeyHashAndActiveTrue(String keyHash);
+    Optional<ApiKey> findByKeyHashAndActiveTrueAndExpiresAtIsNull(String keyHash);
+    Optional<ApiKey> findByKeyHashAndActiveTrueAndExpiresAtAfter(String keyHash, java.time.Instant now);
 }

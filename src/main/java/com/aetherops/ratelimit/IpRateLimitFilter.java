@@ -7,20 +7,18 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Duration;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class IpRateLimitFilter extends OncePerRequestFilter {
 
-    private final StringRedisTemplate redisTemplate;
+    private final SlidingWindowRateLimiterService slidingWindowRateLimiter;
 
     @Value("${app.ip-rate-limit.requests-per-window:20}")
     private int limit;
@@ -36,16 +34,9 @@ public class IpRateLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
 
         if (isProtectedPath(path)) {
-            String redisKey = "ip-ratelimit:" + ip + ":" + path;
-            Long count = redisTemplate.opsForValue().increment(redisKey);
-
-            if (count == null) count = 1L;
-            if (count == 1) {
-                redisTemplate.expire(redisKey, Duration.ofSeconds(windowSeconds));
-            }
-
-            if (count > limit) {
-                log.warn("IP rate limit exceeded ip={} path={} count={}", ip, path, count);
+            String key = "ip:" + ip + ":" + path;
+            if (!slidingWindowRateLimiter.isAllowed(key, limit, windowSeconds)) {
+                log.warn("IP rate limit exceeded ip={} path={}", ip, path);
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setContentType("application/json");
                 response.getWriter().write(

@@ -3,6 +3,7 @@ package com.aetherops.audit.controller;
 import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditLogResponse;
 import com.aetherops.audit.model.AuditStatus;
+import com.aetherops.audit.service.AuditLogExportService;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +13,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -24,6 +28,7 @@ import java.util.UUID;
 public class AuditLogController {
 
     private final AuditLogService auditLogService;
+    private final AuditLogExportService auditLogExportService;
 
     @GetMapping("/{id}/audit-logs")
     @Operation(summary = "List audit log entries for a tenant with optional filters.")
@@ -36,5 +41,29 @@ public class AuditLogController {
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         return ApiResponse.success(auditLogService.getAuditLogs(id, action, status, from, to, pageable));
+    }
+
+    @GetMapping("/{id}/audit-logs/export")
+    @Operation(summary = "Export audit logs as CSV or JSON.")
+    public ResponseEntity<String> exportAuditLogs(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "csv") String format,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
+            @RequestParam(required = false) AuditAction action
+    ) {
+        if ("json".equalsIgnoreCase(format)) {
+            String json = auditLogExportService.exportAsJson(id, from, to, action);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"audit-logs.json\"")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(json);
+        }
+
+        String csv = auditLogExportService.exportAsCsv(id, from, to, action);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"audit-logs.csv\"")
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(csv);
     }
 }
