@@ -38,6 +38,15 @@ public class EmailVerificationService {
     }
 
     @Transactional
+    public void resendVerificationEmail(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            if (!user.isEmailVerified()) {
+                sendVerificationEmail(user);
+            }
+        });
+    }
+
+    @Transactional
     public void verifyEmail(String token) {
         User user = userRepository.findByEmailVerificationToken(token)
                 .orElseThrow(InvalidVerificationTokenException::new);

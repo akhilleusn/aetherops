@@ -58,6 +58,13 @@ public class AuthController {
         return ApiResponse.success(Map.of("message", "Email verified successfully. You can now log in."));
     }
 
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Re-send the email verification link")
+    public ApiResponse<Map<String, String>> resendVerification(@RequestBody Map<String, String> body) {
+        emailVerificationService.resendVerificationEmail(body.get("email"));
+        return ApiResponse.success(Map.of("message", "If that account exists and is unverified, a new verification email has been sent."));
+    }
+
     @PostMapping("/forgot-password")
     @Operation(summary = "Request a password reset email")
     public ApiResponse<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {

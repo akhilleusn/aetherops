@@ -54,6 +54,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/google").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/api/v1/auth/google/client-id").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/api/v1/auth/verify-email").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/resend-verification").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/tenants").permitAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll()
