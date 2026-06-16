@@ -89,5 +89,8 @@ resilience4j:
         ignore-exceptions:
           - com.aetherops.common.exception.UsageLimitExceededException
           - com.aetherops.common.exception.ResourceNotFoundException
+demo:
+  mode: true
+
 server:
   port: ${PORT:8080}

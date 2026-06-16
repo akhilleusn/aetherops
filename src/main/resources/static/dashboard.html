@@ -329,7 +329,7 @@ async function api(path, opts = {}) {
   if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
   const res = await fetch(path, { headers, ...opts });
   const json = await res.json();
-  if (!res.ok) throw Object.assign(new Error(json.error || 'HTTP ' + res.status), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json.message || json.error || 'HTTP ' + res.status), { status: res.status });
   return json;
 }
 
