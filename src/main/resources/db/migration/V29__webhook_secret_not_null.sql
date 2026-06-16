@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Feature 6: Ensure every webhook endpoint has an HMAC secret
 -- Populate NULLs with a random hex secret, then enforce NOT NULL
 
