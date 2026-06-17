@@ -47,8 +47,10 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.25re
 /* HERO */
 .hero{max-width:820px;margin:0 auto;padding:5.5rem 2.5rem 4.5rem;text-align:center}
 .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:-apple-system,sans-serif;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:2rem;padding-bottom:0.5rem;border-bottom:1px solid var(--gold)}
+[data-theme="light"] .hero-eyebrow{color:#6b5210;border-bottom-color:#6b5210}
 h1{font-size:3.25rem;font-weight:700;letter-spacing:-0.03em;line-height:1.08;margin-bottom:1.5rem;color:var(--text);font-family:'Georgia',serif}
 h1 em{font-style:italic;color:var(--gold)}
+[data-theme="light"] h1 em{color:var(--gold2)}
 .hero-sub{font-size:1.0625rem;color:var(--muted);max-width:520px;margin:0 auto 2.5rem;line-height:1.75;font-family:-apple-system,sans-serif}
 [data-theme="light"] .hero-sub{color:var(--text2)}
 .hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
@@ -74,8 +76,11 @@ h1 em{font-style:italic;color:var(--gold)}
 .section{padding:4.5rem 2.5rem;max-width:1060px;margin:0 auto}
 .section-eyebrow{font-family:-apple-system,sans-serif;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:0.75rem;display:flex;align-items:center;gap:8px}
 .section-eyebrow::before{content:'';display:block;width:20px;height:1px;background:var(--gold)}
+[data-theme="light"] .section-eyebrow{color:#6b5210}
+[data-theme="light"] .section-eyebrow::before{background:#6b5210}
 .section-title{font-size:1.875rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:0.75rem;color:var(--text);font-family:'Georgia',serif}
 .section-sub{font-size:0.9375rem;color:var(--muted);max-width:480px;line-height:1.75;font-family:-apple-system,sans-serif}
+[data-theme="light"] .section-sub{color:var(--text2)}
 
 /* FEATURES */
 .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:3rem;background:var(--border)}
