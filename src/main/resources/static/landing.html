@@ -173,6 +173,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
 /* TELEMETRY HERO BACKGROUND */
 .hero-outer{position:relative;overflow:hidden}
 .hero-outer::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 55% 55% at 50% 38%,rgba(8,14,24,0.62) 0%,transparent 100%),linear-gradient(to bottom,transparent 72%,var(--bg) 100%);pointer-events:none;z-index:1}
+[data-theme="light"] .hero-outer::after{background:linear-gradient(to bottom,transparent 72%,var(--bg) 100%)}
 #telemetryBg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block;z-index:0}
 .hero{position:relative;z-index:2}
 </style>
@@ -383,10 +384,6 @@ function toggleTheme(){
   var ctx=canvas.getContext('2d');
 
   /* Scene ─────────────────────────────────────────────────────────────── */
-
-  // Positions as fractions of canvas W/H.
-  // Nodes hug the LEFT and RIGHT margins (outside the ~820px centered content)
-  // and the BOTTOM edge (below the terminal widget).
   var NODES=[
     {id:'gw',    label:'api-gateway', fx:0.045, fy:0.13, st:'ok'  },
     {id:'auth',  label:'auth-svc',    fx:0.065, fy:0.52, st:'ok'  },
@@ -403,7 +400,6 @@ function toggleTheme(){
     ['ord','redis'],['ord','kafka'],
   ];
 
-  // Fixed sparkline data — baseline with a latency spike
   var SPARK=(function(){
     var d=[];
     for(var i=0;i<22;i++){
@@ -414,20 +410,66 @@ function toggleTheme(){
     return d;
   }());
 
-  /* Node map ──────────────────────────────────────────────────────────── */
   var nodeMap={};
   NODES.forEach(function(n){nodeMap[n.id]=n;});
 
-  /* Particles ─────────────────────────────────────────────────────────── */
   var particles=[];
   EDGES.forEach(function(e,i){
     particles.push({ei:i,t:Math.random(),spd:0.0009+Math.random()*0.0007});
-    // Every other edge gets a second particle, offset by half
     if(i%2===0) particles.push({ei:i,t:(Math.random()+0.5)%1,spd:0.0008+Math.random()*0.0006});
   });
 
   /* State ─────────────────────────────────────────────────────────────── */
   var W=0,H=0,T=0,raf=null;
+
+  // PAL holds all draw colors; set once per frame via setPalette()
+  var PAL={};
+
+  function setPalette(isDark){
+    if(isDark){
+      // Dark theme: light-on-dark values (unchanged from original)
+      PAL.grid        ='rgba(36,56,88,0.13)';
+      PAL.edge        ='rgba(36,56,96,0.20)';
+      PAL.nodeFill    ='rgba(5,10,22,0.80)';
+      PAL.nodeLabel   ='rgba(78,112,148,0.40)';
+      PAL.sparkFill   ='rgba(5,10,22,0.52)';
+      PAL.sparkBorder ='rgba(36,56,96,0.28)';
+      PAL.sparkLabel  ='rgba(78,112,148,0.38)';
+      PAL.sparkLine   ='rgba(215,65,65,0.52)';
+      PAL.partRgb     =[118,180,248];
+      PAL.partGlowA   =0.38;
+      PAL.partCoreA   =0.72;
+      PAL.ok          =[55,195,125];
+      PAL.warn        =[201,168,76];
+      PAL.crit        =[215,65,65];
+      PAL.borderAOk   =0.28;
+      PAL.borderAAlert=0.58;
+      PAL.dotAOk      =0.52;
+      PAL.dotAAlert   =0.88;
+      PAL.pulseABase  =0.07;
+    }else{
+      // Light theme: dark-on-light values tuned for #faf9f7 background
+      PAL.grid        ='rgba(20,40,90,0.08)';
+      PAL.edge        ='rgba(25,45,110,0.16)';
+      PAL.nodeFill    ='rgba(244,245,252,0.88)';   // near-white fill so border reads
+      PAL.nodeLabel   ='rgba(40,60,95,0.55)';
+      PAL.sparkFill   ='rgba(240,242,252,0.82)';
+      PAL.sparkBorder ='rgba(30,50,120,0.16)';
+      PAL.sparkLabel  ='rgba(40,60,95,0.48)';
+      PAL.sparkLine   ='rgba(175,30,30,0.48)';
+      PAL.partRgb     =[37,99,235];                // dark blue particles on white
+      PAL.partGlowA   =0.16;
+      PAL.partCoreA   =0.50;
+      PAL.ok          =[0,110,65];                 // dark green
+      PAL.warn        =[145,85,0];                 // dark amber
+      PAL.crit        =[175,30,30];                // dark red
+      PAL.borderAOk   =0.42;
+      PAL.borderAAlert=0.62;
+      PAL.dotAOk      =0.70;
+      PAL.dotAAlert   =0.90;
+      PAL.pulseABase  =0.08;
+    }
+  }
 
   function resize(){
     W=canvas.width =canvas.offsetWidth;
@@ -438,9 +480,9 @@ function toggleTheme(){
   function ny(n){return n.fy*H;}
 
   function stRgb(st){
-    if(st==='warn')return[201,168,76];
-    if(st==='crit')return[215,65,65];
-    return[55,195,125];
+    if(st==='warn')return PAL.warn;
+    if(st==='crit')return PAL.crit;
+    return PAL.ok;
   }
   function rgba(rgb,a){return'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+a+')';}
 
@@ -448,7 +490,7 @@ function toggleTheme(){
 
   function drawGrid(){
     var sp=46;
-    ctx.fillStyle='rgba(36,56,88,0.13)';
+    ctx.fillStyle=PAL.grid;
     for(var x=sp*0.5;x<W;x+=sp){
       for(var y=sp*0.5;y<H;y+=sp){
         ctx.beginPath();ctx.arc(x,y,1,0,6.2832);ctx.fill();
@@ -458,7 +500,7 @@ function toggleTheme(){
 
   function drawEdges(){
     ctx.save();
-    ctx.strokeStyle='rgba(36,56,96,0.20)';
+    ctx.strokeStyle=PAL.edge;
     ctx.lineWidth=1;
     EDGES.forEach(function(e){
       var a=nodeMap[e[0]],b=nodeMap[e[1]];
@@ -476,16 +518,14 @@ function toggleTheme(){
       var x=nx(a)+(nx(b)-nx(a))*p.t;
       var y=ny(a)+(ny(b)-ny(a))*p.t;
 
-      // Soft glow
       var g=ctx.createRadialGradient(x,y,0,x,y,8);
-      g.addColorStop(0,'rgba(118,180,248,0.38)');
-      g.addColorStop(1,'rgba(118,180,248,0)');
+      g.addColorStop(0,rgba(PAL.partRgb,PAL.partGlowA));
+      g.addColorStop(1,rgba(PAL.partRgb,0));
       ctx.beginPath();ctx.arc(x,y,8,0,6.2832);
       ctx.fillStyle=g;ctx.fill();
 
-      // Core
       ctx.beginPath();ctx.arc(x,y,2.2,0,6.2832);
-      ctx.fillStyle='rgba(155,210,255,0.72)';ctx.fill();
+      ctx.fillStyle=rgba(PAL.partRgb,PAL.partCoreA);ctx.fill();
 
       p.t+=p.spd;if(p.t>1)p.t=0;
     });
@@ -497,31 +537,25 @@ function toggleTheme(){
       var col=stRgb(n.st);
       var ph=T+n.id.charCodeAt(0)*0.41;
 
-      // Pulse ring — alert nodes only
       if(n.st!=='ok'){
         var pr=r*(1.7+0.35*Math.sin(ph*1.15));
-        var pa=0.07+0.05*Math.sin(ph*1.15);
+        var pa=PAL.pulseABase+0.05*Math.sin(ph*1.15);
         ctx.beginPath();ctx.arc(x,y,pr,0,6.2832);
         ctx.strokeStyle=rgba(col,pa);ctx.lineWidth=1.5;ctx.stroke();
       }
 
-      // Body fill
       ctx.beginPath();ctx.arc(x,y,r,0,6.2832);
-      ctx.fillStyle='rgba(5,10,22,0.80)';ctx.fill();
+      ctx.fillStyle=PAL.nodeFill;ctx.fill();
 
-      // Border
-      var borderAlpha=n.st==='ok'?0.28:0.58;
-      ctx.strokeStyle=rgba(col,borderAlpha);
+      ctx.strokeStyle=rgba(col,n.st==='ok'?PAL.borderAOk:PAL.borderAAlert);
       ctx.lineWidth=1.2;ctx.stroke();
 
-      // Inner status dot
       ctx.beginPath();ctx.arc(x,y,3.5,0,6.2832);
-      ctx.fillStyle=rgba(col,n.st==='ok'?0.52:0.88);ctx.fill();
+      ctx.fillStyle=rgba(col,n.st==='ok'?PAL.dotAOk:PAL.dotAAlert);ctx.fill();
 
-      // Label
       ctx.save();
       ctx.font='9px monospace';
-      ctx.fillStyle='rgba(78,112,148,0.40)';
+      ctx.fillStyle=PAL.nodeLabel;
       ctx.textAlign='center';
       ctx.fillText(n.label,x,y+r+13);
       ctx.restore();
@@ -529,27 +563,23 @@ function toggleTheme(){
   }
 
   function drawSparkline(){
-    // Positioned in the upper-right clear zone, safely outside the 820px content
     var pw=90,ph=28;
     var px=W*0.855-pw*0.5;
     var py=H*0.195;
-    if(px+pw>W-6)px=W-pw-6;   // guard right edge
+    if(px+pw>W-6)px=W-pw-6;
 
-    // Panel
-    ctx.fillStyle='rgba(5,10,22,0.52)';
-    ctx.strokeStyle='rgba(36,56,96,0.28)';
+    ctx.fillStyle=PAL.sparkFill;
+    ctx.strokeStyle=PAL.sparkBorder;
     ctx.lineWidth=1;
     ctx.beginPath();ctx.rect(px,py,pw,ph);ctx.fill();ctx.stroke();
 
-    // Tiny label
     ctx.save();
     ctx.font='7.5px monospace';
-    ctx.fillStyle='rgba(78,112,148,0.38)';
+    ctx.fillStyle=PAL.sparkLabel;
     ctx.textAlign='left';
     ctx.fillText('p99 latency',px+4,py+8);
     ctx.restore();
 
-    // Sparkline path
     var pad=4,inner=ph-10;
     ctx.beginPath();
     SPARK.forEach(function(v,i){
@@ -557,7 +587,7 @@ function toggleTheme(){
       var sy=py+ph-pad-v*inner;
       i===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
     });
-    ctx.strokeStyle='rgba(215,65,65,0.52)';
+    ctx.strokeStyle=PAL.sparkLine;
     ctx.lineWidth=1.2;ctx.lineJoin='round';ctx.stroke();
   }
 
@@ -565,29 +595,25 @@ function toggleTheme(){
 
   function frame(){
     ctx.clearRect(0,0,W,H);
-
-    if(document.documentElement.getAttribute('data-theme')!=='light'){
-      drawGrid();
-      drawEdges();
-      drawParticles();
-      drawNodes();
-      if(W>560)drawSparkline();
-    }
-
+    var isDark=document.documentElement.getAttribute('data-theme')!=='light';
+    setPalette(isDark);
+    drawGrid();
+    drawEdges();
+    drawParticles();
+    drawNodes();
+    if(W>560)drawSparkline();
     T+=0.006;
     raf=requestAnimationFrame(frame);
   }
 
   /* Init ───────────────────────────────────────────────────────────────*/
 
-  // Resize on parent change
   if(typeof ResizeObserver!=='undefined'){
     new ResizeObserver(resize).observe(canvas.parentElement);
   }else{
     window.addEventListener('resize',resize);
   }
 
-  // Pause when tab is hidden to save CPU
   document.addEventListener('visibilitychange',function(){
     if(document.hidden){cancelAnimationFrame(raf);raf=null;}
     else if(!raf){frame();}
