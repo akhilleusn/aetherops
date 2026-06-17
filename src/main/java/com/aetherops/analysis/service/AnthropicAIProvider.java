@@ -3,6 +3,7 @@ package com.aetherops.analysis.service;
 import com.aetherops.analysis.exception.AIProviderException;
 import com.aetherops.analysis.model.AIAnalysisContext;
 import com.aetherops.analysis.model.AIAnalysisResult;
+import com.aetherops.similarity.model.SimilarIncidentContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,6 +64,21 @@ public class AnthropicAIProvider implements AIProvider {
             sb.append(item.getLevel()).append(" at ").append(item.getTimestamp()).append('\n');
             sb.append(item.getSummary()).append('\n');
             sb.append('\n');
+        }
+
+        List<SimilarIncidentContext> similar = context.getSimilarIncidents();
+        if (similar != null && !similar.isEmpty()) {
+            sb.append("\nSimilar resolved incidents (use as resolution context)\n");
+            sb.append("------------------------------------------------------\n");
+            for (SimilarIncidentContext s : similar) {
+                sb.append(String.format("[similarity: %.0f%%] %s | %s%n",
+                        s.getSimilarityScore() * 100, s.getServiceId(), s.getSeverity()));
+                sb.append("Title: ").append(s.getTitle()).append('\n');
+                if (s.getResolutionNotes() != null && !s.getResolutionNotes().isBlank()) {
+                    sb.append("Resolution: ").append(s.getResolutionNotes()).append('\n');
+                }
+                sb.append('\n');
+            }
         }
 
         sb.append("Respond using exactly this JSON structure:\n");

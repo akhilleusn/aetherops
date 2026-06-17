@@ -6,6 +6,7 @@ import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
+import com.aetherops.similarity.service.IncidentEmbeddingService;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.model.Tenant;
@@ -35,17 +36,19 @@ public class DemoDataInitializer implements ApplicationRunner {
     static final String DEMO_USER_EMAIL    = "demo@aetherops.io";
     static final String DEMO_USER_PASSWORD = "AetherOps_Demo_2024!";
 
-    private final TenantRepository      tenantRepository;
-    private final TenantService         tenantService;
-    private final UserRepository        userRepository;
-    private final BCryptPasswordEncoder passwordEncoder;
-    private final IncidentRepository    incidentRepository;
+    private final TenantRepository        tenantRepository;
+    private final TenantService           tenantService;
+    private final UserRepository          userRepository;
+    private final BCryptPasswordEncoder   passwordEncoder;
+    private final IncidentRepository      incidentRepository;
+    private final IncidentEmbeddingService incidentEmbeddingService;
 
     @Override
     public void run(ApplicationArguments args) {
         UUID tenantId = ensureTenant();
         ensureDemoUser(tenantId);
         ensureIncidents(tenantId);
+        ensureIncidentEmbeddings(tenantId);
 
         log.info("================================================");
         log.info("  AetherOps Demo ready");
@@ -203,6 +206,11 @@ public class DemoDataInitializer implements ApplicationRunner {
                 .firstSeenAt(now.minus(2, ChronoUnit.DAYS))
                 .lastSeenAt(now.minus(27, ChronoUnit.HOURS))
                 .resolvedAt(now.minus(26, ChronoUnit.HOURS))
+                .resolutionNotes(
+                    "Added composite index on (tenant_id, last_seen_at) via Flyway migration. " +
+                    "Query execution time dropped from 840ms to 3ms immediately after deployment. " +
+                    "Root cause: missing index on a frequently queried tenant-scoped column. " +
+                    "Fix: always add composite indexes for high-cardinality tenant-scoped queries at schema design time.")
                 .build(),
 
             // ── Low, resolved ─────────────────────────────────────────────
@@ -222,11 +230,34 @@ public class DemoDataInitializer implements ApplicationRunner {
                 .firstSeenAt(now.minus(3, ChronoUnit.DAYS))
                 .lastSeenAt(now.minus(3, ChronoUnit.DAYS).plus(20, ChronoUnit.MINUTES))
                 .resolvedAt(now.minus(3, ChronoUnit.DAYS).plus(35, ChronoUnit.MINUTES))
+                .resolutionNotes(
+                    "Increased audit flush thread pool from 2 to 4 via configuration change. " +
+                    "Backpressure resolved within 2 minutes of deployment. No events were lost " +
+                    "because the write-ahead buffer absorbed the burst. " +
+                    "Fix: tune async flush thread pools proportional to expected peak write throughput. " +
+                    "Monitor queue depth metric audit.flush.queue.depth as the leading indicator.")
                 .build()
         );
 
         incidentRepository.saveAll(incidents);
         log.info("Seeded {} demo incidents for tenant {}", incidents.size(), tenantId);
+    }
+
+    private void ensureIncidentEmbeddings(UUID tenantId) {
+        List<Incident> resolved = incidentRepository
+                .findByTenantIdAndStatus(tenantId, IncidentStatus.RESOLVED);
+        for (Incident incident : resolved) {
+            if (incident.getResolutionNotes() != null
+                    && !incident.getResolutionNotes().isBlank()) {
+                try {
+                    incidentEmbeddingService.indexIncident(incident);
+                } catch (Exception e) {
+                    log.warn("Failed to index embedding for incidentId={}: {}",
+                            incident.getId(), e.getMessage());
+                }
+            }
+        }
+        log.info("Ensured embeddings for {} resolved demo incident(s)", resolved.size());
     }
 
     private static String fp() {

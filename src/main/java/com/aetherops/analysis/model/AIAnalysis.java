@@ -69,6 +69,11 @@ public class AIAnalysis {
     @Column(name = "prompt_version", length = 20)
     private String promptVersion;
 
+    /** IDs of resolved incidents used as RAG context. */
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "similar_incident_ids", columnDefinition = "TEXT")
+    private List<String> similarIncidentIds;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

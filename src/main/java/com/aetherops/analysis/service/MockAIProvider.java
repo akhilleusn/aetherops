@@ -2,8 +2,10 @@ package com.aetherops.analysis.service;
 
 import com.aetherops.analysis.model.AIAnalysisContext;
 import com.aetherops.analysis.model.AIAnalysisResult;
+import com.aetherops.similarity.model.SimilarIncidentContext;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,26 +43,54 @@ public class MockAIProvider implements AIProvider {
             .map(AIAnalysisContext.EvidenceContext::getEvidenceItemId)
             .toList();
 
+        var similar = context.getSimilarIncidents();
+        List<String> nextChecks = similar != null && !similar.isEmpty()
+                ? buildNextChecksWithSimilar(similar)
+                : SAFE_NEXT_CHECKS;
+
         return AIAnalysisResult.builder()
-            .summary(buildSummary(context, items.size()))
+            .summary(buildSummary(context, items.size(), similar))
             .likelyCause(buildLikelyCause(items))
             .confidenceScore(computeConfidence(items.size()))
             .evidenceRefs(evidenceRefs)
             .unknowns(UNKNOWNS)
-            .recommendedNextChecks(SAFE_NEXT_CHECKS)
+            .recommendedNextChecks(nextChecks)
             .model(MODEL)
             .promptVersion(PROMPT_VERSION)
             .build();
     }
 
-    private String buildSummary(AIAnalysisContext context, int evidenceCount) {
-        return String.format(
+    private String buildSummary(AIAnalysisContext context, int evidenceCount,
+                                List<SimilarIncidentContext> similar) {
+        String base = String.format(
             "Incident in service '%s': %s — supported by %d log evidence item(s). " +
             "Confidence is limited to available log data only.",
             context.getServiceId(),
             context.getIncidentTitle(),
             evidenceCount
         );
+        if (similar == null || similar.isEmpty()) return base;
+        return base + String.format(
+            " %d similar resolved incident(s) found; resolution patterns may apply.",
+            similar.size()
+        );
+    }
+
+    private List<String> buildNextChecksWithSimilar(List<SimilarIncidentContext> similar) {
+        List<String> checks = new ArrayList<>(SAFE_NEXT_CHECKS);
+        SimilarIncidentContext best = similar.get(0);
+        if (best.getResolutionNotes() != null && !best.getResolutionNotes().isBlank()) {
+            checks.add(String.format(
+                "Review resolution from similar past incident '%s': %s",
+                best.getTitle(), best.getResolutionNotes()
+            ));
+        } else {
+            checks.add(String.format(
+                "Review similar past incident '%s' (resolved, similarity %.0f%%)",
+                best.getTitle(), best.getSimilarityScore() * 100
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private String buildLikelyCause(List<AIAnalysisContext.EvidenceContext> items) {

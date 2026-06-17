@@ -15,6 +15,8 @@ import java.util.UUID;
 
 public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSpecificationExecutor<Incident> {
 
+    List<Incident> findByTenantIdAndStatus(UUID tenantId, IncidentStatus status);
+
     Optional<Incident> findByTenantIdAndFingerprintAndStatus(
             UUID tenantId, String fingerprint, IncidentStatus status);
 

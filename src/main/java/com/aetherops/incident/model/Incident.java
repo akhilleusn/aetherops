@@ -83,6 +83,9 @@ public class Incident {
     @Column(name = "correlation_group_id")
     private UUID correlationGroupId;
 
+    @Column(name = "resolution_notes", columnDefinition = "TEXT")
+    private String resolutionNotes;
+
     public void resolve() {
         if (this.status == IncidentStatus.RESOLVED) {
             throw new IllegalStateException("Incident " + id + " is already resolved");

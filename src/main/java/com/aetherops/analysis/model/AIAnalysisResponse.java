@@ -1,5 +1,6 @@
 package com.aetherops.analysis.model;
 
+import com.aetherops.similarity.model.SimilarIncidentContext;
 import lombok.Builder;
 import lombok.Data;
 
@@ -29,4 +30,8 @@ public class AIAnalysisResponse {
     private String model;
     private String promptVersion;
     private Instant createdAt;
+    /** IDs of resolved incidents used as RAG context during analysis (stored). */
+    private List<String> similarIncidentIds;
+    /** Full context of similar incidents — populated on fresh analyze(), empty on getLatest(). */
+    private List<SimilarIncidentContext> similarIncidents;
 }

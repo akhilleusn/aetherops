@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
+import com.aetherops.similarity.model.SimilarIncidentContext;
+import com.aetherops.similarity.service.IncidentEmbeddingService;
 import com.aetherops.usage.UsageBillingService;
 import com.aetherops.config.FeatureFlag;
 import com.aetherops.config.FeatureFlagService;
@@ -41,6 +43,7 @@ public class AIAnalysisService {
     private final MeterRegistry meterRegistry;
     private final UsageBillingService usageBillingService;
     private final FeatureFlagService featureFlagService;
+    private final IncidentEmbeddingService incidentEmbeddingService;
 
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
@@ -61,10 +64,21 @@ public class AIAnalysisService {
         usageLimitService.checkAndIncrement(tenantId, UsageType.AI_ANALYSIS);
         IncidentEvidencePackResponse pack = evidencePackService.getEvidencePack(incidentId, tenantId);
 
-        AIAnalysisContext context = buildContext(pack);
+        List<SimilarIncidentContext> similarIncidents =
+                incidentEmbeddingService.findSimilar(incidentId, tenantId);
+        if (!similarIncidents.isEmpty()) {
+            log.info("Found {} similar incident(s) for RAG context incidentId={}",
+                    similarIncidents.size(), incidentId);
+        }
+
+        AIAnalysisContext context = buildContext(pack, similarIncidents);
         AIAnalysisResult result   = aiProvider.analyze(context);
 
         int version = (int) aiAnalysisRepository.countByIncidentId(incidentId) + 1;
+
+        List<String> similarIncidentIds = similarIncidents.stream()
+                .map(s -> s.getIncidentId().toString())
+                .toList();
 
         AIAnalysis saved = aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
                 .incidentId(incidentId)
@@ -80,6 +94,7 @@ public class AIAnalysisService {
                 .promptVersion(result.getPromptVersion())
                 .analysisVersion(version)
                 .evidenceCount(pack.getTotalEvidenceCount())
+                .similarIncidentIds(similarIncidentIds.isEmpty() ? null : similarIncidentIds)
                 .build());
 
         log.info("Created AI analysis id={} incidentId={} confidence={} evidenceCount={}",
@@ -91,7 +106,9 @@ public class AIAnalysisService {
                 .register(meterRegistry)
                 .increment();
                  usageBillingService.record(tenantId, "AI_ANALYSIS", 1);
-        AIAnalysisResponse response = toResponse(saved);
+        AIAnalysisResponse response = toResponse(saved).toBuilder()
+                .similarIncidents(similarIncidents)
+                .build();
 
         auditLogService.record(
                 tenantId, AuditAction.ANALYSIS_GENERATED, AuditStatus.SUCCESS,
@@ -140,7 +157,8 @@ public class AIAnalysisService {
                         "No analysis found for incident " + incidentId));
     }
 
-    private AIAnalysisContext buildContext(IncidentEvidencePackResponse pack) {
+    private AIAnalysisContext buildContext(IncidentEvidencePackResponse pack,
+                                          List<SimilarIncidentContext> similarIncidents) {
         List<AIAnalysisContext.EvidenceContext> evidenceContexts = pack.getEvidence().stream()
                 .map(item -> AIAnalysisContext.EvidenceContext.builder()
                         .evidenceItemId(item.getId().toString())
@@ -161,6 +179,7 @@ public class AIAnalysisService {
                 .firstSeen(pack.getFirstSeen())
                 .lastSeen(pack.getLastSeen())
                 .evidenceItems(evidenceContexts)
+                .similarIncidents(similarIncidents)
                 .build();
     }
 
@@ -181,6 +200,7 @@ public class AIAnalysisService {
                 .analysisVersion(analysis.getAnalysisVersion())
                 .evidenceCount(analysis.getEvidenceCount())
                 .createdAt(analysis.getCreatedAt())
+                .similarIncidentIds(analysis.getSimilarIncidentIds())
                 .build();
     }
 }

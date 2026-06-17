@@ -42,6 +42,7 @@ public abstract class AbstractIntegrationTest {
             "audit_logs, api_keys, usage_records, tenant_monthly_usage, " +
             "idempotency_keys, incident_events, outbox_events, saga_steps, " +
             "webhook_deliveries, webhook_endpoints, " +
+            "incident_embeddings, incident_reports, " +
             "users, log_events, incidents, services, projects, " +
             "tenants CASCADE"
         );

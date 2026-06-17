@@ -1,5 +1,6 @@
 package com.aetherops.analysis.model;
 
+import com.aetherops.similarity.model.SimilarIncidentContext;
 import lombok.Builder;
 import lombok.Data;
 
@@ -20,6 +21,9 @@ public class AIAnalysisContext {
     private Instant firstSeen;
     private Instant lastSeen;
     private List<EvidenceContext> evidenceItems;
+    /** Resolved incidents with similar embeddings, used as RAG context. */
+    @Builder.Default
+    private List<SimilarIncidentContext> similarIncidents = List.of();
 
     @Data
     @Builder
