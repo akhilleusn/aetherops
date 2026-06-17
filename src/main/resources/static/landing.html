@@ -34,6 +34,10 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.25re
 .theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
 .theme-btn:hover{border-color:var(--gold);color:var(--gold)}
 .theme-btn i{font-size:15px}
+.nav-login{color:var(--muted);font-size:0.875rem;font-family:-apple-system,sans-serif;transition:color 0.2s;padding:0.5rem 0.5rem}
+.nav-login:hover{color:var(--text)}
+.nav-signup{background:transparent;color:var(--text);padding:0.45rem 1rem;border-radius:4px;font-size:0.875rem;font-family:-apple-system,sans-serif;border:1px solid var(--border2);transition:all 0.2s}
+.nav-signup:hover{border-color:var(--gold);color:var(--gold)}
 .nav-cta{background:var(--gold);color:#fff;padding:0.5rem 1.25rem;border-radius:4px;font-size:0.875rem;font-weight:500;cursor:pointer;border:none;font-family:-apple-system,sans-serif;transition:background 0.2s}
 .nav-cta:hover{background:var(--gold2)}
 
@@ -178,6 +182,8 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
       <i class="ti ti-sun" id="themeIcon"></i>
       <span id="themeLabel">Light</span>
     </button>
+    <a class="nav-login" href="/login.html">Log in</a>
+    <a class="nav-signup" href="/register.html">Sign up</a>
     <button class="nav-cta" onclick="window.open('https://docs.google.com/forms/d/e/1FAIpQLSd6OMDqgPELhF4Y1SGecgMIz5Wd4kVyS3RBzNe7kM4rOsKKWg/viewform','_blank')">Request access</button>
   </div>
 </nav>
@@ -334,14 +340,14 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   <p>Join the early access list. We are onboarding backend teams one by one and iterating on real feedback.</p>
   <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
     <button class="btn-gold" onclick="window.open('https://docs.google.com/forms/d/e/1FAIpQLSd6OMDqgPELhF4Y1SGecgMIz5Wd4kVyS3RBzNe7kM4rOsKKWg/viewform','_blank')"><i class="ti ti-arrow-right"></i> Request early access</button>
-    <button class="btn-outline"><i class="ti ti-brand-github"></i> View on GitHub</button>
+    <a class="btn-outline" href="https://github.com/akhilleusn/aetherops" target="_blank" rel="noopener noreferrer"><i class="ti ti-brand-github"></i> View on GitHub</a>
   </div>
 </section>
 
 <footer>
   <div class="logo">Aether<span>Ops</span></div>
   <div class="footer-links">
-    <a href="#">Privacy</a><a href="#">Terms</a><a href="/swagger-ui.html">Docs</a><a href="#">Status</a>
+    <a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/swagger-ui.html">Docs</a><a href="/status.html">Status</a>
   </div>
   <div>&copy; 2026 AetherOps</div>
 </footer>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Status — AetherOps</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+[data-theme="dark"]{
+--bg:#080e18;--bg2:#0d1520;--card:#0f1a28;
+--border:#1e2d3f;--border2:#2a3d52;
+--text:#f0ead8;--text2:#c8bfa8;--muted:#7a8898;--dim:#4a5668;
+--gold:#c9a84c;--gold2:#b8952a;
+--green:#3dd68c;--green-bg:rgba(61,214,140,0.08);--green-border:rgba(61,214,140,0.2);
+--red:#f05252;--red-bg:rgba(240,82,82,0.08);--red-border:rgba(240,82,82,0.2);
+--amber:#f5a623;--amber-bg:rgba(245,166,35,0.08);--amber-border:rgba(245,166,35,0.2);
+}
+[data-theme="light"]{
+--bg:#faf9f7;--bg2:#f2f0eb;--card:#ffffff;
+--border:#ddd8cc;--border2:#c9c0ae;
+--text:#0d1320;--text2:#2a3245;--muted:#6b7080;--dim:#9aa0ae;
+--gold:#b8952a;--gold2:#9a7c20;
+--green:#0d7a4e;--green-bg:#edfaf3;--green-border:#a3e6c8;
+--red:#b91c1c;--red-bg:#fef2f2;--red-border:#fca5a5;
+--amber:#92400e;--amber-bg:#fffbeb;--amber-border:#fcd34d;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6;min-height:100vh}
+a{text-decoration:none;color:var(--gold)}
+a:hover{color:var(--gold2)}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 2.5rem;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
+.logo{font-size:1.2rem;font-weight:700;color:var(--text);font-family:'Georgia',serif;text-decoration:none}
+.logo span{color:var(--gold)}
+.nav-right{display:flex;align-items:center;gap:1rem}
+.back-link{color:var(--muted);font-size:0.875rem;transition:color 0.2s}
+.back-link:hover{color:var(--text)}
+.theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.theme-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+.page{max-width:760px;margin:0 auto;padding:4rem 2.5rem 5rem}
+.page-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:0.75rem}
+h1{font-size:2.25rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:2.5rem;color:var(--text);font-family:'Georgia',serif}
+
+/* Overall status banner */
+.overall{display:flex;align-items:center;gap:1rem;padding:1.25rem 1.5rem;border-radius:8px;margin-bottom:2.5rem;border:1px solid var(--border)}
+.overall.up{background:var(--green-bg);border-color:var(--green-border)}
+.overall.down{background:var(--red-bg);border-color:var(--red-border)}
+.overall.degraded{background:var(--amber-bg);border-color:var(--amber-border)}
+.overall.loading{background:var(--bg2);border-color:var(--border)}
+.overall-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.overall.up .overall-dot{background:var(--green)}
+.overall.down .overall-dot{background:var(--red)}
+.overall.degraded .overall-dot{background:var(--amber)}
+.overall.loading .overall-dot{background:var(--muted);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+.overall-text{font-weight:600;font-size:1rem}
+.overall.up .overall-text{color:var(--green)}
+.overall.down .overall-text{color:var(--red)}
+.overall.degraded .overall-text{color:var(--amber)}
+.overall.loading .overall-text{color:var(--muted)}
+.overall-sub{font-size:0.8125rem;color:var(--muted);margin-left:auto}
+
+/* Component table */
+.components{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.component-header{display:grid;grid-template-columns:1fr auto;align-items:center;padding:0.9rem 1.25rem;font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);background:var(--bg2)}
+.component-row{display:grid;grid-template-columns:1fr auto;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--card);transition:background 0.15s}
+.component-row:last-child{border-bottom:none}
+.component-row:hover{background:var(--bg2)}
+.component-name{font-size:0.9375rem;font-weight:500;color:var(--text);display:flex;align-items:center;gap:10px}
+.component-icon{font-size:0.85rem;color:var(--muted)}
+.component-detail{font-size:0.775rem;color:var(--muted);margin-top:2px}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:0.8125rem;font-weight:600;padding:0.3rem 0.8rem;border-radius:20px}
+.status-pill.up{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.status-pill.down{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.status-pill.degraded{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-border)}
+.status-pill.unknown{background:var(--bg2);color:var(--muted);border:1px solid var(--border)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Refresh controls */
+.controls{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem}
+.section-label{font-size:0.875rem;font-weight:600;color:var(--text2)}
+.refresh-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.35rem 0.9rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.refresh-btn:hover{border-color:var(--gold);color:var(--gold)}
+.refresh-btn.spinning svg{animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.last-checked{font-size:0.775rem;color:var(--dim);margin-top:1.25rem;text-align:right}
+
+footer{border-top:1px solid var(--border);padding:1.75rem 2.5rem;display:flex;align-items:center;justify-content:space-between;font-size:0.8125rem;color:var(--dim);font-family:-apple-system,sans-serif}
+.footer-links{display:flex;gap:1.75rem}
+.footer-links a{color:var(--dim);transition:color 0.2s}
+.footer-links a:hover{color:var(--gold)}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="/landing.html">Aether<span>Ops</span></a>
+  <div class="nav-right">
+    <a class="back-link" href="/landing.html">← Back to home</a>
+    <button class="theme-btn" onclick="toggleTheme()"><span id="themeLabel">Light mode</span></button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-eyebrow">Platform health</div>
+  <h1>System Status</h1>
+
+  <div class="overall loading" id="overallBanner">
+    <div class="overall-dot"></div>
+    <div class="overall-text" id="overallText">Checking…</div>
+    <div class="overall-sub" id="overallSub"></div>
+  </div>
+
+  <div class="controls">
+    <div class="section-label">Components</div>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadHealth()">
+      <svg id="refreshIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 4s1-1 4-1a7 7 0 1 1-4 6"/>
+        <polyline points="1 1 1 5 5 5"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+
+  <div class="components" id="componentList">
+    <div class="component-header"><span>Component</span><span>Status</span></div>
+    <div class="component-row">
+      <div>
+        <div class="component-name">Loading…</div>
+      </div>
+      <div><span class="status-pill unknown"><span class="status-dot"></span>—</span></div>
+    </div>
+  </div>
+
+  <div class="last-checked" id="lastChecked"></div>
+</div>
+
+<footer>
+  <a class="logo" href="/landing.html" style="font-family:'Georgia',serif;font-weight:700;color:var(--text)">Aether<span style="color:var(--gold)">Ops</span></a>
+  <div class="footer-links">
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
+    <a href="/swagger-ui.html">Docs</a>
+    <a href="/status.html">Status</a>
+  </div>
+  <div>&copy; 2026 AetherOps</div>
+</footer>
+
+<script>
+var COMPONENT_LABELS = {
+  db:         { label: 'Database (PostgreSQL)', detail: 'Primary data store' },
+  redis:      { label: 'Redis', detail: 'Cache &amp; rate limiting' },
+  kafka:      { label: 'Kafka', detail: 'Event streaming' },
+  diskSpace:  { label: 'Disk space', detail: 'Storage availability' },
+  ping:       { label: 'Application', detail: 'Service heartbeat' },
+};
+
+function statusClass(s) {
+  if (!s) return 'unknown';
+  return s.toUpperCase() === 'UP' ? 'up' : s.toUpperCase() === 'DOWN' ? 'down' : 'degraded';
+}
+
+function statusLabel(s) {
+  if (!s) return 'Unknown';
+  var u = s.toUpperCase();
+  if (u === 'UP') return 'Operational';
+  if (u === 'DOWN') return 'Outage';
+  return s;
+}
+
+function buildDetail(key, info) {
+  if (!info) return '';
+  if (key === 'diskSpace' && info.total && info.free) {
+    var freeMb = Math.round(info.free / 1024 / 1024);
+    var totalMb = Math.round(info.total / 1024 / 1024);
+    return freeMb + ' MB free of ' + totalMb + ' MB';
+  }
+  if (info.database) return info.database;
+  if (info.version) return 'v' + info.version;
+  return '';
+}
+
+function renderComponents(components) {
+  var list = document.getElementById('componentList');
+  var rows = '<div class="component-header"><span>Component</span><span>Status</span></div>';
+
+  var keys = Object.keys(components);
+  if (keys.length === 0) {
+    rows += '<div class="component-row"><div class="component-name">No component data returned</div><div><span class="status-pill unknown"><span class="status-dot"></span>Unknown</span></div></div>';
+  }
+
+  keys.forEach(function(key) {
+    var comp = components[key];
+    var meta = COMPONENT_LABELS[key] || { label: key, detail: '' };
+    var sc = statusClass(comp.status);
+    var sl = statusLabel(comp.status);
+    var detail = buildDetail(key, comp.details || comp);
+    rows += '<div class="component-row">'
+      + '<div>'
+      + '<div class="component-name">' + meta.label + '</div>'
+      + (meta.detail || detail ? '<div class="component-detail">' + (detail || meta.detail) + '</div>' : '')
+      + '</div>'
+      + '<div><span class="status-pill ' + sc + '"><span class="status-dot"></span>' + sl + '</span></div>'
+      + '</div>';
+  });
+
+  list.innerHTML = rows;
+}
+
+function setOverall(allUp, anyDown, status) {
+  var banner = document.getElementById('overallBanner');
+  var text = document.getElementById('overallText');
+  var sub = document.getElementById('overallSub');
+  banner.className = 'overall ' + (status === 'loading' ? 'loading' : allUp ? 'up' : anyDown ? 'down' : 'degraded');
+  if (status === 'loading') {
+    text.textContent = 'Checking…';
+    sub.textContent = '';
+  } else if (allUp) {
+    text.textContent = 'All systems operational';
+    sub.textContent = 'Everything is running normally.';
+  } else if (anyDown) {
+    text.textContent = 'Service disruption detected';
+    sub.textContent = 'One or more components are down.';
+  } else {
+    text.textContent = 'Partial degradation';
+    sub.textContent = 'Some components are reporting issues.';
+  }
+}
+
+function loadHealth() {
+  var btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  setOverall(false, false, 'loading');
+
+  fetch('/actuator/health')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var components = data.components || {};
+
+      // If no sub-components, treat the top-level status as a single "Application" entry
+      if (Object.keys(components).length === 0) {
+        components = { ping: { status: data.status } };
+      }
+
+      renderComponents(components);
+
+      var statuses = Object.values(components).map(function(c) { return (c.status||'').toUpperCase(); });
+      var allUp = statuses.every(function(s){ return s === 'UP'; });
+      var anyDown = statuses.some(function(s){ return s === 'DOWN'; });
+      setOverall(allUp, anyDown, 'done');
+    })
+    .catch(function() {
+      document.getElementById('componentList').innerHTML =
+        '<div class="component-header"><span>Component</span><span>Status</span></div>'
+        + '<div class="component-row"><div class="component-name">Could not reach health endpoint</div><div><span class="status-pill down"><span class="status-dot"></span>Unreachable</span></div></div>';
+      setOverall(false, true, 'done');
+    })
+    .finally(function() {
+      btn.classList.remove('spinning');
+      var now = new Date();
+      document.getElementById('lastChecked').textContent =
+        'Last checked: ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    });
+}
+
+function toggleTheme(){
+  var html = document.documentElement;
+  var isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeLabel').textContent = isDark ? 'Dark mode' : 'Light mode';
+}
+
+loadHealth();
+setInterval(loadHealth, 30000);
+</script>
+</body>
+</html>
