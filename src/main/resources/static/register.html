@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Register — AetherOps</title>
+<title>Sign Up — AetherOps</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -26,12 +26,35 @@ body {
   border: 1px solid #334155;
   border-radius: 10px;
   box-shadow: 0 4px 24px rgba(0,0,0,.4);
-  padding: 32px;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
+  overflow: hidden;
 }
-h2 { font-size: 18px; font-weight: 700; margin-bottom: 24px; color: #f8fafc; }
-.field { margin-bottom: 16px; }
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #334155;
+}
+.tab {
+  flex: 1;
+  padding: 13px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+  letter-spacing: .01em;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab:hover { color: #94a3b8; background: #162033; }
+.tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: transparent; }
+/* ── Form body ── */
+.card-body { padding: 28px 32px 32px; }
+h2 { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: #f8fafc; }
+.field { margin-bottom: 15px; }
 label {
   display: block;
   font-size: 11px;
@@ -53,9 +76,9 @@ input[type=email], input[type=password], input[type=text] {
   outline: none;
   transition: border-color .15s;
 }
-input[type=email]:focus, input[type=password]:focus, input[type=text]:focus { border-color: #2563eb; }
+input:focus { border-color: #2563eb; }
 input::placeholder { color: #475569; }
-.hint { font-size: 11px; color: #64748b; margin-top: 5px; }
+.hint { font-size: 11px; color: #64748b; margin-top: 5px; line-height: 1.55; }
 .hint code {
   font-family: 'Courier New', monospace;
   background: #0f172a;
@@ -74,31 +97,35 @@ input::placeholder { color: #475569; }
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 8px;
+  margin-top: 6px;
   transition: background .15s;
 }
 .btn-submit:hover { background: #1d4ed8; }
 .btn-submit:disabled { background: #1e3a5f; cursor: not-allowed; }
-.err {
-  background: #2d1515;
-  border: 1px solid #7f1d1d;
-  color: #fca5a5;
-  padding: 10px 14px;
+/* ── Alerts ── */
+.alert {
   border-radius: 6px;
   font-size: 13px;
+  line-height: 1.5;
   margin-bottom: 16px;
-  display: none;
-}
-.ok {
-  background: #052e16;
-  border: 1px solid #166534;
-  color: #86efac;
   padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-bottom: 16px;
   display: none;
 }
+.alert-err { background: #2d1515; border: 1px solid #7f1d1d; color: #fca5a5; }
+.alert-ok  { background: #052e16; border: 1px solid #166534; color: #86efac; }
+.tenant-id-reveal {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #0f172a;
+  border: 1px solid #1e3a5f;
+  border-radius: 5px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #7dd3fc;
+  word-break: break-all;
+  display: none;
+}
+/* ── Footer ── */
 .footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
 .footer-link a { color: #60a5fa; text-decoration: none; }
 .footer-link a:hover { text-decoration: underline; }
@@ -107,29 +134,61 @@ input::placeholder { color: #475569; }
 <body>
 
 <div class="logo">Aether<em>Ops</em></div>
+
 <div class="card">
-  <h2>Create Account</h2>
-  <div class="err" id="err"></div>
-  <div class="ok"  id="ok"></div>
-  <div class="field">
-    <label for="email">Email</label>
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+  <div class="tabs">
+    <button class="tab active" id="tab-new"  onclick="switchTab('new')">New organization</button>
+    <button class="tab"        id="tab-join" onclick="switchTab('join')">Join existing</button>
   </div>
-  <div class="field">
-    <label for="password">Password</label>
-    <input id="password" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+
+  <div class="card-body">
+    <!-- alerts (shared) -->
+    <div class="alert alert-err" id="err"></div>
+    <div class="alert alert-ok"  id="ok"></div>
+    <div class="tenant-id-reveal" id="tenantReveal"></div>
+
+    <!-- ── MODE 1: create new org ── -->
+    <div id="form-new">
+      <h2>Create your organization</h2>
+      <div class="field">
+        <label for="orgName">Organization name</label>
+        <input id="orgName" type="text" placeholder="Acme Engineering" autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="email-new">Email</label>
+        <input id="email-new" type="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password-new">Password</label>
+        <input id="password-new" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+      </div>
+      <button class="btn-submit" id="btn-new" onclick="doCreateOrg()">Create organization</button>
+    </div>
+
+    <!-- ── MODE 2: join existing org ── -->
+    <div id="form-join" style="display:none">
+      <h2>Join your team</h2>
+      <div class="field">
+        <label for="tenantId">Tenant ID</label>
+        <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
+        <p class="hint">
+          Your organisation's Tenant ID — a UUID issued when the workspace was created.
+          Ask your workspace owner if you don't have one.
+        </p>
+      </div>
+      <div class="field">
+        <label for="email-join">Email</label>
+        <input id="email-join" type="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password-join">Password</label>
+        <input id="password-join" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+      </div>
+      <button class="btn-submit" id="btn-join" onclick="doJoinOrg()">Create account</button>
+    </div>
   </div>
-  <div class="field">
-    <label for="tenantId">Tenant ID</label>
-    <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-    <p class="hint">
-      Your organisation's Tenant ID — a UUID issued when your workspace was created.
-      Example: <code>550e8400-e29b-41d4-a716-446655440000</code>.
-      Contact your workspace owner if you don't have one.
-    </p>
-  </div>
-  <button class="btn-submit" id="btn" onclick="doRegister()">Create Account</button>
 </div>
+
 <div class="footer-link">Already have an account? <a href="/login.html">Sign in</a></div>
 
 <script>
@@ -139,28 +198,111 @@ if (localStorage.getItem('ao_token')) {
   window.location.replace('/index.html');
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
+let activeTab = 'new';
 
-async function doRegister() {
-  const email    = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const tenantId = document.getElementById('tenantId').value.trim();
-  const btn      = document.getElementById('btn');
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    activeTab === 'new' ? doCreateOrg() : doJoinOrg();
+  }
+});
+
+function switchTab(tab) {
+  activeTab = tab;
+  hideMessages();
+  document.getElementById('tab-new').classList.toggle('active', tab === 'new');
+  document.getElementById('tab-join').classList.toggle('active', tab === 'join');
+  document.getElementById('form-new').style.display  = tab === 'new'  ? '' : 'none';
+  document.getElementById('form-join').style.display = tab === 'join' ? '' : 'none';
+}
+
+// ── Mode 1: Create new org ─────────────────────────────────────────────────
+
+async function doCreateOrg() {
+  const orgName  = document.getElementById('orgName').value.trim();
+  const email    = document.getElementById('email-new').value.trim();
+  const password = document.getElementById('password-new').value;
+  const btn      = document.getElementById('btn-new');
 
   hideMessages();
 
-  if (!email || !password || !tenantId) {
-    showErr('All fields are required.');
-    return;
+  if (!orgName)    { showErr('Organization name is required.'); return; }
+  if (orgName.length < 2) { showErr('Organization name must be at least 2 characters.'); return; }
+  if (!email)      { showErr('Email is required.'); return; }
+  if (!password)   { showErr('Password is required.'); return; }
+  if (password.length < 8) { showErr('Password must be at least 8 characters.'); return; }
+
+  setLoading(btn, true, 'Creating organization…');
+
+  try {
+    // Step 1: create the tenant
+    const tenantRes = await fetch('/api/v1/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: orgName,
+        plan: 'FREE',
+        aiMonthlyBudgetCents: 0,
+        retentionDays: 7
+      })
+    });
+    const tenantBody = await tenantRes.json().catch(() => null);
+    if (!tenantRes.ok || !tenantBody?.success) {
+      const msg = tenantBody?.message || tenantBody?.error || 'Failed to create organization.';
+      showErr(msg);
+      return;
+    }
+
+    const tenantId = tenantBody.data.id;
+
+    // Step 2: register the first user under that tenant
+    const regRes = await fetch('/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, tenantId })
+    });
+    const regBody = await regRes.json().catch(() => null);
+    if (!regRes.ok || !regBody?.success) {
+      const msg = regBody?.message || regBody?.error || 'Account registration failed.';
+      showErr(msg);
+      return;
+    }
+
+    // Success
+    showOk(
+      '✓ Organization “' + orgName + '” created and account registered! ' +
+      'Check your email to verify your account before signing in.'
+    );
+    revealTenantId(tenantId);
+    setTimeout(() => window.location.replace('/login.html'), 5000);
+
+  } catch (_) {
+    showErr('Could not reach the server. Please try again.');
+  } finally {
+    setLoading(btn, false, 'Create organization');
   }
+}
+
+// ── Mode 2: Join existing org ──────────────────────────────────────────────
+
+async function doJoinOrg() {
+  const tenantId = document.getElementById('tenantId').value.trim();
+  const email    = document.getElementById('email-join').value.trim();
+  const password = document.getElementById('password-join').value;
+  const btn      = document.getElementById('btn-join');
+
+  hideMessages();
+
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!tenantId)           { showErr('Tenant ID is required.'); return; }
   if (!uuidRe.test(tenantId)) {
     showErr('Tenant ID must be a valid UUID (e.g. 550e8400-e29b-41d4-a716-446655440000).');
     return;
   }
+  if (!email)    { showErr('Email is required.'); return; }
+  if (!password) { showErr('Password is required.'); return; }
+  if (password.length < 8) { showErr('Password must be at least 8 characters.'); return; }
 
-  btn.disabled = true;
-  btn.textContent = 'Creating account…';
+  setLoading(btn, true, 'Creating account…');
 
   try {
     const r = await fetch('/api/v1/auth/register', {
@@ -170,17 +312,23 @@ async function doRegister() {
     });
     const body = await r.json().catch(() => null);
     if (!r.ok || !body?.success) {
-      showErr(body?.message || 'Registration failed. Please try again.');
+      showErr(body?.message || body?.error || 'Registration failed. Please try again.');
       return;
     }
-    showOk('Account created! Redirecting to sign in…');
-    setTimeout(() => window.location.replace('/login.html'), 1500);
+    showOk('✓ Account created! Check your email to verify before signing in.');
+    setTimeout(() => window.location.replace('/login.html'), 3000);
   } catch (_) {
     showErr('Could not reach the server. Please try again.');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Create Account';
+    setLoading(btn, false, 'Create account');
   }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function setLoading(btn, loading, label) {
+  btn.disabled = loading;
+  btn.textContent = label;
 }
 
 function showErr(msg) {
@@ -188,14 +336,23 @@ function showErr(msg) {
   el.textContent = msg;
   el.style.display = 'block';
 }
+
 function showOk(msg) {
   const el = document.getElementById('ok');
   el.textContent = msg;
   el.style.display = 'block';
 }
+
+function revealTenantId(id) {
+  const el = document.getElementById('tenantReveal');
+  el.textContent = 'Tenant ID (share with teammates): ' + id;
+  el.style.display = 'block';
+}
+
 function hideMessages() {
   document.getElementById('err').style.display = 'none';
   document.getElementById('ok').style.display  = 'none';
+  document.getElementById('tenantReveal').style.display = 'none';
 }
 </script>
 </body>
