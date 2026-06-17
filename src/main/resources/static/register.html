@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,191 +8,170 @@
 <link rel="icon" href="/weblogos/logo-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/weblogos/logo-180.png">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: system-ui,-apple-system,'Segoe UI',sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  background: #0f172a;
-  color: #f8fafc;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+*{margin:0;padding:0;box-sizing:border-box}
+[data-theme="dark"]{
+--bg:#080e18;--bg2:#0d1520;--card:#0f1a28;
+--border:#1e2d3f;--border2:#2a3d52;
+--text:#f0ead8;--text2:#c8bfa8;--muted:#7a8898;--dim:#4a5668;
+--gold:#c9a84c;--gold2:#b8952a;
+--err-bg:rgba(180,40,40,0.12);--err-border:rgba(200,60,60,0.28);--err-text:#fca5a5;
+--ok-bg:rgba(40,160,80,0.10);--ok-border:rgba(50,180,100,0.28);--ok-text:#86efac;
 }
-.logo { font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 28px; text-align: center; }
-.logo em { font-style: normal; color: #60a5fa; }
-.card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.4);
-  width: 100%;
-  max-width: 420px;
-  overflow: hidden;
+[data-theme="light"]{
+--bg:#faf9f7;--bg2:#f2f0eb;--card:#ffffff;
+--border:#ddd8cc;--border2:#c9c0ae;
+--text:#0d1320;--text2:#2a3245;--muted:#6b7080;--dim:#9aa0ae;
+--gold:#b8952a;--gold2:#9a7c20;
+--err-bg:#fef2f2;--err-border:#fca5a5;--err-text:#991b1b;
+--ok-bg:#f0fdf4;--ok-border:#a3e6c8;--ok-text:#166534;
 }
-/* ── Tabs ── */
-.tabs {
-  display: flex;
-  border-bottom: 1px solid #334155;
+
+/* Layout */
+body{
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;
+  background-color:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;
+  background-image:radial-gradient(circle,rgba(201,168,76,0.13) 1px,transparent 1px);
+  background-size:40px 40px;
 }
-.tab {
-  flex: 1;
-  padding: 13px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color .15s, background .15s;
-  letter-spacing: .01em;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+[data-theme="light"] body{
+  background-image:radial-gradient(circle,rgba(20,40,90,0.06) 1px,transparent 1px);
 }
-.tab:hover { color: #94a3b8; background: #162033; }
-.tab.active { color: #60a5fa; border-bottom-color: #2563eb; background: transparent; }
-/* ── Form body ── */
-.card-body { padding: 28px 32px 32px; }
-h2 { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: #f8fafc; }
-.field { margin-bottom: 15px; }
-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
+
+/* Nav */
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
+.logo{font-size:1.2rem;font-weight:700;color:var(--text);font-family:'Georgia',serif;text-decoration:none}
+.logo span{color:var(--gold)}
+.nav-right{display:flex;align-items:center;gap:1rem}
+.theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.theme-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+/* Page center */
+.page-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2.5rem 1.5rem}
+
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12)}
+[data-theme="dark"] .card{box-shadow:0 4px 28px rgba(0,0,0,0.45)}
+
+/* Tabs */
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tab{flex:1;padding:13px 12px;font-size:13px;font-weight:600;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:color .15s,background .15s;letter-spacing:.01em;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:var(--text2);background:var(--bg2)}
+.tab.active{color:var(--gold);border-bottom-color:var(--gold);background:transparent}
+
+/* Form body */
+.card-body{padding:28px 32px 32px}
+h2{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--text);font-family:'Georgia',serif}
+
+/* Fields */
+.field{margin-bottom:15px}
+label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+[data-theme="light"] label{color:var(--text2)}
+
+input[type=email],input[type=password],input[type=text]{
+  width:100%;padding:9px 12px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .15s;
 }
-input[type=email], input[type=password], input[type=text] {
-  width: 100%;
-  padding: 9px 12px;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  color: #f8fafc;
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color .15s;
+input:focus{border-color:var(--gold)}
+input::placeholder{color:var(--muted)}
+[data-theme="light"] input::placeholder{color:var(--dim)}
+
+/* Hint text */
+.hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.55}
+[data-theme="light"] .hint{color:var(--text2)}
+.hint code{font-family:'Courier New',monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;font-size:10px;color:var(--text2)}
+
+/* Submit button */
+.btn-submit{
+  width:100%;padding:10px;background:var(--gold);color:#fff;
+  border:none;border-radius:6px;font-size:14px;font-weight:600;
+  cursor:pointer;margin-top:6px;transition:background .15s;
 }
-input:focus { border-color: #2563eb; }
-input::placeholder { color: #475569; }
-.hint { font-size: 11px; color: #64748b; margin-top: 5px; line-height: 1.55; }
-.hint code {
-  font-family: 'Courier New', monospace;
-  background: #0f172a;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 10px;
-  color: #94a3b8;
-}
-.btn-submit {
-  width: 100%;
-  padding: 10px;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 6px;
-  transition: background .15s;
-}
-.btn-submit:hover { background: #1d4ed8; }
-.btn-submit:disabled { background: #1e3a5f; cursor: not-allowed; }
-/* ── Alerts ── */
-.alert {
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  display: none;
-}
-.alert-err { background: #2d1515; border: 1px solid #7f1d1d; color: #fca5a5; }
-.alert-ok  { background: #052e16; border: 1px solid #166534; color: #86efac; }
-.tenant-id-reveal {
-  margin-top: 8px;
-  padding: 8px 10px;
-  background: #0f172a;
-  border: 1px solid #1e3a5f;
-  border-radius: 5px;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  color: #7dd3fc;
-  word-break: break-all;
-  display: none;
-}
-/* ── Footer ── */
-.footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
-.footer-link a { color: #60a5fa; text-decoration: none; }
-.footer-link a:hover { text-decoration: underline; }
+.btn-submit:hover{background:var(--gold2)}
+.btn-submit:disabled{opacity:0.5;cursor:not-allowed}
+
+/* Alerts */
+.alert{border-radius:6px;font-size:13px;line-height:1.5;margin-bottom:16px;padding:10px 14px;display:none}
+.alert-err{background:var(--err-bg);border:1px solid var(--err-border);color:var(--err-text)}
+.alert-ok{background:var(--ok-bg);border:1px solid var(--ok-border);color:var(--ok-text)}
+
+/* Tenant ID reveal */
+.tenant-id-reveal{margin-top:8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--gold);border-radius:5px;font-family:'Courier New',monospace;font-size:12px;color:var(--gold);word-break:break-all;display:none}
+
+/* Footer link */
+.footer-link{text-align:center;margin-top:20px;font-size:13px;color:var(--muted)}
+.footer-link a{color:var(--gold);text-decoration:none}
+.footer-link a:hover{color:var(--gold2);text-decoration:underline}
 </style>
 </head>
 <body>
 
-<div class="logo">Aether<em>Ops</em></div>
-
-<div class="card">
-  <div class="tabs">
-    <button class="tab active" id="tab-new"  onclick="switchTab('new')">New organization</button>
-    <button class="tab"        id="tab-join" onclick="switchTab('join')">Join existing</button>
+<nav>
+  <a class="logo" href="/landing.html">Aether<span>Ops</span></a>
+  <div class="nav-right">
+    <button class="theme-btn" onclick="toggleTheme()"><span id="themeLabel">Light mode</span></button>
   </div>
+</nav>
 
-  <div class="card-body">
-    <!-- alerts (shared) -->
-    <div class="alert alert-err" id="err"></div>
-    <div class="alert alert-ok"  id="ok"></div>
-    <div class="tenant-id-reveal" id="tenantReveal"></div>
-
-    <!-- ── MODE 1: create new org ── -->
-    <div id="form-new">
-      <h2>Create your organization</h2>
-      <div class="field">
-        <label for="orgName">Organization name</label>
-        <input id="orgName" type="text" placeholder="Acme Engineering" autocomplete="organization">
-      </div>
-      <div class="field">
-        <label for="email-new">Email</label>
-        <input id="email-new" type="email" placeholder="you@example.com" autocomplete="email">
-      </div>
-      <div class="field">
-        <label for="password-new">Password</label>
-        <input id="password-new" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
-      </div>
-      <button class="btn-submit" id="btn-new" onclick="doCreateOrg()">Create organization</button>
+<div class="page-center">
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" id="tab-new"  onclick="switchTab('new')">New organization</button>
+      <button class="tab"        id="tab-join" onclick="switchTab('join')">Join existing</button>
     </div>
 
-    <!-- ── MODE 2: join existing org ── -->
-    <div id="form-join" style="display:none">
-      <h2>Join your team</h2>
-      <div class="field">
-        <label for="tenantId">Tenant ID</label>
-        <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
-        <p class="hint">
-          Your organisation's Tenant ID — a UUID issued when the workspace was created.
-          Ask your workspace owner if you don't have one.
-        </p>
+    <div class="card-body">
+      <!-- alerts (shared) -->
+      <div class="alert alert-err" id="err"></div>
+      <div class="alert alert-ok"  id="ok"></div>
+      <div class="tenant-id-reveal" id="tenantReveal"></div>
+
+      <!-- ── MODE 1: create new org ── -->
+      <div id="form-new">
+        <h2>Create your organization</h2>
+        <div class="field">
+          <label for="orgName">Organization name</label>
+          <input id="orgName" type="text" placeholder="Acme Engineering" autocomplete="organization">
+        </div>
+        <div class="field">
+          <label for="email-new">Email</label>
+          <input id="email-new" type="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password-new">Password</label>
+          <input id="password-new" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+        </div>
+        <button class="btn-submit" id="btn-new" onclick="doCreateOrg()">Create organization</button>
       </div>
-      <div class="field">
-        <label for="email-join">Email</label>
-        <input id="email-join" type="email" placeholder="you@example.com" autocomplete="email">
+
+      <!-- ── MODE 2: join existing org ── -->
+      <div id="form-join" style="display:none">
+        <h2>Join your team</h2>
+        <div class="field">
+          <label for="tenantId">Tenant ID</label>
+          <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
+          <p class="hint">
+            Your organisation's Tenant ID — a UUID issued when the workspace was created.
+            Ask your workspace owner if you don't have one.
+          </p>
+        </div>
+        <div class="field">
+          <label for="email-join">Email</label>
+          <input id="email-join" type="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password-join">Password</label>
+          <input id="password-join" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
+        </div>
+        <button class="btn-submit" id="btn-join" onclick="doJoinOrg()">Create account</button>
       </div>
-      <div class="field">
-        <label for="password-join">Password</label>
-        <input id="password-join" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
-      </div>
-      <button class="btn-submit" id="btn-join" onclick="doJoinOrg()">Create account</button>
     </div>
   </div>
+
+  <div class="footer-link">Already have an account? <a href="/login.html">Sign in</a></div>
 </div>
-
-<div class="footer-link">Already have an account? <a href="/login.html">Sign in</a></div>
 
 <script>
 'use strict';
@@ -272,7 +251,7 @@ async function doCreateOrg() {
 
     // Success
     showOk(
-      '✓ Organization “' + orgName + '” created and account registered! ' +
+      '✓ Organization "' + orgName + '" created and account registered! ' +
       'Check your email to verify your account before signing in.'
     );
     revealTenantId(tenantId);
@@ -356,6 +335,13 @@ function hideMessages() {
   document.getElementById('err').style.display = 'none';
   document.getElementById('ok').style.display  = 'none';
   document.getElementById('tenantReveal').style.display = 'none';
+}
+
+function toggleTheme() {
+  var html = document.documentElement;
+  var isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeLabel').textContent = isDark ? 'Dark mode' : 'Light mode';
 }
 </script>
 </body>
