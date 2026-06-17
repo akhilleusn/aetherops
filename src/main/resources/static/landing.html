@@ -165,6 +165,12 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
 .footer-links{display:flex;gap:1.75rem}
 .footer-links a{color:var(--dim);text-decoration:none;transition:color 0.2s}
 .footer-links a:hover{color:var(--gold)}
+
+/* TELEMETRY HERO BACKGROUND */
+.hero-outer{position:relative;overflow:hidden}
+.hero-outer::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 55% 55% at 50% 38%,rgba(8,14,24,0.62) 0%,transparent 100%),linear-gradient(to bottom,transparent 72%,var(--bg) 100%);pointer-events:none;z-index:1}
+#telemetryBg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block;z-index:0}
+.hero{position:relative;z-index:2}
 </style>
 </head>
 <body>
@@ -188,6 +194,8 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   </div>
 </nav>
 
+<div class="hero-outer">
+<canvas id="telemetryBg" aria-hidden="true"></canvas>
 <section class="hero">
   <div class="hero-eyebrow"><i class="ti ti-activity-heartbeat" aria-hidden="true"></i> AI-powered incident intelligence</div>
   <h1>Stop reading logs.<br><em>Understand</em> what broke.</h1>
@@ -214,6 +222,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
     </div>
   </div>
 </section>
+</div>
 
 <hr class="divider">
 
@@ -360,6 +369,229 @@ function toggleTheme(){
   document.getElementById('themeIcon').className=isDark?'ti ti-moon':'ti ti-sun';
   document.getElementById('themeLabel').textContent=isDark?'Light':'Dark';
 }
+</script>
+
+<script>
+/* ── Telemetry hero background ─────────────────────────────────────────── */
+;(function(){
+  var canvas=document.getElementById('telemetryBg');
+  if(!canvas)return;
+  var ctx=canvas.getContext('2d');
+
+  /* Scene ─────────────────────────────────────────────────────────────── */
+
+  // Positions as fractions of canvas W/H.
+  // Nodes hug the LEFT and RIGHT margins (outside the ~820px centered content)
+  // and the BOTTOM edge (below the terminal widget).
+  var NODES=[
+    {id:'gw',    label:'api-gateway', fx:0.045, fy:0.13, st:'ok'  },
+    {id:'auth',  label:'auth-svc',    fx:0.065, fy:0.52, st:'ok'  },
+    {id:'pay',   label:'payment-svc', fx:0.20,  fy:0.87, st:'warn'},
+    {id:'pg',    label:'postgres',    fx:0.50,  fy:0.95, st:'crit'},
+    {id:'redis', label:'redis',       fx:0.80,  fy:0.87, st:'ok'  },
+    {id:'ord',   label:'order-svc',   fx:0.935, fy:0.52, st:'ok'  },
+    {id:'kafka', label:'kafka',       fx:0.955, fy:0.13, st:'ok'  },
+  ];
+
+  var EDGES=[
+    ['gw','auth'],['gw','ord'],['gw','pay'],
+    ['auth','pg'],['pay','pg'],['pay','redis'],
+    ['ord','redis'],['ord','kafka'],
+  ];
+
+  // Fixed sparkline data — baseline with a latency spike
+  var SPARK=(function(){
+    var d=[];
+    for(var i=0;i<22;i++){
+      var base=0.18+0.06*Math.sin(i*0.65);
+      var spike=(i>=9&&i<=13)?0.78*Math.exp(-0.9*Math.pow(i-11,2)):0;
+      d.push(Math.min(0.98,base+spike));
+    }
+    return d;
+  }());
+
+  /* Node map ──────────────────────────────────────────────────────────── */
+  var nodeMap={};
+  NODES.forEach(function(n){nodeMap[n.id]=n;});
+
+  /* Particles ─────────────────────────────────────────────────────────── */
+  var particles=[];
+  EDGES.forEach(function(e,i){
+    particles.push({ei:i,t:Math.random(),spd:0.0009+Math.random()*0.0007});
+    // Every other edge gets a second particle, offset by half
+    if(i%2===0) particles.push({ei:i,t:(Math.random()+0.5)%1,spd:0.0008+Math.random()*0.0006});
+  });
+
+  /* State ─────────────────────────────────────────────────────────────── */
+  var W=0,H=0,T=0,raf=null;
+
+  function resize(){
+    W=canvas.width =canvas.offsetWidth;
+    H=canvas.height=canvas.offsetHeight;
+  }
+
+  function nx(n){return n.fx*W;}
+  function ny(n){return n.fy*H;}
+
+  function stRgb(st){
+    if(st==='warn')return[201,168,76];
+    if(st==='crit')return[215,65,65];
+    return[55,195,125];
+  }
+  function rgba(rgb,a){return'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+a+')';}
+
+  /* Draw helpers ────────────────────────────────────────────────────────*/
+
+  function drawGrid(){
+    var sp=46;
+    ctx.fillStyle='rgba(36,56,88,0.13)';
+    for(var x=sp*0.5;x<W;x+=sp){
+      for(var y=sp*0.5;y<H;y+=sp){
+        ctx.beginPath();ctx.arc(x,y,1,0,6.2832);ctx.fill();
+      }
+    }
+  }
+
+  function drawEdges(){
+    ctx.save();
+    ctx.strokeStyle='rgba(36,56,96,0.20)';
+    ctx.lineWidth=1;
+    EDGES.forEach(function(e){
+      var a=nodeMap[e[0]],b=nodeMap[e[1]];
+      if(!a||!b)return;
+      ctx.beginPath();ctx.moveTo(nx(a),ny(a));ctx.lineTo(nx(b),ny(b));ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function drawParticles(){
+    particles.forEach(function(p){
+      var e=EDGES[p.ei];
+      var a=nodeMap[e[0]],b=nodeMap[e[1]];
+      if(!a||!b)return;
+      var x=nx(a)+(nx(b)-nx(a))*p.t;
+      var y=ny(a)+(ny(b)-ny(a))*p.t;
+
+      // Soft glow
+      var g=ctx.createRadialGradient(x,y,0,x,y,8);
+      g.addColorStop(0,'rgba(118,180,248,0.38)');
+      g.addColorStop(1,'rgba(118,180,248,0)');
+      ctx.beginPath();ctx.arc(x,y,8,0,6.2832);
+      ctx.fillStyle=g;ctx.fill();
+
+      // Core
+      ctx.beginPath();ctx.arc(x,y,2.2,0,6.2832);
+      ctx.fillStyle='rgba(155,210,255,0.72)';ctx.fill();
+
+      p.t+=p.spd;if(p.t>1)p.t=0;
+    });
+  }
+
+  function drawNodes(){
+    NODES.forEach(function(n){
+      var x=nx(n),y=ny(n),r=15;
+      var col=stRgb(n.st);
+      var ph=T+n.id.charCodeAt(0)*0.41;
+
+      // Pulse ring — alert nodes only
+      if(n.st!=='ok'){
+        var pr=r*(1.7+0.35*Math.sin(ph*1.15));
+        var pa=0.07+0.05*Math.sin(ph*1.15);
+        ctx.beginPath();ctx.arc(x,y,pr,0,6.2832);
+        ctx.strokeStyle=rgba(col,pa);ctx.lineWidth=1.5;ctx.stroke();
+      }
+
+      // Body fill
+      ctx.beginPath();ctx.arc(x,y,r,0,6.2832);
+      ctx.fillStyle='rgba(5,10,22,0.80)';ctx.fill();
+
+      // Border
+      var borderAlpha=n.st==='ok'?0.28:0.58;
+      ctx.strokeStyle=rgba(col,borderAlpha);
+      ctx.lineWidth=1.2;ctx.stroke();
+
+      // Inner status dot
+      ctx.beginPath();ctx.arc(x,y,3.5,0,6.2832);
+      ctx.fillStyle=rgba(col,n.st==='ok'?0.52:0.88);ctx.fill();
+
+      // Label
+      ctx.save();
+      ctx.font='9px monospace';
+      ctx.fillStyle='rgba(78,112,148,0.40)';
+      ctx.textAlign='center';
+      ctx.fillText(n.label,x,y+r+13);
+      ctx.restore();
+    });
+  }
+
+  function drawSparkline(){
+    // Positioned in the upper-right clear zone, safely outside the 820px content
+    var pw=90,ph=28;
+    var px=W*0.855-pw*0.5;
+    var py=H*0.195;
+    if(px+pw>W-6)px=W-pw-6;   // guard right edge
+
+    // Panel
+    ctx.fillStyle='rgba(5,10,22,0.52)';
+    ctx.strokeStyle='rgba(36,56,96,0.28)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.rect(px,py,pw,ph);ctx.fill();ctx.stroke();
+
+    // Tiny label
+    ctx.save();
+    ctx.font='7.5px monospace';
+    ctx.fillStyle='rgba(78,112,148,0.38)';
+    ctx.textAlign='left';
+    ctx.fillText('p99 latency',px+4,py+8);
+    ctx.restore();
+
+    // Sparkline path
+    var pad=4,inner=ph-10;
+    ctx.beginPath();
+    SPARK.forEach(function(v,i){
+      var sx=px+pad+i*(pw-pad*2)/(SPARK.length-1);
+      var sy=py+ph-pad-v*inner;
+      i===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+    });
+    ctx.strokeStyle='rgba(215,65,65,0.52)';
+    ctx.lineWidth=1.2;ctx.lineJoin='round';ctx.stroke();
+  }
+
+  /* Main loop ──────────────────────────────────────────────────────────*/
+
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+
+    if(document.documentElement.getAttribute('data-theme')!=='light'){
+      drawGrid();
+      drawEdges();
+      drawParticles();
+      drawNodes();
+      if(W>560)drawSparkline();
+    }
+
+    T+=0.006;
+    raf=requestAnimationFrame(frame);
+  }
+
+  /* Init ───────────────────────────────────────────────────────────────*/
+
+  // Resize on parent change
+  if(typeof ResizeObserver!=='undefined'){
+    new ResizeObserver(resize).observe(canvas.parentElement);
+  }else{
+    window.addEventListener('resize',resize);
+  }
+
+  // Pause when tab is hidden to save CPU
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){cancelAnimationFrame(raf);raf=null;}
+    else if(!raf){frame();}
+  });
+
+  resize();
+  frame();
+}());
 </script>
 </body>
 </html>
