@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,182 +8,159 @@
 <link rel="icon" href="/weblogos/logo-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/weblogos/logo-180.png">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: system-ui,-apple-system,'Segoe UI',sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  background: #0f172a;
-  color: #f8fafc;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+*{margin:0;padding:0;box-sizing:border-box}
+[data-theme="dark"]{
+--bg:#080e18;--bg2:#0d1520;--card:#0f1a28;
+--border:#1e2d3f;--border2:#2a3d52;
+--text:#f0ead8;--text2:#c8bfa8;--muted:#7a8898;--dim:#4a5668;
+--gold:#c9a84c;--gold2:#b8952a;
+--err-bg:rgba(180,40,40,0.12);--err-border:rgba(200,60,60,0.28);--err-text:#fca5a5;
+--ok-bg:rgba(40,160,80,0.10);--ok-border:rgba(50,180,100,0.28);--ok-text:#86efac;
+--warn-bg:rgba(180,100,0,0.12);--warn-border:rgba(201,168,76,0.35);--warn-text:#c9a84c;
 }
-.logo { font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 28px; text-align: center; }
-.logo span { color: #60a5fa; }
-.card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.4);
-  padding: 32px;
-  width: 100%;
-  max-width: 440px;
+[data-theme="light"]{
+--bg:#faf9f7;--bg2:#f2f0eb;--card:#ffffff;
+--border:#ddd8cc;--border2:#c9c0ae;
+--text:#0d1320;--text2:#2a3245;--muted:#6b7080;--dim:#9aa0ae;
+--gold:#b8952a;--gold2:#9a7c20;
+--err-bg:#fef2f2;--err-border:#fca5a5;--err-text:#991b1b;
+--ok-bg:#f0fdf4;--ok-border:#a3e6c8;--ok-text:#166534;
+--warn-bg:#fffbeb;--warn-border:#fcd34d;--warn-text:#92400e;
 }
-h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #f8fafc; }
-.subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
-.step { margin-bottom: 24px; }
-.step-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #60a5fa;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  margin-bottom: 8px;
+
+body{
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;
+  background-color:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;
+  background-image:radial-gradient(circle,rgba(201,168,76,0.13) 1px,transparent 1px);
+  background-size:40px 40px;
 }
-.qr-wrap { display: flex; justify-content: center; margin: 16px 0; }
-#qr-canvas { border-radius: 6px; background: #fff; padding: 8px; }
-.secret-box {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  padding: 10px 14px;
-  font-family: monospace;
-  font-size: 13px;
-  word-break: break-all;
-  color: #94a3b8;
-  margin-top: 8px;
-  text-align: center;
+[data-theme="light"] body{
+  background-image:radial-gradient(circle,rgba(20,40,90,0.06) 1px,transparent 1px);
 }
-.backup-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 8px;
+
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
+.logo{font-size:1.2rem;font-weight:700;color:var(--text);font-family:'Georgia',serif;text-decoration:none}
+.logo span{color:var(--gold)}
+.nav-right{display:flex;align-items:center;gap:1rem}
+.theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
+.theme-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+.page-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2.5rem 1.5rem}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 24px rgba(0,0,0,0.12)}
+[data-theme="dark"] .card{box-shadow:0 4px 28px rgba(0,0,0,0.45)}
+
+h2{font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text);font-family:'Georgia',serif}
+.subtitle{font-size:13px;color:var(--muted);margin-bottom:24px}
+[data-theme="light"] .subtitle{color:var(--text2)}
+
+.step{margin-bottom:24px}
+.step-label{font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.step-desc{font-size:13px;color:var(--muted);margin-bottom:0}
+[data-theme="light"] .step-desc{color:var(--text2)}
+
+.qr-wrap{display:flex;justify-content:center;margin:16px 0}
+/* QR code always needs white background for scanner compatibility */
+#qr-canvas{border-radius:6px;background:#fff;padding:8px}
+
+.secret-box{
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  padding:10px 14px;font-family:monospace;font-size:13px;
+  word-break:break-all;color:var(--text2);margin-top:8px;text-align:center;
 }
-.backup-code {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 6px 10px;
-  font-family: monospace;
-  font-size: 13px;
-  color: #94a3b8;
-  text-align: center;
+.qr-hint{font-size:12px;color:var(--dim);text-align:center;margin-top:4px}
+[data-theme="light"] .qr-hint{color:var(--muted)}
+
+.backup-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.backup-code{
+  background:var(--bg2);border:1px solid var(--border);border-radius:4px;
+  padding:6px 10px;font-family:monospace;font-size:13px;
+  color:var(--text2);text-align:center;
 }
-.warn {
-  background: #27180a;
-  border: 1px solid #7c4a00;
-  color: #fbbf24;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  margin-top: 10px;
+
+.warn{
+  background:var(--warn-bg);border:1px solid var(--warn-border);
+  color:var(--warn-text);padding:10px 14px;border-radius:6px;
+  font-size:12px;margin-top:10px;
 }
-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
+
+label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+[data-theme="light"] label{color:var(--text2)}
+
+input[type=text]{
+  width:100%;padding:9px 12px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-size:14px;font-family:inherit;outline:none;
+  letter-spacing:4px;text-align:center;transition:border-color .15s;
 }
-input[type=text] {
-  width: 100%;
-  padding: 9px 12px;
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  color: #f8fafc;
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-  letter-spacing: 4px;
-  text-align: center;
-  transition: border-color .15s;
+input[type=text]:focus{border-color:var(--gold)}
+input::placeholder{color:var(--muted)}
+[data-theme="light"] input::placeholder{color:var(--dim)}
+
+.btn-submit{
+  width:100%;padding:10px;background:var(--gold);color:#fff;
+  border:none;border-radius:6px;font-size:14px;font-weight:600;
+  cursor:pointer;margin-top:8px;transition:background .15s;
 }
-input[type=text]:focus { border-color: #2563eb; }
-.btn-submit {
-  width: 100%;
-  padding: 10px;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 8px;
-  transition: background .15s;
-}
-.btn-submit:hover { background: #1d4ed8; }
-.btn-submit:disabled { background: #1e3a5f; cursor: not-allowed; }
-.err {
-  background: #2d1515;
-  border: 1px solid #7f1d1d;
-  color: #fca5a5;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-bottom: 16px;
-  display: none;
-}
-.ok {
-  background: #052e16;
-  border: 1px solid #166534;
-  color: #86efac;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-bottom: 16px;
-  display: none;
-}
-.footer-link { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
-.footer-link a { color: #60a5fa; text-decoration: none; }
-.footer-link a:hover { text-decoration: underline; }
-#setup-content { display: none; }
+.btn-submit:hover{background:var(--gold2)}
+.btn-submit:disabled{opacity:0.5;cursor:not-allowed}
+
+.err{background:var(--err-bg);border:1px solid var(--err-border);color:var(--err-text);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px;display:none}
+.ok{background:var(--ok-bg);border:1px solid var(--ok-border);color:var(--ok-text);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px;display:none}
+
+.footer-link{text-align:center;margin-top:20px;font-size:13px;color:var(--muted)}
+.footer-link a{color:var(--gold);text-decoration:none}
+.footer-link a:hover{color:var(--gold2);text-decoration:underline}
+
+#setup-content{display:none}
 </style>
 </head>
 <body>
 
-<div class="logo">Aether<span>Ops</span></div>
-<div class="card">
-  <h2>Enable Two-Factor Auth</h2>
-  <p class="subtitle">Protect your account with a time-based authenticator app.</p>
-  <div class="err" id="err"></div>
-  <div class="ok"  id="ok"></div>
+<nav>
+  <a class="logo" href="/landing.html">Aether<span>Ops</span></a>
+  <div class="nav-right">
+    <button class="theme-btn" onclick="toggleTheme()"><span id="themeLabel">Light mode</span></button>
+  </div>
+</nav>
 
-  <div id="setup-content">
-    <div class="step">
-      <div class="step-label">Step 1 — Scan QR Code</div>
-      <p style="font-size:13px;color:#94a3b8">Open your authenticator app (Google Authenticator, Authy, etc.) and scan the code below.</p>
-      <div class="qr-wrap"><canvas id="qr-canvas"></canvas></div>
-      <p style="font-size:12px;color:#64748b;text-align:center;margin-top:4px">Can't scan? Enter this key manually:</p>
-      <div class="secret-box" id="secret-text"></div>
-    </div>
+<div class="page-center">
+  <div class="card">
+    <h2>Enable Two-Factor Auth</h2>
+    <p class="subtitle">Protect your account with a time-based authenticator app.</p>
+    <div class="err" id="err"></div>
+    <div class="ok"  id="ok"></div>
 
-    <div class="step">
-      <div class="step-label">Step 2 — Save Backup Codes</div>
-      <p style="font-size:13px;color:#94a3b8">Store these codes somewhere safe. Each can be used once if you lose your device.</p>
-      <div class="backup-grid" id="backup-grid"></div>
-      <div class="warn">These codes will not be shown again. Save them now.</div>
-    </div>
-
-    <div class="step">
-      <div class="step-label">Step 3 — Confirm Setup</div>
-      <div class="field" style="margin-bottom:0">
-        <label for="totp-code">Enter the 6-digit code from your app</label>
-        <input id="totp-code" type="text" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+    <div id="setup-content">
+      <div class="step">
+        <div class="step-label">Step 1 — Scan QR Code</div>
+        <p class="step-desc">Open your authenticator app (Google Authenticator, Authy, etc.) and scan the code below.</p>
+        <div class="qr-wrap"><canvas id="qr-canvas"></canvas></div>
+        <p class="qr-hint">Can't scan? Enter this key manually:</p>
+        <div class="secret-box" id="secret-text"></div>
       </div>
-      <button class="btn-submit" id="btn-confirm" onclick="doConfirm()">Enable 2FA</button>
+
+      <div class="step">
+        <div class="step-label">Step 2 — Save Backup Codes</div>
+        <p class="step-desc">Store these codes somewhere safe. Each can be used once if you lose your device.</p>
+        <div class="backup-grid" id="backup-grid"></div>
+        <div class="warn">These codes will not be shown again. Save them now.</div>
+      </div>
+
+      <div class="step">
+        <div class="step-label">Step 3 — Confirm Setup</div>
+        <div class="field" style="margin-bottom:0">
+          <label for="totp-code">Enter the 6-digit code from your app</label>
+          <input id="totp-code" type="text" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+        </div>
+        <button class="btn-submit" id="btn-confirm" onclick="doConfirm()">Enable 2FA</button>
+      </div>
     </div>
   </div>
+  <div class="footer-link"><a href="/index.html">Back to dashboard</a></div>
 </div>
-<div class="footer-link"><a href="/index.html">Back to dashboard</a></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -267,6 +244,13 @@ function showOk(msg)  { const el = document.getElementById('ok');  el.textConten
 function hideMessages() {
   document.getElementById('err').style.display = 'none';
   document.getElementById('ok').style.display  = 'none';
+}
+
+function toggleTheme() {
+  var html = document.documentElement;
+  var isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeLabel').textContent = isDark ? 'Dark mode' : 'Light mode';
 }
 </script>
 </body>
