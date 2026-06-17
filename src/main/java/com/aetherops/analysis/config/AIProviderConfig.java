@@ -3,6 +3,7 @@ package com.aetherops.analysis.config;
 import com.aetherops.analysis.service.AIProvider;
 import com.aetherops.analysis.service.AnthropicAIProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
@@ -29,5 +30,13 @@ public class AIProviderConfig {
     public AIProvider anthropicAIProvider(ObjectMapper objectMapper) {
         String apiKey = System.getenv("ANTHROPIC_API_KEY");
         return new AnthropicAIProvider(apiKey, RestClient.create(), objectMapper);
+    }
+
+    /** Only registered when ANTHROPIC_API_KEY is present — avoids phantom UNKNOWN in health. */
+    @Bean("anthropicAi")
+    @Conditional(AnthropicKeyPresent.class)
+    public HealthIndicator anthropicHealthIndicator(RestClient.Builder builder) {
+        String apiKey = System.getenv("ANTHROPIC_API_KEY");
+        return new AnthropicHealthIndicator(apiKey, builder);
     }
 }

@@ -159,14 +159,19 @@ var COMPONENT_LABELS = {
 
 function statusClass(s) {
   if (!s) return 'unknown';
-  return s.toUpperCase() === 'UP' ? 'up' : s.toUpperCase() === 'DOWN' ? 'down' : 'degraded';
+  var u = s.toUpperCase();
+  if (u === 'UP')      return 'up';
+  if (u === 'DOWN')    return 'down';
+  if (u === 'UNKNOWN') return 'unknown';
+  return 'degraded';
 }
 
 function statusLabel(s) {
   if (!s) return 'Unknown';
   var u = s.toUpperCase();
-  if (u === 'UP') return 'Operational';
-  if (u === 'DOWN') return 'Outage';
+  if (u === 'UP')      return 'Operational';
+  if (u === 'DOWN')    return 'Outage';
+  if (u === 'UNKNOWN') return 'Unknown';
   return s;
 }
 
@@ -247,8 +252,10 @@ function loadHealth() {
       renderComponents(components);
 
       var statuses = Object.values(components).map(function(c) { return (c.status||'').toUpperCase(); });
-      var allUp = statuses.every(function(s){ return s === 'UP'; });
-      var anyDown = statuses.some(function(s){ return s === 'DOWN'; });
+      // UNKNOWN means "optional component not configured" — exclude from operational assessment
+      var meaningful = statuses.filter(function(s){ return s !== 'UNKNOWN'; });
+      var allUp  = meaningful.length > 0 && meaningful.every(function(s){ return s === 'UP'; });
+      var anyDown = meaningful.some(function(s){ return s === 'DOWN' || s === 'OUT_OF_SERVICE'; });
       setOverall(allUp, anyDown, 'done');
     })
     .catch(function() {
