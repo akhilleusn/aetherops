@@ -8,22 +8,27 @@
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker"/>
   <img src="https://img.shields.io/badge/Kubernetes-manifests-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="Kubernetes"/>
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License MIT"/>
-  <img src="https://img.shields.io/badge/Tests-267_passing-brightgreen?style=flat-square&logo=checkmarx&logoColor=white" alt="267 tests passing"/>
+  <img src="https://img.shields.io/badge/Tests-339_passing-brightgreen?style=flat-square&logo=checkmarx&logoColor=white" alt="339 tests passing"/>
 </p>
 
 <h1 align="center">AetherOps</h1>
 
 <p align="center">
-  AetherOps is a production-grade, multi-tenant incident investigation platform with AI-powered root cause analysis, built to demonstrate senior-level backend engineering patterns.
+  AetherOps turns backend failures into evidence-backed AI investigations — with confidence scores, explicit unknowns, and safe runbooks. Built for Spring Boot teams.
 </p>
+
+<!-- TODO: add a screenshot of the live landing page here, e.g.
+![AetherOps landing page](docs/screenshot.png) -->
 
 ---
 
 ## Live Demo
 
-**[https://aetherops-production.up.railway.app/landing.html](https://aetherops-production.up.railway.app/landing.html)**
+**[https://aetheropsai.com/landing.html](https://aetheropsai.com/landing.html)**
 
 > Demo tenant available — click **Try Demo** on the landing page. No account required.
+
+Fallback: [https://aetherops-production.up.railway.app/landing.html](https://aetherops-production.up.railway.app/landing.html)
 
 ---
 
@@ -162,7 +167,7 @@ Zipkin UI: `http://localhost:9411`
 mvn clean test
 ```
 
-> **267 integration tests** run against real PostgreSQL and Redis instances via Testcontainers. Docker must be running — Testcontainers pulls and starts containers automatically.
+> **339 integration tests** run against real PostgreSQL and Redis instances via Testcontainers. Docker must be running — Testcontainers pulls and starts containers automatically.
 
 Test coverage includes: authentication flows, JWT lifecycle, TOTP enrollment, Google OAuth, multi-tenant isolation, incident grouping, AI analysis (circuit breaker + fallback), audit logging, rate limiting, Kafka event publishing, Transactional Outbox, Evidence Packs, Postmortems, Runbooks, and more.
 
