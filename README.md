@@ -52,7 +52,7 @@ flowchart TD
         Outbox["Transactional Outbox\nRelay"]
     end
 
-    AI["AI Provider (pluggable)\nMock (default) or Anthropic Claude (env-gated)"]
+    AI["AI Provider · pluggable\nMock by default · Anthropic Claude env-gated"]
     Zipkin["Zipkin\n(distributed tracing)"]
     Prometheus["Prometheus\n(metrics scrape)"]
 
