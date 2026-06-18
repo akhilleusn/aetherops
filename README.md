@@ -52,7 +52,7 @@ flowchart TD
         Outbox["Transactional Outbox\nRelay"]
     end
 
-    AI["Anthropic AI API\n(Claude)"]
+    AI["AI Provider (pluggable)\nMock (default) or Anthropic Claude (env-gated)"]
     Zipkin["Zipkin\n(distributed tracing)"]
     Prometheus["Prometheus\n(metrics scrape)"]
 
@@ -70,6 +70,8 @@ flowchart TD
     style app fill:#1a1a2e,stroke:#6DB33F,color:#fff
     style kafka fill:#1a1a2e,stroke:#231F20,color:#fff
 ```
+
+AI analysis defaults to a deterministic mock provider for demo reliability and zero inference cost. Real Anthropic integration is implemented behind a Strangler Fig feature flag — set `ANTHROPIC_API_KEY` to enable it.
 
 ---
 
@@ -128,6 +130,26 @@ flowchart TD
 - Idempotency keys on mutation endpoints — safe to retry without duplicate side-effects
 - Redisson distributed locks for cluster-safe critical sections
 
+### Multi-Tenant Security
+- PostgreSQL Row-Level Security — tenant isolation enforced at the database level, not just application code
+- API key authentication (SHA-256 hashed) as a separate auth path alongside JWT
+- Webhook payloads signed with HMAC-SHA256 (same pattern as Stripe)
+
+### Rate Limiting & Abuse Protection
+- Sliding window rate limiting via Redis sorted sets (fixes the fixed-window boundary vulnerability)
+- DDoS protections: request size limiting, security headers, rate-limit response headers
+
+### Operational Intelligence
+- Incident correlation engine — groups related incidents within a 5-minute window instead of duplicating
+- Scheduled weekly MTTR and incident reports per tenant (cron-based)
+- Audit log export (CSV/JSON, streaming response)
+- Per-tenant and global feature flags via Redis
+- Usage billing hooks with period aggregation
+
+### AI & Similarity Retrieval
+- Email verification on registration with Resend API delivery (24-hour expiry tokens, re-send endpoint)
+- Embedding-based similar-incident retrieval (RAG-lite) — resolved incidents indexed as keyword-weighted float vectors; top-3 similar incidents with resolution notes injected into every AI analysis prompt
+
 ---
 
 ## Getting Started
@@ -148,6 +170,7 @@ cd aetherops
 # 2. Configure environment variables
 cp .env.example .env
 # Open .env and fill in DB credentials, JWT secret, and optional API keys
+# ANTHROPIC_API_KEY is optional — the app runs on a deterministic mock AI provider if unset.
 
 # 3. Start infrastructure (PostgreSQL, Redis, Kafka, Zipkin)
 docker-compose up -d
@@ -214,49 +237,32 @@ Swagger UI is available in all profiles. The OpenAPI spec is generated at startu
 ```
 src/main/java/com/aetherops/
 │
-├── analysis/          # AI-powered root cause analysis
-│   ├── controller/    #   POST /api/incidents/{id}/analyze
-│   ├── service/       #   AIAnalysisService — Resilience4j circuit breaker + retry + bulkhead
-│   └── domain/        #   AIAnalysisResponse, AnalysisResult
-│
+├── analysis/          # AI analysis — circuit breaker + retry + bulkhead around AI provider
+├── apikey/            # API key management — SHA-256 hashed, per-tenant
 ├── audit/             # Immutable audit trail for every tenant action
-│   ├── controller/    #   GET /api/audit-logs (filterable by action, status, date range)
-│   ├── service/       #   AuditLogService — JPA Specification / Criteria API queries
-│   └── repository/    #   AuditLogRepository extends JpaSpecificationExecutor
-│
-├── auth/              # Authentication and identity
-│   ├── controller/    #   /api/auth/** — register, login, refresh, logout, password reset
-│   ├── service/       #   JwtService, TotpService, GoogleOAuthService, PasswordResetService
-│   └── filter/        #   JwtAuthenticationFilter, IpRateLimitFilter
-│
-├── incident/          # Core incident lifecycle
-│   ├── controller/    #   CRUD + grouping + status transitions
-│   ├── service/       #   IncidentService, IncidentGroupingService
-│   ├── event/         #   IncidentCreatedEvent, IncidentEventPublisher (Kafka)
-│   └── repository/    #   Multi-tenant scoped queries
-│
-├── outbox/            # Transactional Outbox pattern
-│   ├── entity/        #   OutboxEvent — persisted in same DB transaction as domain change
-│   ├── relay/         #   OutboxRelayScheduler — polls and publishes to Kafka
-│   └── repository/    #   OutboxEventRepository
-│
-├── saga/              # Distributed Saga orchestration
-│   ├── orchestrator/  #   SagaOrchestrator — step sequencing with compensations
-│   ├── step/          #   SagaStep implementations per bounded context
-│   └── log/           #   SagaLog — durable saga state for crash recovery
-│
-├── tenant/            # Multi-tenancy
-│   ├── controller/    #   Tenant provisioning and management APIs
-│   ├── service/       #   TenantService — isolation enforcement
-│   └── context/       #   TenantContextHolder (ThreadLocal tenant resolution)
-│
-├── usage/             # Usage limits and quota enforcement
-│   ├── service/       #   UsageLimitService — per-tenant quota checks
-│   └── repository/    #   UsageRecordRepository
-│
-└── webhook/           # Outbound webhook delivery
-    ├── service/       #   WebhookService — delivery with retry
-    └── repository/    #   WebhookEndpointRepository
+├── auth/              # JWT, TOTP 2FA, Google OAuth, email verification, password reset
+├── common/            # Shared exceptions, response wrappers, converters
+├── config/            # SecurityConfig, WebConfig, feature flags, rate limit config
+├── demo/              # DemoDataInitializer — seeds demo tenant, incidents, embeddings
+├── evidence/          # Evidence pack assembly from log events
+├── incident/          # Core incident lifecycle — CRUD, grouping, correlation, severity
+├── ingestion/         # Log event ingestion endpoint — secret masking, deduplication
+├── masking/           # Secret masking service (JWT, API keys, passwords redacted pre-storage)
+├── outbox/            # Transactional Outbox — at-least-once Kafka delivery
+├── postmortem/        # AI-generated postmortem drafts
+├── project/           # Project management — multi-project support per tenant
+├── ratelimit/         # Sliding-window rate limiting via Redis sorted sets
+├── report/            # Scheduled weekly MTTR / incident reports (cron)
+├── retention/         # Automated data retention enforcement per plan tier
+├── runbook/           # AI-generated safe runbooks (read-only steps only)
+├── saga/              # Distributed Saga orchestration with compensating transactions
+├── security/          # HMAC webhook signing, security header filters
+├── service/           # Service registry — multi-environment service catalogue
+├── similarity/        # Embedding-based similar-incident retrieval (RAG-lite)
+├── slack/             # Slack alerting integration
+├── tenant/            # Multi-tenancy — provisioning, isolation, context propagation
+├── usage/             # Usage limits, quota enforcement, billing hooks
+└── webhook/           # Outbound webhook delivery with retry and HMAC signing
 ```
 
 ---
