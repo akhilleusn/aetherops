@@ -14,7 +14,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @SpringBootTest
 public abstract class AbstractIntegrationTest {
 
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
             .withDatabaseName("aetherops_test")
             .withUsername("test")
             .withPassword("test");
