@@ -28,7 +28,7 @@
 
 > Demo tenant available — click **Try Demo** on the landing page. No account required.
 
-Fallback: [https://aetherops-production.up.railway.app/landing.html](https://aetherops-production.up.railway.app/landing.html)
+
 
 ---
 
