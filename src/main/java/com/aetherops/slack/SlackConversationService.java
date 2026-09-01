@@ -37,17 +37,23 @@ public class SlackConversationService {
             return Optional.empty();
         }
 
-        String token = tokenEncryptor.decrypt(workspace.getEncryptedBotToken());
         String emoji = incident.getSeverity() == IncidentSeverity.CRITICAL ? "🚨" : "⚠️";
         String text = emoji + " " + incident.getSeverity() + " incident on `" + incident.getServiceId()
             + "` — " + incident.getTitle();
+
+        return postMessage(workspace, workspace.getDefaultChannelId(), text);
+    }
+
+    /** Posts arbitrary text to a channel — the general-purpose primitive {@link #postIncidentAlert} builds on. */
+    public Optional<PostedMessage> postMessage(SlackWorkspace workspace, String channelId, String text) {
+        String token = tokenEncryptor.decrypt(workspace.getEncryptedBotToken());
 
         try {
             String body = restClientBuilder.build().post()
                 .uri("https://slack.com/api/chat.postMessage")
                 .headers(h -> h.setBearerAuth(token))
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("channel", workspace.getDefaultChannelId(), "text", text))
+                .body(Map.of("channel", channelId, "text", text))
                 .retrieve()
                 .body(String.class);
 
@@ -60,7 +66,7 @@ public class SlackConversationService {
 
             return Optional.of(new PostedMessage(json.path("channel").asText(), json.path("ts").asText()));
         } catch (Exception e) {
-            log.warn("chat.postMessage failed tenantId={} incidentId={}", workspace.getTenantId(), incident.getId(), e);
+            log.warn("chat.postMessage failed tenantId={} channelId={}", workspace.getTenantId(), channelId, e);
             return Optional.empty();
         }
     }

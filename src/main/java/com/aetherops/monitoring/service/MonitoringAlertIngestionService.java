@@ -9,6 +9,7 @@ import com.aetherops.oncall.IncidentPagingService;
 import com.aetherops.oncall.IncidentTimeline;
 import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
+import com.aetherops.suppression.AlertSuppressionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class MonitoringAlertIngestionService {
     private final IncidentSlackNotificationService slackNotificationService;
     private final IncidentTimelineService timelineService;
     private final IncidentPagingService pagingService;
+    private final AlertSuppressionService alertSuppressionService;
 
     public record AlertSignal(
         UUID tenantId, UUID projectId, String serviceId, String alertName,
@@ -42,6 +44,12 @@ public class MonitoringAlertIngestionService {
 
     @Transactional
     public void ingest(AlertSignal signal) {
+        if (alertSuppressionService.shouldSuppress(signal.tenantId(), signal.serviceId(), signal.alertName())) {
+            log.debug("Suppressed monitoring alert tenantId={} service={} alertName={}",
+                signal.tenantId(), signal.serviceId(), signal.alertName());
+            return;
+        }
+
         String fingerprint = buildFingerprint(signal);
 
         incidentRepository

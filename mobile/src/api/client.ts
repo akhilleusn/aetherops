@@ -9,6 +9,13 @@ import type {
   UpdateIncidentRequest,
   AnalyticsDashboardResponse,
   PushDeviceToken,
+  WarRoomResponse,
+  ParticipantRole,
+  CostSummaryResponse,
+  CostEntryResponse,
+  EscalationExecutionResponse,
+  AlertSuppressionRuleResponse,
+  MuteAlertRequest,
 } from '../types/api';
 
 /**
@@ -133,5 +140,101 @@ export function registerPushToken(
   return request<PushDeviceToken>(`/api/v1/users/${userId}/push-token`, {
     method: 'POST',
     body: JSON.stringify({ tenantId, expoPushToken, platform }),
+  });
+}
+
+// ── War rooms ────────────────────────────────────────────────────────────
+
+/** Idempotent: opens a war room for this incident, or returns the existing ACTIVE one. */
+export function openWarRoom(tenantId: string, incidentId: string): Promise<WarRoomResponse> {
+  return request<WarRoomResponse>(
+    `/api/v1/tenants/${tenantId}/war-rooms/incidents/${incidentId}`,
+    { method: 'POST' }
+  );
+}
+
+export function joinWarRoom(
+  tenantId: string,
+  warRoomId: string,
+  userId: string,
+  role: ParticipantRole
+): Promise<WarRoomResponse> {
+  return request<WarRoomResponse>(`/api/v1/tenants/${tenantId}/war-rooms/${warRoomId}/participants`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, role }),
+  });
+}
+
+export function leaveWarRoom(tenantId: string, warRoomId: string, userId: string): Promise<WarRoomResponse> {
+  return request<WarRoomResponse>(
+    `/api/v1/tenants/${tenantId}/war-rooms/${warRoomId}/participants/${userId}`,
+    { method: 'DELETE' }
+  );
+}
+
+// ── Cost tracking ────────────────────────────────────────────────────────
+
+export function getCostSummary(tenantId: string, incidentId: string): Promise<CostSummaryResponse> {
+  return request<CostSummaryResponse>(`/api/v1/tenants/${tenantId}/incidents/${incidentId}/cost`);
+}
+
+export function addCostEntry(
+  tenantId: string,
+  incidentId: string,
+  description: string,
+  amountCents: number,
+  recordedBy?: string
+): Promise<CostEntryResponse> {
+  return request<CostEntryResponse>(`/api/v1/tenants/${tenantId}/incidents/${incidentId}/cost/entries`, {
+    method: 'POST',
+    body: JSON.stringify({ description, amountCents, recordedBy }),
+  });
+}
+
+export function getCostEstimate(tenantId: string, incidentId: string): Promise<{ estimatedCents: number }> {
+  return request<{ estimatedCents: number }>(`/api/v1/tenants/${tenantId}/incidents/${incidentId}/cost/estimate`);
+}
+
+export function recordCostEstimate(
+  tenantId: string,
+  incidentId: string,
+  recordedBy?: string
+): Promise<CostEntryResponse> {
+  return request<CostEntryResponse>(`/api/v1/tenants/${tenantId}/incidents/${incidentId}/cost/estimate/record`, {
+    method: 'POST',
+    body: JSON.stringify({ recordedBy }),
+  });
+}
+
+// ── Escalation history ──────────────────────────────────────────────────
+
+export function getEscalationHistory(
+  tenantId: string,
+  incidentId: string
+): Promise<EscalationExecutionResponse[]> {
+  return request<EscalationExecutionResponse[]>(
+    `/api/v1/tenants/${tenantId}/incidents/${incidentId}/escalations`
+  );
+}
+
+// ── Alert suppression ───────────────────────────────────────────────────
+
+export function listSuppressionRules(tenantId: string): Promise<AlertSuppressionRuleResponse[]> {
+  return request<AlertSuppressionRuleResponse[]>(`/api/v1/tenants/${tenantId}/alert-suppression`);
+}
+
+export function muteAlert(
+  tenantId: string,
+  muteRequest: MuteAlertRequest
+): Promise<AlertSuppressionRuleResponse> {
+  return request<AlertSuppressionRuleResponse>(`/api/v1/tenants/${tenantId}/alert-suppression`, {
+    method: 'POST',
+    body: JSON.stringify(muteRequest),
+  });
+}
+
+export function unmuteAlert(tenantId: string, ruleId: string): Promise<void> {
+  return request<void>(`/api/v1/tenants/${tenantId}/alert-suppression/${ruleId}`, {
+    method: 'DELETE',
   });
 }

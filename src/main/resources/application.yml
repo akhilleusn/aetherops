@@ -66,6 +66,11 @@ app:
   sso:
     sp-entity-id: ${SSO_SP_ENTITY_ID:aetherops}
     frontend-callback-url: ${SSO_FRONTEND_CALLBACK_URL:http://localhost:8080/sso-callback.html}
+  suppression:
+    noisy-alert-threshold: ${SUPPRESSION_NOISY_ALERT_THRESHOLD:10}
+    auto-mute-minutes: ${SUPPRESSION_AUTO_MUTE_MINUTES:30}
+  escalation:
+    default-escalate-after-minutes: ${ESCALATION_DEFAULT_MINUTES:5}
   slack:
     webhook-url: ${SLACK_WEBHOOK_URL:}
     client-id: ${SLACK_CLIENT_ID:}
@@ -75,6 +80,10 @@ app:
     # app.slack.token-encryption-key intentionally has no entry here (like
     # app.totp.encryption-key) — it's a secret master key, required via env var
     # only, never defaulted in a committed file.
+  # app.calendar.token-encryption-key and app.integrations.token-encryption-key are the
+  # same kind of secret master key (AES-256, for calendar OAuth refresh tokens and
+  # Jira/ServiceNow API tokens respectively) — also required via env var only, never
+  # defaulted here.
 
 resilience4j:
   circuitbreaker:

@@ -4,6 +4,7 @@ export type MainTabParamList = {
   Incidents: NavigatorScreenParams<IncidentStackParamList>;
   OnCall: undefined;
   Analytics: undefined;
+  AlertSuppression: undefined;
 };
 
 export type IncidentStackParamList = {

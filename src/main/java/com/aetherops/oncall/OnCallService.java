@@ -1,5 +1,6 @@
 package com.aetherops.oncall;
 
+import com.aetherops.calendar.PtoAwarenessService;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
 import lombok.extern.slf4j.Slf4j;
@@ -8,6 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import com.aetherops.integration.twilio.TwilioConfig;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -17,6 +19,8 @@ public class OnCallService {
     private OnCallRotationRepository rotationRepository;
     @Autowired
     private TwilioConfig twilioConfig;
+    @Autowired
+    private PtoAwarenessService ptoAwarenessService;
 
     @Async
     public void pageOnCall(UUID tenantId, String serviceId, String incidentTitle) {
@@ -26,7 +30,8 @@ public class OnCallService {
                 log.warn("No rotation found for service");
                 return;
             }
-            String phoneNumber = rotation.currentOnCallPhoneNumber();
+            String phoneNumber = rotation.currentOnCallPhoneNumber(
+                userId -> ptoAwarenessService.isUserAvailable(userId, Instant.now()));
             if (phoneNumber == null) {
                 log.warn("No on-call engineer available");
                 return;

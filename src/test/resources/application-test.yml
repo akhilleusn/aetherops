@@ -15,3 +15,7 @@ app:
   slack:
     signing-secret: aetherops-test-slack-signing-secret
     token-encryption-key: aetherops-slack-token-enc-key-01
+  calendar:
+    token-encryption-key: aetherops-calendar-token-key-012
+  integrations:
+    token-encryption-key: aetherops-integr-token-enc-key01

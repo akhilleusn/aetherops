@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { IncidentStackNavigator } from './IncidentStackNavigator';
 import { OnCallStatusScreen } from '../screens/OnCallStatusScreen';
 import { AnalyticsDashboardScreen } from '../screens/AnalyticsDashboardScreen';
+import { AlertSuppressionScreen } from '../screens/AlertSuppressionScreen';
 import { colors } from '../theme/theme';
 import type { MainTabParamList } from './types';
 
@@ -13,6 +14,7 @@ const ICONS: Record<keyof MainTabParamList, string> = {
   Incidents: '🚨',
   OnCall: '📟',
   Analytics: '📊',
+  AlertSuppression: '🔕',
 };
 
 export function MainTabNavigator() {
@@ -29,6 +31,7 @@ export function MainTabNavigator() {
       <Tab.Screen name="Incidents" component={IncidentStackNavigator} />
       <Tab.Screen name="OnCall" component={OnCallStatusScreen} options={{ title: 'On-Call' }} />
       <Tab.Screen name="Analytics" component={AnalyticsDashboardScreen} />
+      <Tab.Screen name="AlertSuppression" component={AlertSuppressionScreen} options={{ title: 'Suppression' }} />
     </Tab.Navigator>
   );
 }
