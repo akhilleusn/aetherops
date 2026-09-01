@@ -36,6 +36,19 @@ public class Tenant {
     @Column(name = "retention_days", nullable = false)
     private Integer retentionDays;
 
+    @Column(name = "stripe_customer_id", length = 255)
+    private String stripeCustomerId;
+
+    @Column(name = "stripe_subscription_id", length = 255)
+    private String stripeSubscriptionId;
+
+    /** Mirrors Stripe's subscription.status values (active, past_due, canceled, trialing, ...). */
+    @Column(name = "subscription_status", length = 50)
+    private String subscriptionStatus;
+
+    @Column(name = "current_period_end")
+    private Instant currentPeriodEnd;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

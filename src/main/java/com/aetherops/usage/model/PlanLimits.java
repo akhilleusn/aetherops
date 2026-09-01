@@ -34,6 +34,7 @@ public final class PlanLimits {
             case AI_ANALYSIS          -> 5;
             case RUNBOOK_GENERATION   -> 10;
             case POSTMORTEM_GENERATION -> 5;
+            case INCIDENT_CREATION    -> 5;
         };
     }
 
@@ -42,6 +43,7 @@ public final class PlanLimits {
             case AI_ANALYSIS          -> 50;
             case RUNBOOK_GENERATION   -> 50;
             case POSTMORTEM_GENERATION -> 25;
+            case INCIDENT_CREATION    -> 50;
         };
     }
 
@@ -50,6 +52,7 @@ public final class PlanLimits {
             case AI_ANALYSIS          -> 300;
             case RUNBOOK_GENERATION   -> 300;
             case POSTMORTEM_GENERATION -> 150;
+            case INCIDENT_CREATION    -> 300;
         };
     }
 }

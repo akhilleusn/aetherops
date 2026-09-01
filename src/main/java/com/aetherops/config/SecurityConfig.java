@@ -60,6 +60,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/slack/oauth/callback").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/interactivity").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/commands").permitAll()
+                .requestMatchers(HttpMethod.POST, "/webhooks/stripe").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                 .requestMatchers("/*.html").permitAll()

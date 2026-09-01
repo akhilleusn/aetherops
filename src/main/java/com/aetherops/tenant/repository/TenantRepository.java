@@ -11,4 +11,6 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
     boolean existsByName(String name);
 
     Optional<Tenant> findFirstByName(String name);
+
+    Optional<Tenant> findByStripeCustomerId(String stripeCustomerId);
 }

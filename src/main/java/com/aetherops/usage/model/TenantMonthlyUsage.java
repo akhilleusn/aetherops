@@ -45,6 +45,9 @@ public class TenantMonthlyUsage {
     @Column(name = "postmortem_generation_count", nullable = false)
     private int postmortemGenerationCount;
 
+    @Column(name = "incident_count", nullable = false)
+    private int incidentCount;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

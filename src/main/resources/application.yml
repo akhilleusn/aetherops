@@ -110,6 +110,12 @@ twilio:
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  price-id-starter: ${STRIPE_PRICE_ID_STARTER:}
+  price-id-team: ${STRIPE_PRICE_ID_TEAM:}
+  price-id-growth: ${STRIPE_PRICE_ID_GROWTH:}
+  success-url: ${STRIPE_SUCCESS_URL:http://localhost:8080/billing.html?checkout=success}
+  cancel-url: ${STRIPE_CANCEL_URL:http://localhost:8080/billing.html?checkout=cancel}
+  portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:8080/billing.html}
 
 server:
   port: ${PORT:8080}

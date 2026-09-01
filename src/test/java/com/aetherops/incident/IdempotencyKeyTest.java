@@ -6,6 +6,7 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.service.IncidentService;
 import com.aetherops.slack.SlackNotifier;
+import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ class IdempotencyKeyTest {
     @Mock private IncidentEventPublisher eventPublisher;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private WebhookService webhookService;
+    @Mock private UsageLimitService usageLimitService;
 
     @InjectMocks
     private IncidentService incidentService;

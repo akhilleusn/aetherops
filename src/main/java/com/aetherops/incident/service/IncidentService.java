@@ -8,6 +8,8 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
 import com.aetherops.slack.SlackNotifier;
+import com.aetherops.usage.model.UsageType;
+import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class IncidentService {
     private final IncidentEventPublisher eventPublisher;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final WebhookService webhookService;
+    private final UsageLimitService usageLimitService;
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request, String idempotencyKey) {
@@ -44,6 +47,8 @@ public class IncidentService {
                 return findById(existing.get().getResourceId());
             }
         }
+
+        usageLimitService.checkAndIncrement(request.getTenantId(), UsageType.INCIDENT_CREATION);
 
         Instant now = Instant.now();
         String fingerprint = UUID.randomUUID().toString().replace("-", "");

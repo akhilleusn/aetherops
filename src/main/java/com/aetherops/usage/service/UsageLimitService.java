@@ -57,6 +57,7 @@ public class UsageLimitService {
                 .aiAnalysisCount(0)
                 .runbookGenerationCount(0)
                 .postmortemGenerationCount(0)
+                .incidentCount(0)
                 .build());
 
         if (!PlanLimits.isUnlimited(limit) && currentCount(usage, type) >= limit) {
@@ -85,10 +86,11 @@ public class UsageLimitService {
 
         Optional<TenantMonthlyUsage> usageOpt = usageRepository.findByTenantIdAndPeriod(tenantId, period);
 
-        int aiCount      = usageOpt.map(TenantMonthlyUsage::getAiAnalysisCount).orElse(0);
-        int runbookCount = usageOpt.map(TenantMonthlyUsage::getRunbookGenerationCount).orElse(0);
-        int postCount    = usageOpt.map(TenantMonthlyUsage::getPostmortemGenerationCount).orElse(0);
-        Plan plan        = tenant.getPlan();
+        int aiCount       = usageOpt.map(TenantMonthlyUsage::getAiAnalysisCount).orElse(0);
+        int runbookCount  = usageOpt.map(TenantMonthlyUsage::getRunbookGenerationCount).orElse(0);
+        int postCount     = usageOpt.map(TenantMonthlyUsage::getPostmortemGenerationCount).orElse(0);
+        int incidentCount = usageOpt.map(TenantMonthlyUsage::getIncidentCount).orElse(0);
+        Plan plan         = tenant.getPlan();
 
         return UsageSummaryResponse.builder()
             .tenantId(tenantId)
@@ -100,7 +102,9 @@ public class UsageLimitService {
                 UsageType.RUNBOOK_GENERATION,
                     entry(runbookCount, plan, UsageType.RUNBOOK_GENERATION),
                 UsageType.POSTMORTEM_GENERATION,
-                    entry(postCount,    plan, UsageType.POSTMORTEM_GENERATION)
+                    entry(postCount,    plan, UsageType.POSTMORTEM_GENERATION),
+                UsageType.INCIDENT_CREATION,
+                    entry(incidentCount, plan, UsageType.INCIDENT_CREATION)
             ))
             .build();
     }
@@ -110,6 +114,7 @@ public class UsageLimitService {
             case AI_ANALYSIS          -> usage.getAiAnalysisCount();
             case RUNBOOK_GENERATION   -> usage.getRunbookGenerationCount();
             case POSTMORTEM_GENERATION -> usage.getPostmortemGenerationCount();
+            case INCIDENT_CREATION    -> usage.getIncidentCount();
         };
     }
 
@@ -118,6 +123,7 @@ public class UsageLimitService {
             case AI_ANALYSIS           -> usage.setAiAnalysisCount(usage.getAiAnalysisCount() + 1);
             case RUNBOOK_GENERATION    -> usage.setRunbookGenerationCount(usage.getRunbookGenerationCount() + 1);
             case POSTMORTEM_GENERATION -> usage.setPostmortemGenerationCount(usage.getPostmortemGenerationCount() + 1);
+            case INCIDENT_CREATION     -> usage.setIncidentCount(usage.getIncidentCount() + 1);
         }
     }
 
