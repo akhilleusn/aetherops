@@ -32,6 +32,7 @@ public class ServiceRegistryService {
             .projectId(project.getId())
             .name(request.getName())
             .environment(env)
+            .ownerTeam(request.getOwnerTeam())
             .build();
 
         Service saved = serviceRepository.save(svc);

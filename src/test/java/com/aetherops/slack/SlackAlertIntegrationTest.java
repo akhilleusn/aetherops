@@ -121,7 +121,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
             objectMapper.readTree(body).at("/data/id").asText());
         Mockito.clearInvocations(slackNotifier);
 
-        var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH);
+        var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
@@ -138,7 +138,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
             objectMapper.readTree(body).at("/data/id").asText());
         Mockito.clearInvocations(slackNotifier);
 
-        var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH);
+        var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
@@ -165,7 +165,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
 
     private String createIncident(IncidentSeverity severity) throws Exception {
         var req = new CreateIncidentRequest(
-            UUID.randomUUID(), null, "Test incident title", null, severity, "test-svc", "production");
+            UUID.randomUUID(), null, "Test incident title", null, severity, "test-svc", "production", null, null);
         return mockMvc.perform(post("/api/v1/incidents")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))

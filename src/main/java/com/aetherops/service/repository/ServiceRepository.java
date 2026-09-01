@@ -10,4 +10,5 @@ import java.util.UUID;
 public interface ServiceRepository extends JpaRepository<Service, UUID> {
     List<Service> findByTenantIdAndProjectId(UUID tenantId, UUID projectId);
     Optional<Service> findByTenantIdAndProjectIdAndName(UUID tenantId, UUID projectId, String name);
+    List<Service> findByTenantIdAndOwnerTeam(UUID tenantId, String ownerTeam);
 }

@@ -41,6 +41,10 @@ public class SlackWorkspace {
     @Column(length = 500)
     private String scope;
 
+    /** Channel selected during the Slack OAuth "Add to Slack" consent screen; used for bot-token alert posting. */
+    @Column(name = "default_channel_id", length = 20)
+    private String defaultChannelId;
+
     @CreationTimestamp
     @Column(name = "installed_at", nullable = false, updatable = false)
     private Instant installedAt;

@@ -21,4 +21,12 @@ public class PostmortemContext {
     private String  analysedLikelyCause;
     private List<String> analysedUnknowns;
     private double  analysedConfidenceScore;
+
+    /** Slack thread message text, chronological. Empty when no thread was linked or the fetch failed. */
+    @Builder.Default
+    private List<String> slackTranscript = List.of();
+
+    public boolean hasSlackTranscript() {
+        return slackTranscript != null && !slackTranscript.isEmpty();
+    }
 }

@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -27,4 +28,5 @@ public class IncidentResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant resolvedAt;
+    private Map<String, String> tags;
 }

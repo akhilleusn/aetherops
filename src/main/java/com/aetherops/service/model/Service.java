@@ -32,6 +32,9 @@ public class Service {
     @Column(nullable = false, length = 20)
     private ServiceEnvironment environment;
 
+    @Column(name = "owner_team", length = 100)
+    private String ownerTeam;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

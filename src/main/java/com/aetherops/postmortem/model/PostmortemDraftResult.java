@@ -16,4 +16,6 @@ public class PostmortemDraftResult {
     private List<String> dataGaps;
     private List<String> followUpActions;
     private String generatorVersion;
+    /** Summary of Slack thread discussion, or null when no transcript was available. */
+    private String slackDiscussionSummary;
 }

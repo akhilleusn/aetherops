@@ -1,5 +1,6 @@
 package com.aetherops.incident.service;
 
+import com.aetherops.common.exception.IncidentValidationException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.incident.event.IncidentCreatedEvent;
 import com.aetherops.incident.event.IncidentEventPublisher;
@@ -7,7 +8,9 @@ import com.aetherops.incident.model.*;
 import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
-import com.aetherops.slack.SlackNotifier;
+import com.aetherops.incident.severity.SeverityDetectionResult;
+import com.aetherops.incident.severity.SeverityDetector;
+import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,11 +33,13 @@ import java.util.UUID;
 public class IncidentService {
 
     private final IncidentRepository incidentRepository;
-    private final SlackNotifier slackNotifier;
+    private final IncidentSlackNotificationService incidentSlackNotificationService;
     private final IncidentEventPublisher eventPublisher;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final WebhookService webhookService;
     private final UsageLimitService usageLimitService;
+    private final IncidentTemplateService templateService;
+    private final SeverityDetector severityDetector;
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request, String idempotencyKey) {
@@ -48,6 +54,34 @@ public class IncidentService {
             }
         }
 
+        IncidentTemplate template = request.getTemplateId() != null
+                ? templateService.findVisible(request.getTemplateId(), request.getTenantId())
+                : null;
+
+        String title       = firstNonBlank(request.getTitle(), template != null ? template.getDefaultTitle() : null);
+        String description = firstNonNull(request.getDescription(), template != null ? template.getDefaultDescription() : null);
+        String serviceId   = firstNonBlank(request.getServiceId(), template != null ? template.getDefaultServiceId() : null);
+        IncidentSeverity severity = request.getSeverity() != null
+                ? request.getSeverity()
+                : (template != null ? template.getDefaultSeverity() : null);
+        Map<String, String> tags = request.getTags() != null
+                ? request.getTags()
+                : (template != null ? template.getDefaultTags() : null);
+
+        if (title == null || title.isBlank()) {
+            throw new IncidentValidationException("title is required (directly, or via a template with a defaultTitle)");
+        }
+        if (serviceId == null || serviceId.isBlank()) {
+            throw new IncidentValidationException("serviceId is required (directly, or via a template with a defaultServiceId)");
+        }
+
+        if (severity == null) {
+            SeverityDetectionResult detected = severityDetector.detect(title, description);
+            severity = detected.getPredictedSeverity();
+            log.info("Auto-detected severity={} confidence={} reasoning=\"{}\" for incident title=\"{}\"",
+                    severity, detected.getConfidenceScore(), detected.getReasoning(), title);
+        }
+
         usageLimitService.checkAndIncrement(request.getTenantId(), UsageType.INCIDENT_CREATION);
 
         Instant now = Instant.now();
@@ -56,12 +90,13 @@ public class IncidentService {
         Incident incident = Incident.builder()
                 .tenantId(request.getTenantId())
                 .projectId(request.getProjectId())
-                .title(request.getTitle())
-                .description(request.getDescription())
+                .title(title)
+                .description(description)
                 .status(IncidentStatus.OPEN)
-                .severity(request.getSeverity())
-                .serviceId(request.getServiceId())
+                .severity(severity)
+                .serviceId(serviceId)
                 .environment(request.getEnvironment())
+                .tags(tags)
                 .fingerprint(fingerprint)
                 .eventCount(1)
                 .firstSeenAt(now)
@@ -81,7 +116,7 @@ public class IncidentService {
                 .build());
 
         if (saved.getSeverity().isAlertable()) {
-            slackNotifier.notify(saved);
+            incidentSlackNotificationService.notify(saved);
         }
 
         IncidentResponse response = toResponse(saved);
@@ -131,6 +166,7 @@ public class IncidentService {
         if (request.getTitle() != null)       incident.setTitle(request.getTitle());
         if (request.getDescription() != null) incident.setDescription(request.getDescription());
         if (request.getSeverity() != null)    incident.setSeverity(request.getSeverity());
+        if (request.getTags() != null)        incident.setTags(request.getTags());
         if (request.getStatus() != null) {
             incident.setStatus(request.getStatus());
             if (request.getStatus() == IncidentStatus.RESOLVED && incident.getResolvedAt() == null) {
@@ -143,7 +179,7 @@ public class IncidentService {
         if (request.getSeverity() != null
                 && saved.getSeverity().isAlertable()
                 && !previousSeverity.isAlertable()) {
-            slackNotifier.notify(saved);
+            incidentSlackNotificationService.notify(saved);
         }
 
         return toResponse(saved);
@@ -168,8 +204,20 @@ public class IncidentService {
                 .createdAt(incident.getCreatedAt())
                 .updatedAt(incident.getUpdatedAt())
                 .resolvedAt(incident.getResolvedAt())
+                .tags(incident.getTags())
                 .build();
     }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
+    }
+
+    private static String firstNonNull(String a, String b) {
+        return a != null ? a : b;
+    }
+
     @Transactional
     public void softDelete(UUID id) {
         Incident incident = incidentRepository.findById(id)

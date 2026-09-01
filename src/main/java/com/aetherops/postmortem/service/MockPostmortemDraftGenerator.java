@@ -45,7 +45,25 @@ public class MockPostmortemDraftGenerator implements PostmortemDraftGenerator {
             .dataGaps(buildDataGaps(context))
             .followUpActions(buildFollowUpActions(ctx, evidence))
             .generatorVersion(GENERATOR_VERSION)
+            .slackDiscussionSummary(buildSlackDiscussionSummary(context))
             .build();
+    }
+
+    private String buildSlackDiscussionSummary(PostmortemContext context) {
+        if (!context.hasSlackTranscript()) {
+            return null;
+        }
+        List<String> lines = context.getSlackTranscript();
+        int cap = Math.min(lines.size(), 20);
+        StringBuilder sb = new StringBuilder(
+            "Highlights from the incident's Slack thread (" + lines.size() + " message(s) captured):\n");
+        for (int i = 0; i < cap; i++) {
+            sb.append("- ").append(lines.get(i)).append('\n');
+        }
+        if (lines.size() > cap) {
+            sb.append("(").append(lines.size() - cap).append(" further message(s) omitted for brevity.)");
+        }
+        return sb.toString().strip();
     }
 
     private String buildIncidentSummary(AIAnalysisContext ctx, int evidenceCount, boolean hasAnalysis) {

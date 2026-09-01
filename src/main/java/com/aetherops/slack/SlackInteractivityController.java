@@ -70,11 +70,11 @@ public class SlackInteractivityController {
 
         switch (actionId) {
             case "ack_incident" -> {
-                incidentService.update(incidentId, new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null));
+                incidentService.update(incidentId, new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null));
                 notify(responseUrl, "✅ Acknowledged by " + username);
             }
             case "resolve_incident" -> {
-                incidentService.update(incidentId, new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null));
+                incidentService.update(incidentId, new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null, null));
                 notify(responseUrl, "✅ Resolved by " + username);
             }
             default -> log.warn("Unhandled Slack action_id={}", actionId);

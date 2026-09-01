@@ -1,0 +1,1 @@
+ALTER TABLE services ADD COLUMN owner_team VARCHAR(100);

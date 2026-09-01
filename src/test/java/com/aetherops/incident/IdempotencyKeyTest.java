@@ -5,7 +5,7 @@ import com.aetherops.incident.model.*;
 import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.service.IncidentService;
-import com.aetherops.slack.SlackNotifier;
+import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
 import org.junit.jupiter.api.Test;
@@ -26,11 +26,13 @@ import static org.mockito.Mockito.*;
 class IdempotencyKeyTest {
 
     @Mock private IncidentRepository incidentRepository;
-    @Mock private SlackNotifier slackNotifier;
+    @Mock private IncidentSlackNotificationService incidentSlackNotificationService;
     @Mock private IncidentEventPublisher eventPublisher;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private WebhookService webhookService;
     @Mock private UsageLimitService usageLimitService;
+    @Mock private com.aetherops.incident.service.IncidentTemplateService templateService;
+    @Mock private com.aetherops.incident.severity.SeverityDetector severityDetector;
 
     @InjectMocks
     private IncidentService incidentService;
@@ -41,7 +43,7 @@ class IdempotencyKeyTest {
         UUID tenantId = UUID.randomUUID();
 
         CreateIncidentRequest request = new CreateIncidentRequest(
-                tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod");
+                tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod", null, null);
 
         when(idempotencyKeyRepository
                 .findByIdempotencyKeyAndTenantIdAndResourceType(key, tenantId, "INCIDENT"))
@@ -73,7 +75,7 @@ class IdempotencyKeyTest {
         UUID existingIncidentId = UUID.randomUUID();
 
         CreateIncidentRequest request = new CreateIncidentRequest(
-                tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod");
+                tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod", null, null);
 
         IdempotencyKey existingKey = IdempotencyKey.builder()
                 .idempotencyKey(key).tenantId(tenantId)

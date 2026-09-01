@@ -1,5 +1,6 @@
 package com.aetherops.incident.model;
 
+import com.aetherops.common.converter.StringMapConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,6 +11,7 @@ import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -85,6 +87,16 @@ public class Incident {
 
     @Column(name = "resolution_notes", columnDefinition = "TEXT")
     private String resolutionNotes;
+
+    @Convert(converter = StringMapConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private Map<String, String> tags;
+
+    @Column(name = "slack_channel_id", length = 20)
+    private String slackChannelId;
+
+    @Column(name = "slack_thread_ts", length = 30)
+    private String slackThreadTs;
 
     public void resolve() {
         if (this.status == IncidentStatus.RESOLVED) {

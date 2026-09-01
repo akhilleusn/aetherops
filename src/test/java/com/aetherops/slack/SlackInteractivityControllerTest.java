@@ -82,7 +82,7 @@ class SlackInteractivityControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(incidentService).update(eq(incidentId),
-            eq(new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null)));
+            eq(new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null)));
         verify(slackApiClient).respondToInteraction(anyString(), contains("Acknowledged by alice"));
     }
 
@@ -94,7 +94,7 @@ class SlackInteractivityControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(incidentService).update(eq(incidentId),
-            eq(new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null)));
+            eq(new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null, null)));
         verify(slackApiClient).respondToInteraction(anyString(), contains("Resolved by alice"));
     }
 

@@ -21,7 +21,8 @@ public class SlackApiClient {
     private final ObjectMapper objectMapper;
     private final RestClient.Builder restClientBuilder;
 
-    public record OAuthResult(String accessToken, String botUserId, String teamId, String teamName, String scope) {}
+    public record OAuthResult(String accessToken, String botUserId, String teamId, String teamName,
+                               String scope, String defaultChannelId) {}
 
     public OAuthResult exchangeCode(String code) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
@@ -48,12 +49,16 @@ public class SlackApiClient {
             throw new IllegalStateException("Slack OAuth exchange failed: " + json.path("error").asText("unknown_error"));
         }
 
+        JsonNode incomingWebhook = json.path("incoming_webhook");
+        String channelId = incomingWebhook.has("channel_id") ? incomingWebhook.path("channel_id").asText() : null;
+
         return new OAuthResult(
                 json.path("access_token").asText(),
                 json.path("bot_user_id").asText(),
                 json.path("team").path("id").asText(),
                 json.path("team").path("name").asText(),
-                json.path("scope").asText());
+                json.path("scope").asText(),
+                channelId);
     }
 
     public void respondToInteraction(String responseUrl, String text) {

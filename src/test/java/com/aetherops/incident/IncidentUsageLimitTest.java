@@ -6,7 +6,9 @@ import com.aetherops.incident.model.*;
 import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.service.IncidentService;
-import com.aetherops.slack.SlackNotifier;
+import com.aetherops.incident.service.IncidentTemplateService;
+import com.aetherops.incident.severity.SeverityDetector;
+import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
@@ -27,11 +29,13 @@ import static org.mockito.Mockito.*;
 class IncidentUsageLimitTest {
 
     @Mock private IncidentRepository incidentRepository;
-    @Mock private SlackNotifier slackNotifier;
+    @Mock private IncidentSlackNotificationService incidentSlackNotificationService;
     @Mock private IncidentEventPublisher eventPublisher;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private WebhookService webhookService;
     @Mock private UsageLimitService usageLimitService;
+    @Mock private IncidentTemplateService templateService;
+    @Mock private SeverityDetector severityDetector;
 
     @InjectMocks
     private IncidentService incidentService;
@@ -40,7 +44,7 @@ class IncidentUsageLimitTest {
     void create_checksIncidentCreationLimit_beforeSavingIncident() {
         UUID tenantId = UUID.randomUUID();
         CreateIncidentRequest request = new CreateIncidentRequest(
-            tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod");
+            tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod", null, null);
 
         doThrow(new UsageLimitExceededException(tenantId, UsageType.INCIDENT_CREATION,
                 com.aetherops.tenant.model.Plan.FREE, 5))
@@ -50,7 +54,7 @@ class IncidentUsageLimitTest {
             .isInstanceOf(UsageLimitExceededException.class);
 
         verify(incidentRepository, never()).save(any());
-        verify(slackNotifier, never()).notify(any());
+        verify(incidentSlackNotificationService, never()).notify(any());
         verify(webhookService, never()).deliver(any(), any(), any());
     }
 
@@ -60,7 +64,7 @@ class IncidentUsageLimitTest {
         UUID existingIncidentId = UUID.randomUUID();
         String key = UUID.randomUUID().toString();
         CreateIncidentRequest request = new CreateIncidentRequest(
-            tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod");
+            tenantId, null, "Test", null, IncidentSeverity.HIGH, "svc", "prod", null, null);
 
         IdempotencyKey existingKey = IdempotencyKey.builder()
             .idempotencyKey(key).tenantId(tenantId)

@@ -62,6 +62,15 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI()));
     }
 
+    @ExceptionHandler(IncidentValidationException.class)
+    public ResponseEntity<ErrorResponse> handleIncidentValidation(
+        IncidentValidationException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            .body(ErrorResponse.of(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI()));
+    }
+
     @ExceptionHandler(MissingTenantIdException.class)
     public ResponseEntity<ErrorResponse> handleMissingTenantId(
         MissingTenantIdException ex,

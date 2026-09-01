@@ -67,6 +67,9 @@ public class PostmortemDraft {
     @Column(name = "generator_version", length = 20)
     private String generatorVersion;
 
+    @Column(name = "slack_discussion_summary", columnDefinition = "TEXT")
+    private String slackDiscussionSummary;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

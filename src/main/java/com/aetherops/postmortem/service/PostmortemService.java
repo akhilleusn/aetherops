@@ -6,11 +6,16 @@ import com.aetherops.analysis.repository.AIAnalysisRepository;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
+import com.aetherops.incident.model.Incident;
+import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.postmortem.model.*;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
 import com.aetherops.audit.model.AuditAction;
 import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogService;
+import com.aetherops.slack.SlackConversationService;
+import com.aetherops.slack.SlackWorkspace;
+import com.aetherops.slack.SlackWorkspaceRepository;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +39,9 @@ public class PostmortemService {
     private final PostmortemDraftRepository postmortemDraftRepository;
     private final UsageLimitService usageLimitService;
     private final AuditLogService auditLogService;
+    private final IncidentRepository incidentRepository;
+    private final SlackWorkspaceRepository slackWorkspaceRepository;
+    private final SlackConversationService slackConversationService;
 
     /**
      * Each call creates a new PostmortemDraft row (append-only).
@@ -49,7 +57,7 @@ public class PostmortemService {
         Optional<AIAnalysis> latestAnalysis = aiAnalysisRepository
             .findTopByIncidentIdOrderByCreatedAtDesc(incidentId);
 
-        PostmortemContext context = buildPostmortemContext(incidentContext, latestAnalysis);
+        PostmortemContext context = buildPostmortemContext(incidentContext, latestAnalysis, incidentId, tenantId);
         PostmortemDraftResult result = draftGenerator.generate(context);
 
         int version = (int) postmortemDraftRepository.countByIncidentId(incidentId) + 1;
@@ -67,6 +75,7 @@ public class PostmortemService {
             .dataGaps(result.getDataGaps())
             .followUpActions(result.getFollowUpActions())
             .generatorVersion(result.getGeneratorVersion())
+            .slackDiscussionSummary(result.getSlackDiscussionSummary())
             .build());
 
         log.info("Created postmortem draft id={} incidentId={} version={} analysisEnriched={}",
@@ -126,7 +135,7 @@ public class PostmortemService {
     }
 
     private PostmortemContext buildPostmortemContext(
-        AIAnalysisContext incidentContext, Optional<AIAnalysis> latestAnalysis
+        AIAnalysisContext incidentContext, Optional<AIAnalysis> latestAnalysis, UUID incidentId, UUID tenantId
     ) {
         PostmortemContext.PostmortemContextBuilder builder = PostmortemContext.builder()
             .incidentContext(incidentContext);
@@ -144,7 +153,28 @@ public class PostmortemService {
                 .analysedConfidenceScore(0.0)
         );
 
+        builder.slackTranscript(fetchSlackTranscript(incidentId, tenantId));
+
         return builder.build();
+    }
+
+    /** Best-effort enrichment — never lets a Slack failure block postmortem generation. */
+    private List<String> fetchSlackTranscript(UUID incidentId, UUID tenantId) {
+        try {
+            Incident incident = incidentRepository.findById(incidentId).orElse(null);
+            if (incident == null || incident.getSlackChannelId() == null || incident.getSlackThreadTs() == null) {
+                return List.of();
+            }
+            Optional<SlackWorkspace> workspace = slackWorkspaceRepository.findByTenantId(tenantId);
+            if (workspace.isEmpty()) {
+                return List.of();
+            }
+            return slackConversationService.fetchThreadTranscript(
+                workspace.get(), incident.getSlackChannelId(), incident.getSlackThreadTs());
+        } catch (Exception e) {
+            log.warn("Failed to fetch Slack transcript for incidentId={}", incidentId, e);
+            return List.of();
+        }
     }
 
     private PostmortemDraftResponse toResponse(PostmortemDraft draft) {
@@ -162,6 +192,7 @@ public class PostmortemService {
             .dataGaps(draft.getDataGaps())
             .followUpActions(draft.getFollowUpActions())
             .generatorVersion(draft.getGeneratorVersion())
+            .slackDiscussionSummary(draft.getSlackDiscussionSummary())
             .createdAt(draft.getCreatedAt())
             .build();
     }

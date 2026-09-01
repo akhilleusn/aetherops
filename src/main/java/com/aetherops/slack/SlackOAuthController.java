@@ -18,7 +18,7 @@ import java.util.UUID;
 @Slf4j
 public class SlackOAuthController {
 
-    private static final String SLACK_SCOPES = "chat:write,commands,incoming-webhook";
+    private static final String SLACK_SCOPES = "chat:write,commands,incoming-webhook,channels:history";
 
     private final SlackAppConfig config;
     private final SlackOAuthStateService stateService;
@@ -87,6 +87,9 @@ public class SlackOAuthController {
         workspace.setBotUserId(result.botUserId());
         workspace.setEncryptedBotToken(tokenEncryptor.encrypt(result.accessToken()));
         workspace.setScope(result.scope());
+        if (result.defaultChannelId() != null) {
+            workspace.setDefaultChannelId(result.defaultChannelId());
+        }
         workspaceRepository.save(workspace);
 
         log.info("Slack workspace connected tenantId={} teamId={}", tenantId, result.teamId());

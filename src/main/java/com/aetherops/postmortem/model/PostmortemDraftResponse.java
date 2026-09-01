@@ -27,5 +27,6 @@ public class PostmortemDraftResponse {
     private List<String> dataGaps;
     private List<String> followUpActions;
     private String generatorVersion;
+    private String slackDiscussionSummary;
     private Instant createdAt;
 }

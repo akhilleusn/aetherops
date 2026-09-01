@@ -22,4 +22,7 @@ public class CreateServiceRequest {
         message = "environment must be one of: PRODUCTION, STAGING, DEVELOPMENT"
     )
     private String environment;
+
+    @Size(max = 100)
+    private String ownerTeam;
 }
