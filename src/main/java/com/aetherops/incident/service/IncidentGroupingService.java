@@ -10,6 +10,9 @@ import com.aetherops.incident.model.IncidentStatus;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEvent;
 import com.aetherops.ingestion.model.LogLevel;
+import com.aetherops.oncall.IncidentPagingService;
+import com.aetherops.oncall.IncidentTimeline;
+import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.SlackNotifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +28,8 @@ public class IncidentGroupingService {
     private final EvidenceItemRepository  evidenceItemRepository;
     private final SlackNotifier           slackNotifier;
     private final IncidentCorrelationService correlationService;
+    private final IncidentTimelineService timelineService;
+    private final IncidentPagingService   pagingService;
 
     @Transactional
     public void findOrCreate(LogEvent event) {
@@ -71,8 +76,13 @@ public class IncidentGroupingService {
         log.info("Created incident id={} tenant={} service={} severity={} fingerprint={}",
             saved.getId(), saved.getTenantId(), saved.getServiceId(), saved.getSeverity(), fingerprint);
 
+        timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.CREATED,
+            saved.getSeverity(), "Incident created: " + saved.getTitle());
+
         if (saved.getSeverity().isAlertable()) {
             slackNotifier.notify(saved);
+            pagingService.maybePage(saved.getTenantId(), saved.getId(), saved.getServiceId(),
+                saved.getTitle(), saved.getSeverity());
         }
 
         attachEvidence(saved, event);
@@ -91,8 +101,15 @@ public class IncidentGroupingService {
         log.info("Updated incident id={} eventCount={} severity={}",
             saved.getId(), saved.getEventCount(), saved.getSeverity());
 
+        if (newSeverity != previousSeverity) {
+            timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.SEVERITY_CHANGED,
+                saved.getSeverity(), "Severity escalated from " + previousSeverity + " to " + newSeverity);
+        }
+
         if (newSeverity.isAlertable() && !previousSeverity.isAlertable()) {
             slackNotifier.notify(saved);
+            pagingService.maybePage(saved.getTenantId(), saved.getId(), saved.getServiceId(),
+                saved.getTitle(), newSeverity);
         }
 
         attachEvidence(saved, event);

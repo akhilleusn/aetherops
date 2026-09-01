@@ -33,6 +33,8 @@ class IdempotencyKeyTest {
     @Mock private UsageLimitService usageLimitService;
     @Mock private com.aetherops.incident.service.IncidentTemplateService templateService;
     @Mock private com.aetherops.incident.severity.SeverityDetector severityDetector;
+    @Mock private com.aetherops.oncall.IncidentTimelineService timelineService;
+    @Mock private com.aetherops.oncall.IncidentPagingService pagingService;
 
     @InjectMocks
     private IncidentService incidentService;

@@ -10,6 +10,9 @@ import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.repository.IncidentSpecification;
 import com.aetherops.incident.severity.SeverityDetectionResult;
 import com.aetherops.incident.severity.SeverityDetector;
+import com.aetherops.oncall.IncidentPagingService;
+import com.aetherops.oncall.IncidentTimeline;
+import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
@@ -40,6 +43,8 @@ public class IncidentService {
     private final UsageLimitService usageLimitService;
     private final IncidentTemplateService templateService;
     private final SeverityDetector severityDetector;
+    private final IncidentTimelineService timelineService;
+    private final IncidentPagingService pagingService;
 
     @Transactional
     public IncidentResponse create(CreateIncidentRequest request, String idempotencyKey) {
@@ -115,8 +120,13 @@ public class IncidentService {
                 .occurredAt(saved.getFirstSeenAt())
                 .build());
 
+        timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.CREATED,
+                saved.getSeverity(), "Incident created: " + saved.getTitle());
+
         if (saved.getSeverity().isAlertable()) {
             incidentSlackNotificationService.notify(saved);
+            pagingService.maybePage(saved.getTenantId(), saved.getId(), saved.getServiceId(),
+                    saved.getTitle(), saved.getSeverity());
         }
 
         IncidentResponse response = toResponse(saved);
@@ -163,23 +173,39 @@ public class IncidentService {
 
         IncidentSeverity previousSeverity = incident.getSeverity();
 
+        boolean justResolved = request.getStatus() == IncidentStatus.RESOLVED && incident.getResolvedAt() == null;
+
         if (request.getTitle() != null)       incident.setTitle(request.getTitle());
         if (request.getDescription() != null) incident.setDescription(request.getDescription());
         if (request.getSeverity() != null)    incident.setSeverity(request.getSeverity());
         if (request.getTags() != null)        incident.setTags(request.getTags());
         if (request.getStatus() != null) {
             incident.setStatus(request.getStatus());
-            if (request.getStatus() == IncidentStatus.RESOLVED && incident.getResolvedAt() == null) {
+            if (justResolved) {
                 incident.setResolvedAt(Instant.now());
+            }
+            if (request.getStatus() == IncidentStatus.INVESTIGATING && incident.getAcknowledgedAt() == null) {
+                incident.setAcknowledgedAt(Instant.now());
             }
         }
 
         Incident saved = incidentRepository.save(incident);
 
+        if (request.getSeverity() != null && !request.getSeverity().equals(previousSeverity)) {
+            timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.SEVERITY_CHANGED,
+                    saved.getSeverity(), "Severity changed from " + previousSeverity + " to " + saved.getSeverity());
+        }
+        if (justResolved) {
+            timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.RESOLVED,
+                    saved.getSeverity(), "Incident resolved");
+        }
+
         if (request.getSeverity() != null
                 && saved.getSeverity().isAlertable()
                 && !previousSeverity.isAlertable()) {
             incidentSlackNotificationService.notify(saved);
+            pagingService.maybePage(saved.getTenantId(), saved.getId(), saved.getServiceId(),
+                    saved.getTitle(), saved.getSeverity());
         }
 
         return toResponse(saved);

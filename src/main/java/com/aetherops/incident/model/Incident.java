@@ -98,6 +98,15 @@ public class Incident {
     @Column(name = "slack_thread_ts", length = 30)
     private String slackThreadTs;
 
+    @Column(name = "acknowledged_at")
+    private Instant acknowledgedAt;
+
+    @Column(name = "response_sla_breached", nullable = false)
+    private boolean responseSlaBreached;
+
+    @Column(name = "resolution_sla_breached", nullable = false)
+    private boolean resolutionSlaBreached;
+
     public void resolve() {
         if (this.status == IncidentStatus.RESOLVED) {
             throw new IllegalStateException("Incident " + id + " is already resolved");

@@ -61,6 +61,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/slack/interactivity").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/commands").permitAll()
                 .requestMatchers(HttpMethod.POST, "/webhooks/stripe").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/status-pages/**").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                 .requestMatchers("/*.html").permitAll()

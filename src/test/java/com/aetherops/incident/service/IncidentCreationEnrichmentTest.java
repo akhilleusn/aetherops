@@ -8,6 +8,8 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.severity.SeverityDetectionResult;
 import com.aetherops.incident.severity.SeverityDetector;
+import com.aetherops.oncall.IncidentPagingService;
+import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
@@ -41,6 +43,8 @@ class IncidentCreationEnrichmentTest {
     @Mock private UsageLimitService usageLimitService;
     @Mock private IncidentTemplateService templateService;
     @Mock private SeverityDetector severityDetector;
+    @Mock private IncidentTimelineService timelineService;
+    @Mock private IncidentPagingService pagingService;
 
     @InjectMocks
     private IncidentService incidentService;
@@ -54,7 +58,9 @@ class IncidentCreationEnrichmentTest {
             .thenReturn(Optional.empty());
         lenient().when(incidentRepository.save(any())).thenAnswer(i -> {
             Incident incident = i.getArgument(0);
-            incident.setId(UUID.randomUUID());
+            if (incident.getId() == null) {
+                incident.setId(UUID.randomUUID());
+            }
             return incident;
         });
     }
@@ -246,5 +252,122 @@ class IncidentCreationEnrichmentTest {
         ArgumentCaptor<Incident> captor = ArgumentCaptor.forClass(Incident.class);
         verify(incidentRepository).save(captor.capture());
         assertThat(captor.getValue().getTags()).containsExactly(Map.entry("keep", "me"));
+    }
+
+    // ── SLA acknowledgement timestamp ───────────────────────────────────
+
+    @Test
+    void update_statusToInvestigating_setsAcknowledgedAt() {
+        UUID id = UUID.randomUUID();
+        Incident existing = Incident.builder()
+            .id(id).tenantId(tenantId).title("T").status(IncidentStatus.OPEN)
+            .severity(IncidentSeverity.HIGH).serviceId("svc").fingerprint("fp").eventCount(1)
+            .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
+            .build();
+        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null);
+        incidentService.update(id, update);
+
+        ArgumentCaptor<Incident> captor = ArgumentCaptor.forClass(Incident.class);
+        verify(incidentRepository).save(captor.capture());
+        assertThat(captor.getValue().getAcknowledgedAt()).isNotNull();
+    }
+
+    @Test
+    void update_alreadyAcknowledged_doesNotOverwriteAcknowledgedAt() {
+        UUID id = UUID.randomUUID();
+        Instant firstAck = Instant.now().minusSeconds(120);
+        Incident existing = Incident.builder()
+            .id(id).tenantId(tenantId).title("T").status(IncidentStatus.INVESTIGATING)
+            .severity(IncidentSeverity.HIGH).serviceId("svc").fingerprint("fp").eventCount(1)
+            .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
+            .acknowledgedAt(firstAck)
+            .build();
+        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null);
+        incidentService.update(id, update);
+
+        ArgumentCaptor<Incident> captor = ArgumentCaptor.forClass(Incident.class);
+        verify(incidentRepository).save(captor.capture());
+        assertThat(captor.getValue().getAcknowledgedAt()).isEqualTo(firstAck);
+    }
+
+    // ── timeline + paging wiring ─────────────────────────────────────────
+
+    @Test
+    void create_alwaysRecordsCreatedTimelineEvent() {
+        CreateIncidentRequest req = request("Title", null, IncidentSeverity.LOW, "svc", null, null);
+        incidentService.create(req, null);
+
+        verify(timelineService).record(eq(tenantId), any(), eq(com.aetherops.oncall.IncidentTimeline.TimelineEventType.CREATED),
+            eq(IncidentSeverity.LOW), any());
+    }
+
+    @Test
+    void create_alertableSeverity_triggersPaging() {
+        CreateIncidentRequest req = request("Title", null, IncidentSeverity.CRITICAL, "svc", null, null);
+        incidentService.create(req, null);
+
+        verify(pagingService).maybePage(eq(tenantId), any(), eq("svc"), eq("Title"), eq(IncidentSeverity.CRITICAL));
+    }
+
+    @Test
+    void create_nonAlertableSeverity_doesNotTriggerPaging() {
+        CreateIncidentRequest req = request("Title", null, IncidentSeverity.LOW, "svc", null, null);
+        incidentService.create(req, null);
+
+        verifyNoInteractions(pagingService);
+    }
+
+    @Test
+    void update_severityChanged_recordsSeverityChangedTimelineEvent() {
+        UUID id = UUID.randomUUID();
+        Incident existing = Incident.builder()
+            .id(id).tenantId(tenantId).title("T").status(IncidentStatus.OPEN)
+            .severity(IncidentSeverity.LOW).serviceId("svc").fingerprint("fp").eventCount(1)
+            .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
+            .build();
+        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, null, IncidentSeverity.CRITICAL, null);
+        incidentService.update(id, update);
+
+        verify(timelineService).record(eq(tenantId), eq(id),
+            eq(com.aetherops.oncall.IncidentTimeline.TimelineEventType.SEVERITY_CHANGED), eq(IncidentSeverity.CRITICAL), any());
+    }
+
+    @Test
+    void update_toResolved_recordsResolvedTimelineEvent() {
+        UUID id = UUID.randomUUID();
+        Incident existing = Incident.builder()
+            .id(id).tenantId(tenantId).title("T").status(IncidentStatus.OPEN)
+            .severity(IncidentSeverity.HIGH).serviceId("svc").fingerprint("fp").eventCount(1)
+            .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
+            .build();
+        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null, null);
+        incidentService.update(id, update);
+
+        verify(timelineService).record(eq(tenantId), eq(id),
+            eq(com.aetherops.oncall.IncidentTimeline.TimelineEventType.RESOLVED), eq(IncidentSeverity.HIGH), any());
+    }
+
+    @Test
+    void update_escalatingIntoAlertable_triggersPaging() {
+        UUID id = UUID.randomUUID();
+        Incident existing = Incident.builder()
+            .id(id).tenantId(tenantId).title("T").status(IncidentStatus.OPEN)
+            .severity(IncidentSeverity.LOW).serviceId("svc").fingerprint("fp").eventCount(1)
+            .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
+            .build();
+        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+
+        UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, null, IncidentSeverity.CRITICAL, null);
+        incidentService.update(id, update);
+
+        verify(pagingService).maybePage(eq(tenantId), eq(id), eq("svc"), eq("T"), eq(IncidentSeverity.CRITICAL));
     }
 }

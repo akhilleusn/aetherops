@@ -1,0 +1,105 @@
+package com.aetherops.monitoring.controller;
+
+import com.aetherops.apikey.model.ApiKey;
+import com.aetherops.apikey.service.ApiKeyService;
+import com.aetherops.incident.model.IncidentSeverity;
+import com.aetherops.monitoring.model.AlertmanagerWebhookRequest;
+import com.aetherops.monitoring.model.DatadogWebhookRequest;
+import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/v1/monitoring")
+@RequiredArgsConstructor
+@Slf4j
+@Tag(name = "Monitoring Webhooks", description = "Auto-create incidents from Datadog and Prometheus Alertmanager")
+public class MonitoringWebhookController {
+
+    private final ApiKeyService apiKeyService;
+    private final MonitoringAlertIngestionService ingestionService;
+
+    @PostMapping("/datadog")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(summary = "Datadog monitor webhook — configure the monitor's webhook payload to match this shape")
+    public ResponseEntity<Void> datadog(
+        @Valid @RequestBody DatadogWebhookRequest request,
+        @RequestHeader("X-Api-Key") String apiKeyHeader
+    ) {
+        ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
+        boolean firing = !"Recovered".equalsIgnoreCase(request.getAlertTransition());
+
+        ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
+            apiKey.getTenantId(), apiKey.getProjectId(), request.getServiceId(), request.getTitle(),
+            request.getTitle(), request.getText(), datadogSeverity(request), firing,
+            request.getEnvironment(), Instant.now()));
+
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/prometheus/alertmanager")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(summary = "Prometheus Alertmanager webhook_config receiver")
+    public ResponseEntity<Void> prometheusAlertmanager(
+        @RequestBody AlertmanagerWebhookRequest request,
+        @RequestHeader("X-Api-Key") String apiKeyHeader
+    ) {
+        ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
+
+        List<AlertmanagerWebhookRequest.Alert> alerts = request.getAlerts() != null ? request.getAlerts() : List.of();
+        for (AlertmanagerWebhookRequest.Alert alert : alerts) {
+            Map<String, String> labels = alert.getLabels() != null ? alert.getLabels() : Map.of();
+            Map<String, String> annotations = alert.getAnnotations() != null ? alert.getAnnotations() : Map.of();
+
+            String alertName = labels.getOrDefault("alertname", "unknown_alert");
+            String serviceId = labels.getOrDefault("service", labels.getOrDefault("job", "unknown-service"));
+            String summary = annotations.getOrDefault("summary", alertName);
+            String description = annotations.getOrDefault("description", summary);
+            boolean firing = "firing".equalsIgnoreCase(alert.getStatus());
+
+            ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
+                apiKey.getTenantId(), apiKey.getProjectId(), serviceId, alertName,
+                summary, description, alertmanagerSeverity(labels.get("severity")), firing,
+                labels.get("environment"), alert.getStartsAt() != null ? alert.getStartsAt() : Instant.now()));
+        }
+
+        return ResponseEntity.accepted().build();
+    }
+
+    private IncidentSeverity datadogSeverity(DatadogWebhookRequest request) {
+        if (request.getPriority() != null) {
+            String p = request.getPriority().trim().toUpperCase(Locale.ROOT);
+            if (p.startsWith("P1") || p.startsWith("P2")) return IncidentSeverity.CRITICAL;
+            if (p.startsWith("P3")) return IncidentSeverity.HIGH;
+            if (p.startsWith("P4")) return IncidentSeverity.MEDIUM;
+            if (p.startsWith("P5")) return IncidentSeverity.LOW;
+        }
+        String alertType = request.getAlertType() != null ? request.getAlertType().toLowerCase(Locale.ROOT) : "";
+        return switch (alertType) {
+            case "error" -> IncidentSeverity.HIGH;
+            case "warning" -> IncidentSeverity.MEDIUM;
+            default -> IncidentSeverity.LOW;
+        };
+    }
+
+    private IncidentSeverity alertmanagerSeverity(String severityLabel) {
+        if (severityLabel == null) return IncidentSeverity.MEDIUM;
+        return switch (severityLabel.toLowerCase(Locale.ROOT)) {
+            case "critical", "page" -> IncidentSeverity.CRITICAL;
+            case "warning" -> IncidentSeverity.HIGH;
+            case "info" -> IncidentSeverity.LOW;
+            default -> IncidentSeverity.MEDIUM;
+        };
+    }
+}

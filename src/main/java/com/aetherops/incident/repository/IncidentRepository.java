@@ -17,6 +17,8 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     List<Incident> findByTenantIdAndStatus(UUID tenantId, IncidentStatus status);
 
+    List<Incident> findByTenantIdAndStatusIn(UUID tenantId, List<IncidentStatus> statuses);
+
     Optional<Incident> findByTenantIdAndFingerprintAndStatus(
             UUID tenantId, String fingerprint, IncidentStatus status);
 
