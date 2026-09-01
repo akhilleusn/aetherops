@@ -1,6 +1,7 @@
 package com.aetherops.oncall;
 
 import com.aetherops.incident.model.IncidentSeverity;
+import com.aetherops.push.PushNotificationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +21,7 @@ class IncidentPagingServiceTest {
     @Mock private OnCallService onCallService;
     @Mock private AlertDeduplication alertDeduplication;
     @Mock private IncidentTimelineService timelineService;
+    @Mock private PushNotificationService pushNotificationService;
 
     @InjectMocks
     private IncidentPagingService pagingService;
@@ -38,6 +40,22 @@ class IncidentPagingServiceTest {
         pagingService.maybePage(tenantId, incidentId, "db-svc", "DB down", IncidentSeverity.CRITICAL);
 
         verify(onCallService).pageOnCall(tenantId, "db-svc", "DB down");
+    }
+
+    @Test
+    void maybePage_alertable_alsoSendsPushNotification() {
+        when(alertDeduplication.record(any())).thenReturn(unlinkedDedup());
+
+        pagingService.maybePage(tenantId, incidentId, "db-svc", "DB down", IncidentSeverity.CRITICAL);
+
+        verify(pushNotificationService).sendPageAlert(eq(tenantId), any(), eq("DB down"));
+    }
+
+    @Test
+    void maybePage_nonAlertable_doesNotSendPushNotification() {
+        pagingService.maybePage(tenantId, incidentId, "db-svc", "minor", IncidentSeverity.LOW);
+
+        verifyNoInteractions(pushNotificationService);
     }
 
     @Test

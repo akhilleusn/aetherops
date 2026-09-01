@@ -1,5 +1,6 @@
 package com.aetherops.statuspage.service;
 
+import com.aetherops.branding.BrandingService;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentSeverity;
@@ -34,6 +35,7 @@ class StatusPageServiceTest {
     @Mock private StatusPageIncidentUpdateRepository updateRepository;
     @Mock private ServiceRepository serviceRepository;
     @Mock private IncidentRepository incidentRepository;
+    @Mock private BrandingService brandingService;
 
     @InjectMocks
     private StatusPageService statusPageService;
@@ -184,5 +186,33 @@ class StatusPageServiceTest {
 
         assertThat(response.getIncidents()).isEmpty();
         assertThat(response.getOverallStatus()).isEqualTo(ComponentStatus.OPERATIONAL);
+    }
+
+    @Test
+    void getPublicPage_noBrandingConfigured_brandingIsNull() {
+        when(statusPageRepository.findBySlug("acme")).thenReturn(Optional.of(page()));
+        when(updateRepository.findTop50ByTenantIdOrderByPostedAtDesc(tenantId)).thenReturn(List.of());
+        when(serviceRepository.findByTenantId(tenantId)).thenReturn(List.of());
+
+        PublicStatusPageResponse response = statusPageService.getPublicPage("acme");
+
+        assertThat(response.getBranding()).isNull();
+    }
+
+    @Test
+    void getPublicPage_brandingConfigured_includesItInResponse() {
+        when(statusPageRepository.findBySlug("acme")).thenReturn(Optional.of(page()));
+        when(updateRepository.findTop50ByTenantIdOrderByPostedAtDesc(tenantId)).thenReturn(List.of());
+        when(serviceRepository.findByTenantId(tenantId)).thenReturn(List.of());
+        when(brandingService.get(tenantId)).thenReturn(Optional.of(
+            com.aetherops.branding.BrandingResponse.builder()
+                .tenantId(tenantId).companyName("Acme Corp").logoUrl("https://acme.com/logo.png")
+                .primaryColor("#112233").secondaryColor("#445566").build()));
+
+        PublicStatusPageResponse response = statusPageService.getPublicPage("acme");
+
+        assertThat(response.getBranding()).isNotNull();
+        assertThat(response.getBranding().getCompanyName()).isEqualTo("Acme Corp");
+        assertThat(response.getBranding().getPrimaryColor()).isEqualTo("#112233");
     }
 }

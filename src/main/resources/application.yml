@@ -62,6 +62,10 @@ app:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
   dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  sso:
+    sp-entity-id: ${SSO_SP_ENTITY_ID:aetherops}
+    frontend-callback-url: ${SSO_FRONTEND_CALLBACK_URL:http://localhost:8080/sso-callback.html}
   slack:
     webhook-url: ${SLACK_WEBHOOK_URL:}
     client-id: ${SLACK_CLIENT_ID:}

@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "AetherOps",
+    "slug": "aetherops-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aetherops.mobile",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "package": "com.aetherops.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": ["NOTIFICATIONS"]
+    },
+    "plugins": ["expo-notifications"],
+    "extra": {
+      "apiBaseUrl": "http://localhost:8080"
+    }
+  }
+}

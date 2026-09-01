@@ -1,5 +1,7 @@
 package com.aetherops.statuspage.service;
 
+import com.aetherops.branding.BrandingResponse;
+import com.aetherops.branding.BrandingService;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentSeverity;
@@ -27,6 +29,7 @@ public class StatusPageService {
     private final StatusPageIncidentUpdateRepository updateRepository;
     private final ServiceRepository serviceRepository;
     private final IncidentRepository incidentRepository;
+    private final BrandingService brandingService;
 
     @Transactional
     public StatusPage configure(UUID tenantId, CreateStatusPageRequest request) {
@@ -136,11 +139,25 @@ public class StatusPageService {
             .map(PublicStatusPageResponse.PublicComponent::getStatus)
             .reduce(ComponentStatus.OPERATIONAL, StatusPageService::worseOf);
 
+        PublicStatusPageResponse.Branding branding = brandingService.get(page.getTenantId())
+            .map(this::toBranding)
+            .orElse(null);
+
         return PublicStatusPageResponse.builder()
             .pageName(page.getName())
             .overallStatus(overall)
             .components(components)
             .incidents(publicIncidents)
+            .branding(branding)
+            .build();
+    }
+
+    private PublicStatusPageResponse.Branding toBranding(BrandingResponse b) {
+        return PublicStatusPageResponse.Branding.builder()
+            .companyName(b.getCompanyName())
+            .logoUrl(b.getLogoUrl())
+            .primaryColor(b.getPrimaryColor())
+            .secondaryColor(b.getSecondaryColor())
             .build();
     }
 

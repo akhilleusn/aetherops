@@ -14,6 +14,16 @@ public class PublicStatusPageResponse {
     private ComponentStatus overallStatus;
     private List<PublicComponent> components;
     private List<PublicIncident> incidents;
+    private Branding branding;
+
+    @Data
+    @Builder
+    public static class Branding {
+        private String companyName;
+        private String logoUrl;
+        private String primaryColor;
+        private String secondaryColor;
+    }
 
     @Data
     @Builder

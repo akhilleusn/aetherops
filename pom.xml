@@ -215,7 +215,21 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-quartz</artifactId>
         </dependency>
+        <!-- SAML2 SSO (enterprise) -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-saml2-service-provider</artifactId>
+        </dependency>
     </dependencies>
+
+    <repositories>
+        <!-- OpenSAML (transitive dependency of spring-security-saml2-service-provider) is not published to Maven Central -->
+        <repository>
+            <id>shibboleth</id>
+            <name>Shibboleth Releases</name>
+            <url>https://build.shibboleth.net/nexus/content/repositories/releases/</url>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>
