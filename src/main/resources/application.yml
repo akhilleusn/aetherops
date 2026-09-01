@@ -61,6 +61,16 @@ app:
   rate-limit:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+  dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL:}
+    client-id: ${SLACK_CLIENT_ID:}
+    client-secret: ${SLACK_CLIENT_SECRET:}
+    signing-secret: ${SLACK_SIGNING_SECRET:}
+    redirect-uri: ${SLACK_REDIRECT_URI:http://localhost:8080/slack/oauth/callback}
+    # app.slack.token-encryption-key intentionally has no entry here (like
+    # app.totp.encryption-key) — it's a secret master key, required via env var
+    # only, never defaulted in a committed file.
 
 resilience4j:
   circuitbreaker:

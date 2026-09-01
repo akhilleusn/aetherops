@@ -8,6 +8,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import com.aetherops.integration.twilio.TwilioConfig;
 
+import java.util.UUID;
+
 @Service
 @Slf4j
 public class OnCallService {
@@ -15,9 +17,9 @@ public class OnCallService {
     private OnCallRotationRepository rotationRepository;
     @Autowired
     private TwilioConfig twilioConfig;
-    
+
     @Async
-    public void pageOnCall(Long tenantId, String serviceId, String incidentTitle) {
+    public void pageOnCall(UUID tenantId, String serviceId, String incidentTitle) {
         try {
             OnCallRotation rotation = rotationRepository.findByTenantIdAndServiceId(tenantId, serviceId);
             if (rotation == null) {

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "oncall_rotation")
@@ -17,7 +18,7 @@ public class OnCallRotation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private Long tenantId;
+    private UUID tenantId;
     private String serviceId;
     private String rotationName;
     private Instant rotationStartAt;
