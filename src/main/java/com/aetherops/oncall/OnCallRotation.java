@@ -26,6 +26,8 @@ public class OnCallRotation {
     
     @ElementCollection
     @OrderColumn(name = "participant_order")
+    @CollectionTable(name = "oncall_rotation_participants", joinColumns = @JoinColumn(name = "oncall_rotation_id"))
+    @Column(name = "participants")
     private List<String> participants;
 
     /**

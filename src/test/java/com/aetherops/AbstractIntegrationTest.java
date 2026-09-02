@@ -69,5 +69,15 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.kafka.producer.properties.max.block.ms", () -> "500");
         registry.add("app.ip-rate-limit.requests-per-window", () -> "1000000");
         registry.add("app.totp.encryption-key", () -> "aetherops-totp-encryption-key-01");
+        // Required, no-default secrets (see e.g. SlackTokenEncryptor/CalendarTokenEncryptor/
+        // TicketIntegrationTokenEncryptor/CalendarOAuthStateService) — supplied directly here,
+        // not via application-test.yml's "test" profile, because SecurityEnforcementTest
+        // deliberately runs under the *default* profile (so the real SecurityConfig, not the
+        // permit-all TestSecurityConfig, is what it exercises) while still needing these beans
+        // to construct.
+        registry.add("app.slack.token-encryption-key", () -> "aetherops-slack-token-enc-key-01");
+        registry.add("app.calendar.token-encryption-key", () -> "aetherops-calendar-token-key-012");
+        registry.add("app.integrations.token-encryption-key", () -> "aetherops-integr-token-enc-key01");
+        registry.add("app.calendar.oauth-state-secret", () -> "aetherops-test-calendar-oauth-state-secret");
     }
 }

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import com.aetherops.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.when;
 import com.aetherops.analysis.model.AnalysisEvaluationResult;
 
 
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
         "resilience4j.circuitbreaker.instances.anthropic-ai.sliding-window-size=5",
         "resilience4j.circuitbreaker.instances.anthropic-ai.failure-rate-threshold=50",
