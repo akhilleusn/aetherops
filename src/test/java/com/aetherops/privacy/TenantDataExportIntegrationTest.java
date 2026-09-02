@@ -5,11 +5,13 @@ import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +29,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * The "test" profile's security chain (TestSecurityConfig) is permit-all and never runs
+ * TenantContextFilter, so TenantContext.get() is populated here by hand — exactly what
+ * the filter would have set from a caller's own JWT in production.
+ */
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
@@ -44,10 +51,16 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
         tenantRepository.deleteAll();
     }
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @Test
     void export_includesTenantScopedRowsAcrossTables() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "export test incident");
+        TenantContext.set(tenantId);
 
         JsonNode body = objectMapper.readTree(
             mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantId))
@@ -69,6 +82,7 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
         UUID tenantB = createTenant();
         ingestEvent(tenantA, "tenant A only");
         ingestEvent(tenantB, "tenant B only");
+        TenantContext.set(tenantA);
 
         JsonNode body = objectMapper.readTree(
             mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA))
@@ -80,9 +94,29 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void export_unknownTenant_returns404() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export",
-                "00000000-0000-0000-0000-000000000000"))
+    void export_callerFromAnotherTenant_isForbidden() throws Exception {
+        UUID tenantA = createTenant();
+        UUID tenantB = createTenant();
+        TenantContext.set(tenantB);
+
+        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void export_noCallerContext_isForbidden() throws Exception {
+        UUID tenantId = createTenant();
+
+        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantId))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void export_unknownTenant_returns404ForItsOwnCaller() throws Exception {
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        TenantContext.set(unknownTenantId);
+
+        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", unknownTenantId))
             .andExpect(status().isNotFound());
     }
 

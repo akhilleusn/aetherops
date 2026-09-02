@@ -5,10 +5,12 @@ import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * The "test" profile's security chain (TestSecurityConfig) is permit-all and never runs
+ * TenantContextFilter, so TenantContext.get() is populated here by hand — exactly what
+ * the filter would have set from a caller's own JWT in production.
+ */
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class TenantErasureIntegrationTest extends AbstractIntegrationTest {
@@ -42,10 +49,16 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
         tenantRepository.deleteAll();
     }
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @Test
     void dryRun_returnsCountsWithoutDeletingAnything() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "erasure dry-run test");
+        TenantContext.set(tenantId);
 
         mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId)
                 .param("dryRun", "true"))
@@ -63,6 +76,7 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     void defaultIsDryRun_noDataDeletedWithoutExplicitFlag() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "default dry-run test");
+        TenantContext.set(tenantId);
 
         mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId))
             .andExpect(status().isOk())
@@ -75,6 +89,7 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     void realErasure_deletesAllTenantDataAndTheTenantItself() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "real erasure test");
+        TenantContext.set(tenantId);
 
         mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId)
                 .param("dryRun", "false"))
@@ -95,6 +110,7 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
         UUID tenantB = createTenant();
         ingestEvent(tenantA, "tenant A data");
         ingestEvent(tenantB, "tenant B data");
+        TenantContext.set(tenantA);
 
         mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA)
                 .param("dryRun", "false"))
@@ -109,9 +125,38 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void unknownTenant_returns404() throws Exception {
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase",
-                "00000000-0000-0000-0000-000000000000")
+    void callerFromAnotherTenant_isForbidden_andNeverErasesTargetTenant() throws Exception {
+        UUID tenantA = createTenant();
+        UUID tenantB = createTenant();
+        ingestEvent(tenantA, "must survive — attacker is tenant B");
+        TenantContext.set(tenantB);
+
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA)
+                .param("dryRun", "false"))
+            .andExpect(status().isForbidden());
+
+        assertThat(tenantRepository.existsById(tenantA)).isTrue();
+        assertThat(logEventRepository.findAll().stream()
+            .anyMatch(e -> tenantA.equals(e.getTenantId()))).isTrue();
+    }
+
+    @Test
+    void noCallerContext_isForbidden() throws Exception {
+        UUID tenantId = createTenant();
+
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId)
+                .param("dryRun", "false"))
+            .andExpect(status().isForbidden());
+
+        assertThat(tenantRepository.existsById(tenantId)).isTrue();
+    }
+
+    @Test
+    void unknownTenant_returns404ForItsOwnCaller() throws Exception {
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        TenantContext.set(unknownTenantId);
+
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", unknownTenantId)
                 .param("dryRun", "false"))
             .andExpect(status().isNotFound());
     }
