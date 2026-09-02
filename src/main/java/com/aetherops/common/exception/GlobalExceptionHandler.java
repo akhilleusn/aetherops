@@ -7,6 +7,7 @@ import com.aetherops.common.response.ErrorResponse;
 import com.aetherops.common.exception.AccountLockedException;
 import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.ForbiddenException;
+import com.aetherops.common.exception.InvalidOAuthStateException;
 import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidResetTokenException;
 import com.aetherops.common.exception.InvalidVerificationTokenException;
@@ -201,6 +202,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidOAuthStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthState(
+        InvalidOAuthStateException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(ForbiddenException.class)

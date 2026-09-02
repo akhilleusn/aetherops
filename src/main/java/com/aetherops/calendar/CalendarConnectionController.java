@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -20,7 +21,21 @@ import java.util.UUID;
 public class CalendarConnectionController {
 
     private final CalendarOAuthService oAuthService;
+    private final CalendarOAuthStateService stateService;
     private final UserCalendarConnectionRepository connectionRepository;
+
+    @GetMapping("/authorize-url")
+    @Operation(summary = "Get the Google/Outlook consent URL to send the user's browser to, with a server-issued state param")
+    public ApiResponse<Map<String, String>> authorizeUrl(
+        @PathVariable UUID userId,
+        @RequestParam UUID tenantId,
+        @RequestParam CalendarProvider provider,
+        @RequestParam String redirectUri
+    ) {
+        requireSelf(userId);
+        String state = stateService.issue(userId, tenantId, provider);
+        return ApiResponse.success(Map.of("url", oAuthService.buildAuthorizeUrl(provider, redirectUri, state)));
+    }
 
     @PostMapping
     @Operation(summary = "Connect a Google or Outlook calendar via an OAuth authorization code")
@@ -29,6 +44,12 @@ public class CalendarConnectionController {
         @Valid @RequestBody ConnectCalendarRequest request
     ) {
         requireSelf(userId);
+        // Must be a state this exact user/tenant/provider combination was issued by
+        // /authorize-url above — otherwise this is a captured/replayed/forged authorization
+        // code being submitted (OAuth CSRF / code-injection, RFC 6749 §10.12), not a
+        // legitimate continuation of a flow this user started. Verified before the code is
+        // ever sent to Google/Outlook for exchange.
+        stateService.verify(request.getState(), userId, request.getTenantId(), request.getProvider());
         UserCalendarConnection connection = oAuthService.connect(
             userId, request.getTenantId(), request.getProvider(), request.getAuthorizationCode(), request.getRedirectUri());
         return ApiResponse.success(CalendarConnectionResponse.from(connection));

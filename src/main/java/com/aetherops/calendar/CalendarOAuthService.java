@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
@@ -30,6 +31,10 @@ public class CalendarOAuthService {
 
     private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
     private static final String OUTLOOK_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+    private static final String GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+    private static final String OUTLOOK_AUTHORIZE_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+    private static final String GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+    private static final String OUTLOOK_SCOPE = "offline_access Calendars.Read";
 
     private final UserCalendarConnectionRepository connectionRepository;
     private final UserRepository userRepository;
@@ -62,6 +67,27 @@ public class CalendarOAuthService {
         this.googleClientSecret = googleClientSecret;
         this.outlookClientId = outlookClientId;
         this.outlookClientSecret = outlookClientSecret;
+    }
+
+    /**
+     * The URL to send the user's browser to. {@code state} must come from
+     * {@link CalendarOAuthStateService#issue} — this method just embeds it, it doesn't
+     * generate or validate it (that's the caller's job, done once up front and once again
+     * when the resulting code comes back to {@link #connect}).
+     */
+    public String buildAuthorizeUrl(CalendarProvider provider, String redirectUri, String state) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(authorizeUrl(provider))
+            .queryParam("client_id", clientId(provider))
+            .queryParam("redirect_uri", redirectUri)
+            .queryParam("response_type", "code")
+            .queryParam("scope", scope(provider))
+            .queryParam("state", state);
+        if (provider == CalendarProvider.GOOGLE) {
+            // access_type=offline + prompt=consent: without both, Google only returns a
+            // refresh_token on a user's *first* consent ever, which breaks reconnecting.
+            builder.queryParam("access_type", "offline").queryParam("prompt", "consent");
+        }
+        return builder.build().toUriString();
     }
 
     @Transactional
@@ -131,6 +157,14 @@ public class CalendarOAuthService {
 
     private String tokenUrl(CalendarProvider provider) {
         return provider == CalendarProvider.GOOGLE ? GOOGLE_TOKEN_URL : OUTLOOK_TOKEN_URL;
+    }
+
+    private String authorizeUrl(CalendarProvider provider) {
+        return provider == CalendarProvider.GOOGLE ? GOOGLE_AUTHORIZE_URL : OUTLOOK_AUTHORIZE_URL;
+    }
+
+    private String scope(CalendarProvider provider) {
+        return provider == CalendarProvider.GOOGLE ? GOOGLE_SCOPE : OUTLOOK_SCOPE;
     }
 
     private String clientId(CalendarProvider provider) {

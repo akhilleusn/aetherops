@@ -17,5 +17,6 @@ app:
     token-encryption-key: aetherops-slack-token-enc-key-01
   calendar:
     token-encryption-key: aetherops-calendar-token-key-012
+    oauth-state-secret: aetherops-test-calendar-oauth-state-secret
   integrations:
     token-encryption-key: aetherops-integr-token-enc-key01

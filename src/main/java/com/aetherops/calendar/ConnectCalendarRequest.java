@@ -24,4 +24,7 @@ public class ConnectCalendarRequest {
 
     @NotBlank(message = "redirectUri is required")
     private String redirectUri;
+
+    @NotBlank(message = "state is required")
+    private String state;
 }

@@ -84,6 +84,9 @@ app:
   # same kind of secret master key (AES-256, for calendar OAuth refresh tokens and
   # Jira/ServiceNow API tokens respectively) — also required via env var only, never
   # defaulted here.
+  # app.calendar.oauth-state-secret is the HMAC signing secret CalendarOAuthStateService
+  # uses for the calendar-connect OAuth "state" param (same role as app.slack.signing-secret
+  # for SlackOAuthStateService) — required via env var only, never defaulted here.
 
 resilience4j:
   circuitbreaker:
