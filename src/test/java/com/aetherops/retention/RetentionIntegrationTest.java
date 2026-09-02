@@ -9,11 +9,13 @@ import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.aetherops.usage.repository.TenantMonthlyUsageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +55,11 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
 
     private static final int RETENTION_DAYS = 30;
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         auditLogRepository.deleteAll();
@@ -73,7 +80,7 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
         createFullIncidentLifecycle(tenantId);
         backdateAll(tenantId, daysAgo(RETENTION_DAYS + 10));
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId).with(asTenant(tenantId))
                 .param("dryRun", "true"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(true))
@@ -101,7 +108,7 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
         createFullIncidentLifecycle(tenantId);
         backdateAll(tenantId, daysAgo(RETENTION_DAYS + 10));
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId).with(asTenant(tenantId))
                 .param("dryRun", "false"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(false))
@@ -127,7 +134,7 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
         createFullIncidentLifecycle(tenantId, "Recent error — must survive");
         // Recent data has current timestamps — no backdating
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId).with(asTenant(tenantId))
                 .param("dryRun", "false"))
             .andExpect(status().isOk());
 
@@ -154,7 +161,7 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
         backdateAll(tenantB, daysAgo(RETENTION_DAYS + 10));
 
         // Run retention for tenant A only
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantA)
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantA).with(asTenant(tenantA))
                 .param("dryRun", "false"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.logEventsAffected").value(1));
@@ -175,8 +182,9 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
     // (5) Unknown tenant returns 404 with standard ErrorResponse shape.
     @Test
     void unknownTenant_returns404() throws Exception {
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run",
-                "00000000-0000-0000-0000-000000000000"))
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", unknownTenantId)
+                .with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404))
             .andExpect(jsonPath("$.error").value("Not Found"))
@@ -193,7 +201,7 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
         backdateAll(tenantId, daysAgo(RETENTION_DAYS + 10));
 
         // Call without dryRun parameter
-        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId))
+        mockMvc.perform(post("/api/v1/tenants/{id}/retention/run", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(true));
 
@@ -223,19 +231,19 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
 
         UUID incidentId = UUID.fromString(
             objectMapper.readTree(
-                mockMvc.perform(get("/api/v1/incidents").param("tenantId", tenantId.toString()))
+                mockMvc.perform(get("/api/v1/incidents").param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
                     .andReturn().getResponse().getContentAsString()
             ).at("/data/content/0/id").asText()
         );
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-            .param("tenantId", tenantId.toString())).andExpect(status().isOk());
+            .param("tenantId", tenantId.toString()).with(asTenant(tenantId))).andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-            .param("tenantId", tenantId.toString())).andExpect(status().isOk());
+            .param("tenantId", tenantId.toString()).with(asTenant(tenantId))).andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-            .param("tenantId", tenantId.toString())).andExpect(status().isOk());
+            .param("tenantId", tenantId.toString()).with(asTenant(tenantId))).andExpect(status().isOk());
     }
 
     private void ingestEvent(UUID tenantId, String message) throws Exception {
@@ -248,7 +256,8 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 

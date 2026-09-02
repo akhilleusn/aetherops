@@ -159,7 +159,8 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 

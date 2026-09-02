@@ -58,9 +58,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     void dryRun_returnsCountsWithoutDeletingAnything() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "erasure dry-run test");
-        TenantContext.set(tenantId);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId).with(asTenant(tenantId))
                 .param("dryRun", "true"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(true))
@@ -76,9 +75,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     void defaultIsDryRun_noDataDeletedWithoutExplicitFlag() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "default dry-run test");
-        TenantContext.set(tenantId);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId))
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(true));
 
@@ -89,9 +87,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     void realErasure_deletesAllTenantDataAndTheTenantItself() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "real erasure test");
-        TenantContext.set(tenantId);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantId).with(asTenant(tenantId))
                 .param("dryRun", "false"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.dryRun").value(false))
@@ -110,9 +107,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
         UUID tenantB = createTenant();
         ingestEvent(tenantA, "tenant A data");
         ingestEvent(tenantB, "tenant B data");
-        TenantContext.set(tenantA);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA)
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA).with(asTenant(tenantA))
                 .param("dryRun", "false"))
             .andExpect(status().isOk());
 
@@ -129,9 +125,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
         UUID tenantA = createTenant();
         UUID tenantB = createTenant();
         ingestEvent(tenantA, "must survive — attacker is tenant B");
-        TenantContext.set(tenantB);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA)
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", tenantA).with(asTenant(tenantB))
                 .param("dryRun", "false"))
             .andExpect(status().isForbidden());
 
@@ -154,9 +149,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
     @Test
     void unknownTenant_returns404ForItsOwnCaller() throws Exception {
         UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
-        TenantContext.set(unknownTenantId);
 
-        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", unknownTenantId)
+        mockMvc.perform(post("/api/v1/tenants/{id}/privacy/erase", unknownTenantId).with(asTenant(unknownTenantId))
                 .param("dryRun", "false"))
             .andExpect(status().isNotFound());
     }
@@ -181,7 +175,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

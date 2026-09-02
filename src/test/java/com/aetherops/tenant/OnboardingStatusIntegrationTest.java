@@ -54,7 +54,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
     void freshTenant_nextStepIsCreateAdminUser() throws Exception {
         UUID tenantId = createTenant();
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.adminUserCreated").value(false))
             .andExpect(jsonPath("$.data.slackConnected").value(false))
@@ -68,7 +68,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
         UUID tenantId = createTenant();
         registerAdmin(tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.adminUserCreated").value(true))
             .andExpect(jsonPath("$.data.slackConnected").value(false))
@@ -81,7 +81,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
         registerAdmin(tenantId);
         connectSlack(tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.slackConnected").value(true))
             .andExpect(jsonPath("$.data.firstIncidentSeen").value(false))
@@ -95,7 +95,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
         connectSlack(tenantId);
         ingestEvent(tenantId, "onboarding completion incident");
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.firstIncidentSeen").value(true))
             .andExpect(jsonPath("$.data.onboardingComplete").value(true))
@@ -104,8 +104,9 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void unknownTenant_returns404() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status",
-                "00000000-0000-0000-0000-000000000000"))
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        mockMvc.perform(get("/api/v1/tenants/{id}/onboarding/status", unknownTenantId)
+                .with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound());
     }
 
@@ -147,7 +148,8 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

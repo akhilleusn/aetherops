@@ -60,10 +60,9 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
     void export_includesTenantScopedRowsAcrossTables() throws Exception {
         UUID tenantId = createTenant();
         ingestEvent(tenantId, "export test incident");
-        TenantContext.set(tenantId);
 
         JsonNode body = objectMapper.readTree(
-            mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantId))
+            mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantId).with(asTenant(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.tenantId").value(tenantId.toString()))
                 .andReturn().getResponse().getContentAsString());
@@ -82,10 +81,9 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
         UUID tenantB = createTenant();
         ingestEvent(tenantA, "tenant A only");
         ingestEvent(tenantB, "tenant B only");
-        TenantContext.set(tenantA);
 
         JsonNode body = objectMapper.readTree(
-            mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA))
+            mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA).with(asTenant(tenantA)))
                 .andReturn().getResponse().getContentAsString());
 
         JsonNode logEvents = body.at("/data/tables/log_events");
@@ -97,9 +95,8 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
     void export_callerFromAnotherTenant_isForbidden() throws Exception {
         UUID tenantA = createTenant();
         UUID tenantB = createTenant();
-        TenantContext.set(tenantB);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA))
+        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", tenantA).with(asTenant(tenantB)))
             .andExpect(status().isForbidden());
     }
 
@@ -114,9 +111,8 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
     @Test
     void export_unknownTenant_returns404ForItsOwnCaller() throws Exception {
         UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
-        TenantContext.set(unknownTenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", unknownTenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/privacy/export", unknownTenantId).with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound());
     }
 
@@ -140,7 +136,8 @@ class TenantDataExportIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

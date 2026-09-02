@@ -108,7 +108,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 3: Verify incident was auto-created by grouping ──────────────
         String incidentsBody = mockMvc.perform(get("/api/v1/incidents")
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.content").isArray())
             .andReturn().getResponse().getContentAsString();
@@ -123,7 +123,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 4: Fetch evidence pack — verify secret masking ───────────────
         String evidencePackBody = mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.evidence").isArray())
             .andReturn().getResponse().getContentAsString();
@@ -155,7 +155,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 5: Generate AI analysis — verify evidence-grounded output ─────
         String analysisBody = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id").isNotEmpty())
             .andExpect(jsonPath("$.data.model").value("mock-v1"))
@@ -177,7 +177,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 6: Generate runbook suggestion — verify phased safe steps ─────
         String runbookBody = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.steps").isArray())
             .andExpect(jsonPath("$.data.generatorVersion").value("mock-v1"))
@@ -193,7 +193,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
         // ── Step 7: Generate postmortem draft — verify AI-enriched structure ───
         // Because /analyze ran in step 5, analysisEnriched must be true.
         String postmortemBody = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.draftVersion").value(1))
             .andReturn().getResponse().getContentAsString();
@@ -235,7 +235,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 8: Fetch latest runbook ───────────────────────────────────────
         String latestRunbookBody = mockMvc.perform(get("/api/v1/incidents/{id}/runbook/latest", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.runbookVersion").value(1))
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
@@ -244,7 +244,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         // ── Step 9: Fetch latest postmortem ───────────────────────────────────
         String latestPostmortemBody = mockMvc.perform(get("/api/v1/incidents/{id}/postmortem/latest", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.draftVersion").value(1))
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
@@ -276,7 +276,8 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

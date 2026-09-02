@@ -1,6 +1,7 @@
 package com.aetherops.cost;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,6 +26,7 @@ public class IncidentCostController {
         @PathVariable UUID incidentId,
         @Valid @RequestBody AddCostEntryRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(costService.addEntry(
             tenantId, incidentId, request.getDescription(), request.getAmountCents(),
             request.getCurrency(), request.getRecordedBy()));
@@ -36,6 +38,7 @@ public class IncidentCostController {
         @PathVariable UUID tenantId,
         @PathVariable UUID incidentId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(costService.getSummary(tenantId, incidentId));
     }
 
@@ -45,6 +48,7 @@ public class IncidentCostController {
         @PathVariable UUID tenantId,
         @PathVariable UUID incidentId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(Map.of("estimatedCents", costService.estimateResponseCost(tenantId, incidentId)));
     }
 
@@ -55,6 +59,7 @@ public class IncidentCostController {
         @PathVariable UUID incidentId,
         @RequestBody(required = false) Map<String, String> body
     ) {
+        TenantContext.requireOwn(tenantId);
         String recordedBy = body != null ? body.get("recordedBy") : null;
         return ApiResponse.success(costService.recordAutoEstimate(tenantId, incidentId, recordedBy));
     }

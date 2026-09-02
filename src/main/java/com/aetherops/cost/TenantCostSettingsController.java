@@ -1,6 +1,7 @@
 package com.aetherops.cost;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,12 +24,14 @@ public class TenantCostSettingsController {
         @PathVariable UUID tenantId,
         @Valid @RequestBody TenantCostSettingsRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(costService.configureSettings(tenantId, request.getHourlyResponderRateCents()));
     }
 
     @GetMapping
     @Operation(summary = "Get the tenant's cost settings (defaults are returned when unconfigured)")
     public ApiResponse<TenantCostSettingsResponse> get(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(costService.getSettings(tenantId));
     }
 }

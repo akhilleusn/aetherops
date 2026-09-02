@@ -1,44 +1,40 @@
 package com.aetherops.tenant;
 
+import com.aetherops.common.exception.ForbiddenException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TenantContextTest {
 
     @AfterEach
-    void cleanup() {
+    void clear() {
         TenantContext.clear();
     }
 
     @Test
-    void setAndGet_returnsSameValue() {
+    void requireOwn_passesWhenTenantMatchesCaller() {
         UUID tenantId = UUID.randomUUID();
         TenantContext.set(tenantId);
-        assertThat(TenantContext.get()).isEqualTo(tenantId);
+
+        assertThatCode(() -> TenantContext.requireOwn(tenantId)).doesNotThrowAnyException();
     }
 
     @Test
-    void clear_removesValue() {
+    void requireOwn_throwsWhenTenantDoesNotMatchCaller() {
         TenantContext.set(UUID.randomUUID());
-        TenantContext.clear();
-        assertThat(TenantContext.get()).isNull();
+
+        assertThatThrownBy(() -> TenantContext.requireOwn(UUID.randomUUID()))
+            .isInstanceOf(ForbiddenException.class);
     }
 
     @Test
-    void getBeforeSet_returnsNull() {
-        assertThat(TenantContext.get()).isNull();
-    }
-
-    @Test
-    void set_overwritesPreviousValue() {
-        UUID first = UUID.randomUUID();
-        UUID second = UUID.randomUUID();
-        TenantContext.set(first);
-        TenantContext.set(second);
-        assertThat(TenantContext.get()).isEqualTo(second);
+    void requireOwn_throwsWhenNoCallerContext() {
+        assertThatThrownBy(() -> TenantContext.requireOwn(UUID.randomUUID()))
+            .isInstanceOf(ForbiddenException.class);
     }
 }

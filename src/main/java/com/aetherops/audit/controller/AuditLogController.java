@@ -6,6 +6,7 @@ import com.aetherops.audit.model.AuditStatus;
 import com.aetherops.audit.service.AuditLogExportService;
 import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class AuditLogController {
             @RequestParam(required = false) Instant to,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
+        TenantContext.requireOwn(id);
         return ApiResponse.success(auditLogService.getAuditLogs(id, action, status, from, to, pageable));
     }
 
@@ -52,6 +54,7 @@ public class AuditLogController {
             @RequestParam(required = false) Instant to,
             @RequestParam(required = false) AuditAction action
     ) {
+        TenantContext.requireOwn(id);
         if ("json".equalsIgnoreCase(format)) {
             String json = auditLogExportService.exportAsJson(id, from, to, action);
             return ResponseEntity.ok()

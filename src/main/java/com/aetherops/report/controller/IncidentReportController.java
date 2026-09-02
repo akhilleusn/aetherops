@@ -3,6 +3,7 @@ package com.aetherops.report.controller;
 import com.aetherops.common.response.ApiResponse;
 import com.aetherops.report.model.IncidentReport;
 import com.aetherops.report.service.IncidentReportService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class IncidentReportController {
             @PathVariable UUID tenantId,
             @PageableDefault(size = 10, sort = "generatedAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(reportService.getReports(tenantId, pageable));
     }
 
@@ -36,6 +38,7 @@ public class IncidentReportController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Trigger an on-demand weekly report for the tenant")
     public ApiResponse<IncidentReport> generate(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(reportService.generateWeeklyReport(tenantId));
     }
 }

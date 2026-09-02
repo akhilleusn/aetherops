@@ -151,7 +151,11 @@ class RateLimitIntegrationTest extends AbstractIntegrationTest {
         var builder = post("/api/v1/events")
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(req));
-        if (apiKeyHeader != null) builder.header("X-Api-Key", apiKeyHeader);
+        if (apiKeyHeader != null) {
+            builder.header("X-Api-Key", apiKeyHeader);
+        } else {
+            builder.with(asTenant(tenantId));
+        }
         return mockMvc.perform(builder);
     }
 

@@ -1,6 +1,7 @@
 package com.aetherops.tenant.controller;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.OnboardingStatusResponse;
 import com.aetherops.tenant.service.OnboardingStatusService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +26,7 @@ public class OnboardingController {
     @Operation(summary = "Report which onboarding step a tenant has reached "
         + "(admin created -> Slack connected -> first incident seen).")
     public ApiResponse<OnboardingStatusResponse> status(@PathVariable UUID id) {
+        TenantContext.requireOwn(id);
         return ApiResponse.success(onboardingStatusService.getStatus(id));
     }
 }

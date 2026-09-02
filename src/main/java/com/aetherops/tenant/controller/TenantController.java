@@ -1,6 +1,7 @@
 package com.aetherops.tenant.controller;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.TenantResponse;
 import com.aetherops.tenant.service.TenantService;
@@ -43,6 +44,7 @@ public class TenantController {
     @GetMapping("/{id}")
     @Operation(summary = "Get tenant by ID")
     public ApiResponse<TenantResponse> getById(@PathVariable UUID id) {
+        TenantContext.requireOwn(id);
         return ApiResponse.success(tenantService.findById(id));
     }
 }

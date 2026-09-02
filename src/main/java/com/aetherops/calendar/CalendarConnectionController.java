@@ -4,6 +4,7 @@ import com.aetherops.auth.security.CurrentUserContext;
 import com.aetherops.common.exception.ForbiddenException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -33,6 +34,7 @@ public class CalendarConnectionController {
         @RequestParam String redirectUri
     ) {
         requireSelf(userId);
+        TenantContext.requireOwn(tenantId);
         String state = stateService.issue(userId, tenantId, provider);
         return ApiResponse.success(Map.of("url", oAuthService.buildAuthorizeUrl(provider, redirectUri, state)));
     }
@@ -44,6 +46,7 @@ public class CalendarConnectionController {
         @Valid @RequestBody ConnectCalendarRequest request
     ) {
         requireSelf(userId);
+        TenantContext.requireOwn(request.getTenantId());
         // Must be a state this exact user/tenant/provider combination was issued by
         // /authorize-url above — otherwise this is a captured/replayed/forged authorization
         // code being submitted (OAuth CSRF / code-injection, RFC 6749 §10.12), not a

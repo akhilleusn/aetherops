@@ -1,6 +1,7 @@
 package com.aetherops.escalation;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class EscalationHistoryController {
         @PathVariable UUID tenantId,
         @PathVariable UUID incidentId
     ) {
+        TenantContext.requireOwn(tenantId);
         List<EscalationExecutionResponse> executions = executionRepository
             .findByTenantIdAndIncidentIdOrderByEscalationLevelAsc(tenantId, incidentId).stream()
             .map(e -> EscalationExecutionResponse.builder()

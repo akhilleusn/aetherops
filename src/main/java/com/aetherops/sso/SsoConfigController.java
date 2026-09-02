@@ -1,6 +1,7 @@
 package com.aetherops.sso;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,12 +24,14 @@ public class SsoConfigController {
         @PathVariable UUID tenantId,
         @Valid @RequestBody ConfigureSsoRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(ssoConfigService.configure(tenantId, request));
     }
 
     @GetMapping
     @Operation(summary = "Get the tenant's SAML SSO configuration, including the SP metadata (ACS URL, entity ID) to give their IdP admin")
     public ApiResponse<TenantSsoConfigResponse> get(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(ssoConfigService.get(tenantId));
     }
 }

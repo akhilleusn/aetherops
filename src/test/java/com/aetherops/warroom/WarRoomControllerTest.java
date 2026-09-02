@@ -1,6 +1,9 @@
 package com.aetherops.warroom;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,6 +26,16 @@ class WarRoomControllerTest {
     private WarRoomController controller;
 
     private final UUID tenantId = UUID.randomUUID();
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.set(tenantId);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
     private final UUID incidentId = UUID.randomUUID();
     private final UUID warRoomId = UUID.randomUUID();
 

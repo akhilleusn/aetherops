@@ -1,6 +1,7 @@
 package com.aetherops.usage.controller;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.model.UsageSummaryResponse;
 import com.aetherops.usage.service.UsageLimitService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +25,7 @@ public class UsageController {
         @PathVariable UUID id,
         @RequestParam(required = false) String period
     ) {
+        TenantContext.requireOwn(id);
         return ApiResponse.success(usageLimitService.getSummary(id, period));
     }
 }

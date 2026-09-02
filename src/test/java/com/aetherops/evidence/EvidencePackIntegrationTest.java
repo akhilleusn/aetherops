@@ -6,6 +6,8 @@ import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,11 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
 
     private static final UUID TENANT_A = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID TENANT_B = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @BeforeEach
     void setUp() {
@@ -78,7 +85,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID logEventId = logEventRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
@@ -97,7 +104,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isNotFound());
     }
 
@@ -109,7 +116,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.severity").value("CRITICAL"))
             .andExpect(jsonPath("$.data.evidence[0].level").value("FATAL"));
@@ -124,7 +131,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.evidence[0].summary").value(
                 org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("eyJhbGciOiJSUzI1NiJ9"))))
@@ -140,7 +147,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
             .andExpect(jsonPath("$.data.tenantId").value(TENANT_A.toString()))
@@ -162,7 +169,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.totalEvidenceCount").value(3))
             .andExpect(jsonPath("$.data.evidence.length()").value(3));
@@ -180,7 +187,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.evidence.length()").value(2))
             .andReturn().getResponse().getContentAsString();
@@ -208,7 +215,8 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

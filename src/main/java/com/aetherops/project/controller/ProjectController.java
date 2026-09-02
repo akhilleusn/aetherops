@@ -11,6 +11,7 @@ import com.aetherops.project.service.ProjectService;
 import com.aetherops.service.model.CreateServiceRequest;
 import com.aetherops.service.model.Service;
 import com.aetherops.service.service.ServiceRegistryService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -35,12 +36,14 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a project for a tenant")
     public ApiResponse<Project> create(@Valid @RequestBody CreateProjectRequest request) {
+        TenantContext.requireOwn(request.getTenantId());
         return ApiResponse.success(projectService.create(request));
     }
 
     @GetMapping
     @Operation(summary = "List projects for a tenant")
     public ApiResponse<List<Project>> list(@RequestParam UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(projectService.listByTenant(tenantId));
     }
 
@@ -52,6 +55,7 @@ public class ProjectController {
         @RequestParam UUID tenantId,
         @Valid @RequestBody(required = false) CreateApiKeyRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(apiKeyService.create(projectId, tenantId, request));
     }
 
@@ -61,6 +65,7 @@ public class ProjectController {
         @PathVariable UUID projectId,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(apiKeyService.list(projectId, tenantId));
     }
 
@@ -72,6 +77,7 @@ public class ProjectController {
         @PathVariable UUID keyId,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         apiKeyService.revoke(projectId, tenantId, keyId);
     }
 
@@ -83,6 +89,7 @@ public class ProjectController {
         @RequestParam UUID tenantId,
         @Valid @RequestBody CreateServiceRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(serviceRegistryService.create(projectId, tenantId, request));
     }
 
@@ -92,6 +99,7 @@ public class ProjectController {
         @PathVariable UUID projectId,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(serviceRegistryService.listByProject(projectId, tenantId));
     }
 }

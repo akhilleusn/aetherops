@@ -4,6 +4,7 @@ import com.aetherops.common.response.ApiResponse;
 import com.aetherops.incident.model.CreateIncidentTemplateRequest;
 import com.aetherops.incident.model.IncidentTemplateResponse;
 import com.aetherops.incident.service.IncidentTemplateService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,12 +30,14 @@ public class IncidentTemplateController {
         @RequestParam UUID tenantId,
         @Valid @RequestBody CreateIncidentTemplateRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(templateService.create(tenantId, request));
     }
 
     @GetMapping
     @Operation(summary = "List templates visible to the tenant (global defaults + tenant-specific)")
     public ApiResponse<List<IncidentTemplateResponse>> list(@RequestParam UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(templateService.list(tenantId));
     }
 }

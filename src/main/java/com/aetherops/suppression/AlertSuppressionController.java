@@ -1,6 +1,7 @@
 package com.aetherops.suppression;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,18 +24,21 @@ public class AlertSuppressionController {
         @PathVariable UUID tenantId,
         @RequestBody MuteAlertRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(suppressionService.mute(tenantId, request));
     }
 
     @GetMapping
     @Operation(summary = "List currently-active suppression rules for a tenant")
     public ApiResponse<List<AlertSuppressionRuleResponse>> list(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(suppressionService.listActive(tenantId));
     }
 
     @DeleteMapping("/{ruleId}")
     @Operation(summary = "Remove a suppression rule (unmute)")
     public ApiResponse<Void> unmute(@PathVariable UUID tenantId, @PathVariable UUID ruleId) {
+        TenantContext.requireOwn(tenantId);
         suppressionService.unmute(tenantId, ruleId);
         return ApiResponse.success(null);
     }

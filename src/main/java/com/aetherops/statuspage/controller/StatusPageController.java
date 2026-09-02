@@ -6,6 +6,7 @@ import com.aetherops.statuspage.model.PostStatusPageUpdateRequest;
 import com.aetherops.statuspage.model.StatusPage;
 import com.aetherops.statuspage.model.StatusPageIncidentUpdate;
 import com.aetherops.statuspage.service.StatusPageService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -28,6 +29,7 @@ public class StatusPageController {
         @PathVariable UUID tenantId,
         @Valid @RequestBody CreateStatusPageRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(statusPageService.configure(tenantId, request));
     }
 
@@ -39,6 +41,7 @@ public class StatusPageController {
         @RequestParam UUID tenantId,
         @Valid @RequestBody PostStatusPageUpdateRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(statusPageService.postUpdate(tenantId, id, request));
     }
 }

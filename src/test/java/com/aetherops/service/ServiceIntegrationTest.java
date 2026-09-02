@@ -10,10 +10,12 @@ import com.aetherops.project.model.CreateProjectRequest;
 import com.aetherops.project.repository.ProjectRepository;
 import com.aetherops.service.repository.ServiceRepository;
 import com.aetherops.service.service.ServiceRegistryService;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +48,11 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
     @Autowired IncidentRepository     incidentRepository;
     @Autowired LogEventRepository     logEventRepository;
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         apiKeyRepository.deleteAll();
@@ -64,7 +71,7 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
         UUID projectId = createProject(tenantId, "Test Project");
 
         mockMvc.perform(post("/api/v1/projects/{id}/services", projectId)
-                .param("tenantId", tenantId.toString())
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\": \"payment-svc\", \"environment\": \"PRODUCTION\"}"))
             .andExpect(status().isCreated())
@@ -73,7 +80,7 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.projectId").value(projectId.toString()));
 
         mockMvc.perform(get("/api/v1/projects/{id}/services", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1))
             .andExpect(jsonPath("$.data[0].name").value("payment-svc"));
@@ -86,7 +93,7 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
         UUID projectId = createProject(tenantId, "Test Project");
 
         mockMvc.perform(post("/api/v1/projects/{id}/services", projectId)
-                .param("tenantId", tenantId.toString())
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\": \"payment-svc\", \"environment\": \"invalid\"}"))
             .andExpect(status().isUnprocessableEntity())
@@ -114,7 +121,7 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
             .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/projects/{id}/services", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1))
             .andExpect(jsonPath("$.data[0].name").value("auto-svc"));
@@ -135,11 +142,12 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/projects/{id}/services", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(0));
     }
@@ -171,7 +179,8 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
     private UUID createProject(UUID tenantId, String name) throws Exception {
         String body = mockMvc.perform(post("/api/v1/projects")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, name))))
+                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, name)))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());
@@ -179,7 +188,7 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
 
     private String createApiKey(UUID projectId, UUID tenantId) throws Exception {
         String body = mockMvc.perform(post("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString())
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isCreated())

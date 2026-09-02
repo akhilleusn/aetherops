@@ -1,6 +1,7 @@
 package com.aetherops.warroom;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ public class WarRoomController {
         @PathVariable UUID tenantId,
         @PathVariable UUID incidentId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.open(tenantId, incidentId, "MANUAL"));
     }
 
@@ -33,6 +35,7 @@ public class WarRoomController {
         @PathVariable UUID tenantId,
         @PathVariable UUID warRoomId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.get(tenantId, warRoomId));
     }
 
@@ -42,6 +45,7 @@ public class WarRoomController {
         @PathVariable UUID tenantId,
         @RequestParam(required = false, defaultValue = "ACTIVE") WarRoomStatus status
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.list(tenantId, status));
     }
 
@@ -52,6 +56,7 @@ public class WarRoomController {
         @PathVariable UUID warRoomId,
         @Valid @RequestBody JoinWarRoomRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.join(tenantId, warRoomId, request.getUserId(), request.getRole()));
     }
 
@@ -62,6 +67,7 @@ public class WarRoomController {
         @PathVariable UUID warRoomId,
         @PathVariable UUID userId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.leave(tenantId, warRoomId, userId));
     }
 
@@ -71,6 +77,7 @@ public class WarRoomController {
         @PathVariable UUID tenantId,
         @PathVariable UUID warRoomId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(warRoomService.close(tenantId, warRoomId));
     }
 }

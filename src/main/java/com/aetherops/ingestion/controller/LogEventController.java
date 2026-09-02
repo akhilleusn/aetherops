@@ -9,6 +9,7 @@ import com.aetherops.ingestion.model.LogEventResponse;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.service.LogEventService;
 import com.aetherops.ratelimit.RateLimiter;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -49,6 +50,10 @@ public class LogEventController {
             request.setProjectId(key.getProjectId());
             rateLimitKey = "key:" + key.getId();
         } else if (request.getTenantId() != null) {
+            // No API key — this is a JWT-authenticated caller, so the body's tenantId
+            // must be their own (an API key's tenant is resolved server-side above and
+            // needs no such check).
+            TenantContext.requireOwn(request.getTenantId());
             rateLimitKey = "tenant:" + request.getTenantId();
         } else {
             throw new MissingTenantIdException();
@@ -74,6 +79,7 @@ public class LogEventController {
         @RequestParam(required = false) LogLevel level,
         @PageableDefault(size = 20, sort = "occurredAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(logEventService.findAll(tenantId, serviceId, level, pageable));
     }
 }

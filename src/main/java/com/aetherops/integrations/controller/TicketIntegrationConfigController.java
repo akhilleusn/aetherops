@@ -5,6 +5,7 @@ import com.aetherops.integrations.model.ConfigureTicketIntegrationRequest;
 import com.aetherops.integrations.model.TicketIntegrationResponse;
 import com.aetherops.integrations.model.TicketProvider;
 import com.aetherops.integrations.service.TicketIntegrationConfigService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -27,6 +28,7 @@ public class TicketIntegrationConfigController {
         @PathVariable UUID tenantId,
         @Valid @RequestBody ConfigureTicketIntegrationRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(configService.configure(tenantId, request));
     }
 
@@ -36,12 +38,14 @@ public class TicketIntegrationConfigController {
         @PathVariable UUID tenantId,
         @PathVariable TicketProvider provider
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(configService.get(tenantId, provider));
     }
 
     @DeleteMapping("/{provider}")
     @Operation(summary = "Remove a tenant's ticket integration connection")
     public ApiResponse<Void> delete(@PathVariable UUID tenantId, @PathVariable TicketProvider provider) {
+        TenantContext.requireOwn(tenantId);
         configService.delete(tenantId, provider);
         return ApiResponse.success(null);
     }

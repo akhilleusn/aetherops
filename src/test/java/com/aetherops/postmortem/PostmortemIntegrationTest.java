@@ -8,6 +8,8 @@ import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +40,11 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     private static final UUID TENANT_A = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID TENANT_B = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         postmortemDraftRepository.deleteAll();
@@ -53,7 +60,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").isNotEmpty())
@@ -71,7 +78,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.incidentSummary").isNotEmpty())
             .andExpect(jsonPath("$.data.timeline").isArray())
@@ -89,7 +96,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         String evidenceId = evidenceItemRepository.findAll().get(0).getId().toString();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -116,7 +123,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -137,7 +144,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -151,13 +158,13 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body1 = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.draftVersion").value(1))
             .andReturn().getResponse().getContentAsString();
 
         String body2 = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.draftVersion").value(2))
             .andReturn().getResponse().getContentAsString();
@@ -176,7 +183,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isNotFound());
     }
 
@@ -187,15 +194,15 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/postmortem/latest", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.draftVersion").value(2))
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
@@ -209,7 +216,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/postmortem/latest", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isNotFound());
     }
 
@@ -226,7 +233,8 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

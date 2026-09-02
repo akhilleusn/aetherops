@@ -5,6 +5,7 @@ import com.aetherops.common.response.ApiResponse;
 import com.aetherops.integrations.model.CreateTicketRequest;
 import com.aetherops.integrations.service.JiraTicketService;
 import com.aetherops.integrations.service.ServiceNowTicketService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ public class TicketController {
         @PathVariable UUID tenantId, @PathVariable UUID incidentId,
         @Valid @RequestBody CreateTicketRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         String ticketId = jiraTicketService.createIssue(tenantId, incidentId, request.getSummary(), request.getDescription())
             .orElseThrow(() -> new ResourceNotFoundException("No enabled Jira integration configured for tenant: " + tenantId));
         return ApiResponse.success(Map.of("ticketId", ticketId));
@@ -40,6 +42,7 @@ public class TicketController {
         @PathVariable UUID tenantId, @PathVariable UUID incidentId,
         @Valid @RequestBody CreateTicketRequest request
     ) {
+        TenantContext.requireOwn(tenantId);
         String ticketId = serviceNowTicketService.createIncidentTicket(tenantId, incidentId, request.getSummary(), request.getDescription())
             .orElseThrow(() -> new ResourceNotFoundException("No enabled ServiceNow integration configured for tenant: " + tenantId));
         return ApiResponse.success(Map.of("ticketId", ticketId));

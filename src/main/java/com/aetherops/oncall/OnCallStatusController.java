@@ -2,6 +2,7 @@ package com.aetherops.oncall;
 
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class OnCallStatusController {
         @PathVariable UUID tenantId,
         @PathVariable String serviceId
     ) {
+        TenantContext.requireOwn(tenantId);
         OnCallRotation rotation = rotationRepository.findByTenantIdAndServiceId(tenantId, serviceId);
         if (rotation == null) {
             throw new ResourceNotFoundException("No on-call rotation found for service: " + serviceId);

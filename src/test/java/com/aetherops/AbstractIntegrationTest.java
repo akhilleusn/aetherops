@@ -1,5 +1,8 @@
 package com.aetherops;
 
+import com.aetherops.auth.model.Role;
+import com.aetherops.auth.model.User;
+import com.aetherops.auth.service.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -8,8 +11,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
+
+import java.util.UUID;
 
 @SpringBootTest
 public abstract class AbstractIntegrationTest {
@@ -32,6 +38,36 @@ public abstract class AbstractIntegrationTest {
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private JwtService jwtService;
+
+    /**
+     * The "test" profile's security chain (TestSecurityConfig) is permit-all, but
+     * TenantContextFilter and IpRateLimitFilter are plain {@code @Component} filters that
+     * Spring Boot auto-registers globally regardless of which SecurityFilterChain is
+     * active — so TenantContextFilter still runs on every request and clears
+     * TenantContext in its {@code finally} block once that request completes. A
+     * ThreadLocal set once in a test body does NOT survive past the next mockMvc call.
+     * Attach a real JWT via this instead — it's parsed fresh on every single request,
+     * exactly like production, so it survives any number of sequential calls.
+     */
+    protected RequestPostProcessor asTenant(UUID tenantId) {
+        return asTenant(tenantId, UUID.randomUUID(), Role.OWNER);
+    }
+
+    protected RequestPostProcessor asTenant(UUID tenantId, UUID userId, Role role) {
+        User user = new User();
+        user.setId(userId);
+        user.setTenantId(tenantId);
+        user.setEmail("test-" + userId + "@example.com");
+        user.setRole(role);
+        String token = jwtService.generateToken(user);
+        return request -> {
+            request.addHeader("Authorization", "Bearer " + token);
+            return request;
+        };
+    }
 
     @BeforeEach
     void cleanState() {

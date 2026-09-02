@@ -5,6 +5,7 @@ import com.aetherops.common.exception.ForbiddenException;
 import com.aetherops.common.exception.InvalidOAuthStateException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,11 +43,13 @@ class CalendarConnectionControllerTest {
     @BeforeEach
     void authenticateAsUserId() {
         CurrentUserContext.set(userId);
+        TenantContext.set(tenantId);
     }
 
     @AfterEach
     void cleanup() {
         CurrentUserContext.clear();
+        TenantContext.clear();
     }
 
     @Test

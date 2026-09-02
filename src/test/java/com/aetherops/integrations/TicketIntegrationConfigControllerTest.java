@@ -6,6 +6,9 @@ import com.aetherops.integrations.model.ConfigureTicketIntegrationRequest;
 import com.aetherops.integrations.model.TicketIntegrationResponse;
 import com.aetherops.integrations.model.TicketProvider;
 import com.aetherops.integrations.service.TicketIntegrationConfigService;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +31,16 @@ class TicketIntegrationConfigControllerTest {
     private TicketIntegrationConfigController controller;
 
     private final UUID tenantId = UUID.randomUUID();
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.set(tenantId);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @Test
     void configure_delegatesToServiceAndNeverExposesToken() throws Exception {

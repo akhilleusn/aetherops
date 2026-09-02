@@ -109,7 +109,7 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         String id = objectMapper.readTree(body).path("data").path("id").asText();
 
-        mockMvc.perform(get("/api/v1/tenants/" + id))
+        mockMvc.perform(get("/api/v1/tenants/" + id).with(asTenant(java.util.UUID.fromString(id))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name").value("Gamma Inc"))
             .andExpect(jsonPath("$.data.plan").value("GROWTH"))
@@ -118,7 +118,9 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getTenantById_notFound_returns404WithErrorShape() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/00000000-0000-0000-0000-000000000000"))
+        java.util.UUID unknownTenantId = java.util.UUID.fromString("00000000-0000-0000-0000-000000000000");
+        mockMvc.perform(get("/api/v1/tenants/00000000-0000-0000-0000-000000000000")
+                .with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404))
             .andExpect(jsonPath("$.error").value("Not Found"))

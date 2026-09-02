@@ -13,6 +13,8 @@ import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.aetherops.usage.repository.TenantMonthlyUsageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,11 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
     @Autowired RunbookSuggestionRepository    runbookSuggestionRepository;
     @Autowired PostmortemDraftRepository      postmortemDraftRepository;
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         postmortemDraftRepository.deleteAll();
@@ -65,7 +72,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         analyzeOnce(incidentId, tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.usage.AI_ANALYSIS.used").value(1))
             .andExpect(jsonPath("$.data.usage.RUNBOOK_GENERATION.used").value(0))
@@ -80,7 +87,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         generateRunbook(incidentId, tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.usage.RUNBOOK_GENERATION.used").value(1))
             .andExpect(jsonPath("$.data.usage.AI_ANALYSIS.used").value(0))
@@ -95,7 +102,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         generatePostmortem(incidentId, tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.usage.POSTMORTEM_GENERATION.used").value(1))
             .andExpect(jsonPath("$.data.usage.AI_ANALYSIS.used").value(0))
@@ -110,13 +117,13 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                    .param("tenantId", tenantId.toString()))
+                    .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
                 .andExpect(status().isOk());
         }
 
         // 6th request must be blocked with HTTP 429 and standard ErrorResponse shape
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isTooManyRequests())
             .andExpect(jsonPath("$.status").value(429))
             .andExpect(jsonPath("$.error").value("Too Many Requests"))
@@ -137,11 +144,11 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         // Trigger the 429
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isTooManyRequests());
 
         // Count must still be 5, not 6
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.usage.AI_ANALYSIS.used").value(5));
     }
@@ -159,15 +166,15 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
             analyzeOnce(incidentA, tenantA);
         }
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentA)
-                .param("tenantId", tenantA.toString()))
+                .param("tenantId", tenantA.toString()).with(asTenant(tenantA)))
             .andExpect(status().isTooManyRequests());
 
         // Tenant B should still be unaffected
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentB)
-                .param("tenantId", tenantB.toString()))
+                .param("tenantId", tenantB.toString()).with(asTenant(tenantB)))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantB))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantB).with(asTenant(tenantB)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.usage.AI_ANALYSIS.used").value(1));
     }
@@ -182,7 +189,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
         analyzeOnce(incidentId, tenantId);
         generateRunbook(incidentId, tenantId);
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.tenantId").value(tenantId.toString()))
@@ -203,15 +210,15 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = createIncidentForTenant(tenantId);
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
     }
 
@@ -229,7 +236,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
         assertThat(records.get(0).getPeriod()).isEqualTo(expectedPeriod);
 
         // Also verify the GET endpoint returns the same period
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.period").value(expectedPeriod));
     }
@@ -237,8 +244,9 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
     // (j) GET usage for an unknown tenant returns 404 with the standard ErrorResponse shape
     @Test
     void getUsage_unknownTenant_returns404() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/{id}/usage",
-                "00000000-0000-0000-0000-000000000000"))
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        mockMvc.perform(get("/api/v1/tenants/{id}/usage", unknownTenantId)
+                .with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404))
             .andExpect(jsonPath("$.error").value("Not Found"))
@@ -263,7 +271,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(tenantId, "test-svc", LogLevel.ERROR, "Service error for usage test");
         return UUID.fromString(
             objectMapper.readTree(
-                mockMvc.perform(get("/api/v1/incidents").param("tenantId", tenantId.toString()))
+                mockMvc.perform(get("/api/v1/incidents").param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
                     .andReturn().getResponse().getContentAsString()
             ).at("/data/content/0/id").asText()
         );
@@ -271,19 +279,19 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
     private void analyzeOnce(UUID incidentId, UUID tenantId) throws Exception {
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
     }
 
     private void generateRunbook(UUID incidentId, UUID tenantId) throws Exception {
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
     }
 
     private void generatePostmortem(UUID incidentId, UUID tenantId) throws Exception {
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
     }
 
@@ -298,7 +306,8 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

@@ -6,6 +6,7 @@ import com.aetherops.common.response.ApiResponse;
 import com.aetherops.integrations.model.FlagEventResponse;
 import com.aetherops.integrations.model.LaunchDarklyWebhookRequest;
 import com.aetherops.integrations.service.LaunchDarklyFlagEventService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class LaunchDarklyController {
         @RequestParam(required = false) Instant from,
         @RequestParam(required = false) Instant to
     ) {
+        TenantContext.requireOwn(tenantId);
         Instant effectiveTo = to != null ? to : Instant.now();
         Instant effectiveFrom = from != null ? from : effectiveTo.minus(24, ChronoUnit.HOURS);
         return ApiResponse.success(flagEventService.findInRange(tenantId, effectiveFrom, effectiveTo));

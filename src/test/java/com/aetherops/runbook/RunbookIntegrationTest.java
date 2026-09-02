@@ -8,6 +8,8 @@ import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +40,11 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
     private static final UUID TENANT_A = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID TENANT_B = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         runbookSuggestionRepository.deleteAll();
@@ -53,7 +60,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").isNotEmpty())
@@ -72,7 +79,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -90,7 +97,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         String evidenceId = evidenceItemRepository.findAll().get(0).getId().toString();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -118,7 +125,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -141,7 +148,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -156,13 +163,13 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         String body1 = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.runbookVersion").value(1))
             .andReturn().getResponse().getContentAsString();
 
         String body2 = mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.runbookVersion").value(2))
             .andReturn().getResponse().getContentAsString();
@@ -181,7 +188,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isNotFound());
     }
 
@@ -192,15 +199,15 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/runbook/latest", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.runbookVersion").value(2))
             .andExpect(jsonPath("$.data.incidentId").value(incidentId.toString()))
@@ -214,7 +221,7 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = incidentRepository.findAll().get(0).getId();
 
         mockMvc.perform(get("/api/v1/incidents/{id}/runbook/latest", incidentId)
-                .param("tenantId", TENANT_A.toString()))
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isNotFound());
     }
 
@@ -231,7 +238,8 @@ class RunbookIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

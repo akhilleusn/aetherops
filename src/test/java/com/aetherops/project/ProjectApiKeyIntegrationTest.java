@@ -7,10 +7,12 @@ import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.project.model.CreateProjectRequest;
 import com.aetherops.project.repository.ProjectRepository;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +42,11 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
     @Autowired LogEventRepository  logEventRepository;
     @Autowired IncidentRepository  incidentRepository;
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         apiKeyRepository.deleteAll();
@@ -56,13 +63,14 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/projects")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, "My Service"))))
+                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, "My Service")))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.data.name").value("My Service"))
             .andExpect(jsonPath("$.data.tenantId").value(tenantId.toString()))
             .andExpect(jsonPath("$.data.id").isNotEmpty());
 
-        mockMvc.perform(get("/api/v1/projects").param("tenantId", tenantId.toString()))
+        mockMvc.perform(get("/api/v1/projects").param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1))
             .andExpect(jsonPath("$.data[0].name").value("My Service"));
@@ -75,7 +83,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
         UUID projectId = createProject(tenantId, "Demo Service");
 
         String response = mockMvc.perform(post("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString())
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isCreated())
@@ -88,7 +96,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
         assertThat(plaintext).hasSizeGreaterThan(12);
 
         mockMvc.perform(get("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[0].keyPrefix").isNotEmpty())
             .andExpect(jsonPath("$.data[0].plaintext").doesNotExist())
@@ -145,7 +153,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
         UUID keyId = getFirstKeyId(projectId, tenantId);
 
         mockMvc.perform(delete("/api/v1/projects/{pid}/keys/{kid}", projectId, keyId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isNoContent());
 
         LogEventRequest req = new LogEventRequest();
@@ -169,7 +177,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
         createApiKey(projectId, tenantId);
 
         String body = mockMvc.perform(get("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -193,7 +201,8 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
     private UUID createProject(UUID tenantId, String name) throws Exception {
         String body = mockMvc.perform(post("/api/v1/projects")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, name))))
+                .content(objectMapper.writeValueAsString(new CreateProjectRequest(tenantId, name)))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());
@@ -201,7 +210,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
 
     private String createApiKey(UUID projectId, UUID tenantId) throws Exception {
         String body = mockMvc.perform(post("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString())
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
             .andExpect(status().isCreated())
@@ -211,7 +220,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
 
     private UUID getFirstKeyId(UUID projectId, UUID tenantId) throws Exception {
         String body = mockMvc.perform(get("/api/v1/projects/{id}/keys", projectId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(body).at("/data/0/id").asText());
     }

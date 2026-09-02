@@ -7,6 +7,9 @@ import com.aetherops.integrations.controller.LaunchDarklyController;
 import com.aetherops.integrations.model.FlagEventResponse;
 import com.aetherops.integrations.model.LaunchDarklyWebhookRequest;
 import com.aetherops.integrations.service.LaunchDarklyFlagEventService;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +38,16 @@ class LaunchDarklyControllerTest {
     private LaunchDarklyController controller;
 
     private final UUID tenantId = UUID.randomUUID();
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.set(tenantId);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @Test
     void webhook_resolvesApiKeyAndRecordsEvent() {

@@ -1,6 +1,9 @@
 package com.aetherops.cost;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,6 +24,16 @@ class TenantCostSettingsControllerTest {
     private TenantCostSettingsController controller;
 
     private final UUID tenantId = UUID.randomUUID();
+
+    @BeforeEach
+    void setTenantContext() {
+        TenantContext.set(tenantId);
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @Test
     void configure_delegatesToServiceAndReturnsResponse() {

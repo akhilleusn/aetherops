@@ -1,6 +1,5 @@
 package com.aetherops.privacy.controller;
 
-import com.aetherops.common.exception.ForbiddenException;
 import com.aetherops.common.response.ApiResponse;
 import com.aetherops.privacy.model.TenantDataExportResponse;
 import com.aetherops.privacy.model.TenantErasureResult;
@@ -34,7 +33,7 @@ public class PrivacyController {
     @GetMapping("/{id}/privacy/export")
     @Operation(summary = "Export every row held for a tenant, across all tenant-scoped tables, as JSON.")
     public ApiResponse<TenantDataExportResponse> export(@PathVariable UUID id) {
-        requireOwnTenant(id);
+        TenantContext.requireOwn(id);
         return ApiResponse.success(exportService.export(id));
     }
 
@@ -46,14 +45,7 @@ public class PrivacyController {
         @PathVariable UUID id,
         @RequestParam(defaultValue = "true") boolean dryRun
     ) {
-        requireOwnTenant(id);
+        TenantContext.requireOwn(id);
         return ApiResponse.success(erasureService.erase(id, dryRun));
-    }
-
-    private void requireOwnTenant(UUID tenantId) {
-        UUID callerTenantId = TenantContext.get();
-        if (callerTenantId == null || !callerTenantId.equals(tenantId)) {
-            throw new ForbiddenException("Cannot access another tenant's data");
-        }
     }
 }

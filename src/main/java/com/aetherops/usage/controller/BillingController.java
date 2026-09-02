@@ -1,6 +1,7 @@
 package com.aetherops.usage.controller;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.service.BillingPeriodService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +23,7 @@ public class BillingController {
     @GetMapping("/current")
     @Operation(summary = "Get usage totals for the current billing period")
     public ApiResponse<Map<String, Object>> getCurrentPeriod(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(billingPeriodService.getCurrentPeriodUsage(tenantId));
     }
 
@@ -31,12 +33,14 @@ public class BillingController {
             @PathVariable UUID tenantId,
             @RequestParam(defaultValue = "6") int months
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(billingPeriodService.getUsageHistory(tenantId, months));
     }
 
     @GetMapping("/projected")
     @Operation(summary = "Get linear projection of usage for the current month")
     public ApiResponse<Map<String, Object>> getProjected(@PathVariable UUID tenantId) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(billingPeriodService.getProjectedUsage(tenantId));
     }
 }

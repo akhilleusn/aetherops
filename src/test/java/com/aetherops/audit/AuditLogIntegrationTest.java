@@ -16,6 +16,8 @@ import com.aetherops.tenant.repository.TenantRepository;
 import com.aetherops.usage.repository.TenantMonthlyUsageRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +51,11 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
 
     private static final String RAW_JWT = "eyJhbGciOiJSUzI1NiJ9.audit.testtoken";
 
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
+
     @BeforeEach
     void setUp() {
         auditLogRepository.deleteAll();
@@ -70,7 +77,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
             "Connection pool exhausted — Bearer " + RAW_JWT);
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         var entries = auditLogRepository.findAll();
@@ -96,7 +103,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = createIncidentForTenant(tenantId, "Service error");
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         var entries = auditLogRepository.findAll();
@@ -113,7 +120,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = createIncidentForTenant(tenantId, "Service error");
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         var entries = auditLogRepository.findAll();
@@ -132,7 +139,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
 
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                    .param("tenantId", tenantId.toString()))
+                    .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
                 .andExpect(status().isOk());
         }
 
@@ -140,7 +147,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         auditLogRepository.deleteAll();
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isTooManyRequests());
 
         var entries = auditLogRepository.findAll();
@@ -164,18 +171,18 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         UUID incidentB  = createIncidentForTenant(tenantB, "Error in service B");
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentA)
-                .param("tenantId", tenantA.toString()))
+                .param("tenantId", tenantA.toString()).with(asTenant(tenantA)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentB)
-                .param("tenantId", tenantB.toString()))
+                .param("tenantId", tenantB.toString()).with(asTenant(tenantB)))
             .andExpect(status().isOk());
 
-        String bodyA = mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantA))
+        String bodyA = mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantA).with(asTenant(tenantA)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
-        String bodyB = mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantB))
+        String bodyB = mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantB).with(asTenant(tenantB)))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
 
@@ -197,14 +204,14 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         UUID incidentId = createIncidentForTenant(tenantId, "Service error");
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/runbook", incidentId)
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantId))
+        mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", tenantId).with(asTenant(tenantId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.content").isArray())
@@ -219,8 +226,9 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
     // (g) GET /audit-logs for an unknown tenant returns 404 with standard ErrorResponse shape.
     @Test
     void getAuditLogs_unknownTenant_returns404() throws Exception {
-        mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs",
-                "00000000-0000-0000-0000-000000000000"))
+        UUID unknownTenantId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+        mockMvc.perform(get("/api/v1/tenants/{id}/audit-logs", unknownTenantId)
+                .with(asTenant(unknownTenantId)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404))
             .andExpect(jsonPath("$.error").value("Not Found"))
@@ -244,7 +252,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
     private UUID createIncidentForTenant(UUID tenantId, String message) throws Exception {
         ingestEvent(tenantId, "test-svc", LogLevel.ERROR, message);
         String body = mockMvc.perform(get("/api/v1/incidents")
-                .param("tenantId", tenantId.toString()))
+                .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(
             objectMapper.readTree(body).at("/data/content/0/id").asText()
@@ -262,7 +270,8 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }

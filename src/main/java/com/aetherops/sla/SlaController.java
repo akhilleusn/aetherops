@@ -1,6 +1,7 @@
 package com.aetherops.sla;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class SlaController {
         @PathVariable UUID tenantId,
         @RequestParam(required = false) String period
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(slaTrackingService.getSummary(tenantId, period));
     }
 }

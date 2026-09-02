@@ -1,6 +1,7 @@
 package com.aetherops.analytics;
 
 import com.aetherops.common.response.ApiResponse;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class AnalyticsController {
         @RequestParam(required = false) Instant from,
         @RequestParam(required = false) Instant to
     ) {
+        TenantContext.requireOwn(tenantId);
         Instant effectiveTo = to != null ? to : Instant.now();
         Instant effectiveFrom = from != null ? from : effectiveTo.minus(30, ChronoUnit.DAYS);
         return ApiResponse.success(analyticsService.getDashboard(tenantId, effectiveFrom, effectiveTo));

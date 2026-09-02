@@ -11,6 +11,7 @@ import com.aetherops.postmortem.model.PostmortemDraftResponse;
 import com.aetherops.postmortem.service.PostmortemService;
 import com.aetherops.runbook.model.RunbookSuggestionResponse;
 import com.aetherops.runbook.service.RunbookService;
+import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -62,6 +63,7 @@ public class IncidentController {
         @RequestParam(required = false) UUID projectId,
         @PageableDefault(size = 20, sort = "lastSeenAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(incidentService.findAll(tenantId, status, serviceId, severity, projectId, pageable));
     }
 
@@ -80,6 +82,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(evidencePackService.getEvidencePack(id, tenantId));
     }
 
@@ -89,6 +92,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(aiAnalysisService.analyze(id, tenantId));
     }
 
@@ -98,6 +102,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(aiAnalysisService.getLatest(id, tenantId));
     }
 
@@ -107,6 +112,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(runbookService.generate(id, tenantId));
     }
 
@@ -116,6 +122,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(runbookService.getLatest(id, tenantId));
     }
 
@@ -125,6 +132,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(postmortemService.generate(id, tenantId));
     }
 
@@ -134,6 +142,7 @@ public class IncidentController {
         @PathVariable UUID id,
         @RequestParam UUID tenantId
     ) {
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(postmortemService.getLatest(id, tenantId));
     }
 

@@ -7,6 +7,8 @@ import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aetherops.tenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,11 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
 
     private static final UUID TENANT_A = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID TENANT_B = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @BeforeEach
     void setUp() {
@@ -126,7 +133,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "svc-a", LogLevel.ERROR, "error A");
         ingestEvent(TENANT_B, "svc-b", LogLevel.ERROR, "error B");
 
-        mockMvc.perform(get("/api/v1/incidents").param("tenantId", TENANT_A.toString()))
+        mockMvc.perform(get("/api/v1/incidents").param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.page.totalElements").value(1))
             .andExpect(jsonPath("$.data.content[0].tenantId").value(TENANT_A.toString()));
@@ -138,7 +145,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "svc-b", LogLevel.WARN,  "slow response"); // LOW
 
         mockMvc.perform(get("/api/v1/incidents")
-                .param("tenantId", TENANT_A.toString())
+                .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A))
                 .param("severity", "CRITICAL"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.page.totalElements").value(1))
@@ -158,7 +165,8 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated());
     }
 }
