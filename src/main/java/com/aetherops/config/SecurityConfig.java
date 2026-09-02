@@ -1,6 +1,7 @@
 package com.aetherops.config;
 
 import com.aetherops.apikey.ApiKeyAuthFilter;
+import com.aetherops.auth.security.CurrentUserContextFilter;
 import com.aetherops.auth.security.JwtAuthFilter;
 import com.aetherops.auth.service.JwtService;
 import com.aetherops.common.response.ErrorResponse;
@@ -36,6 +37,7 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final TenantContextFilter tenantContextFilter;
+    private final CurrentUserContextFilter currentUserContextFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -81,6 +83,7 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyAuthFilter, JwtAuthFilter.class)
             .addFilterAfter(tenantContextFilter, JwtAuthFilter.class)
+            .addFilterAfter(currentUserContextFilter, JwtAuthFilter.class)
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, e) -> {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());

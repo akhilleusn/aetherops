@@ -30,7 +30,17 @@ class CalendarTokenEncryptorTest {
     }
 
     @Test
-    void constructor_defaultKey_isValidThirtyTwoBytes() {
+    void constructor_anyThirtyTwoByteKey_constructsSuccessfully() {
         assertThat(new CalendarTokenEncryptor("000000000000000000000000000000AB")).isNotNull();
+    }
+
+    /**
+     * app.calendar.token-encryption-key has no default (see the class-level Javadoc) — the
+     * app must fail to start rather than silently encrypt with a key shipped in source
+     * control, matching SlackTokenEncryptor's required-env-var-only pattern.
+     */
+    @Test
+    void constructor_missingKey_throwsRatherThanUsingAHardcodedDefault() {
+        assertThrows(IllegalArgumentException.class, () -> new CalendarTokenEncryptor(""));
     }
 }

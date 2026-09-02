@@ -1,7 +1,11 @@
 package com.aetherops.calendar;
 
+import com.aetherops.auth.security.CurrentUserContext;
+import com.aetherops.common.exception.ForbiddenException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.common.response.ApiResponse;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,6 +34,56 @@ class CalendarConnectionControllerTest {
 
     private final UUID userId = UUID.randomUUID();
     private final UUID tenantId = UUID.randomUUID();
+
+    /** Simulates CurrentUserContextFilter having authenticated this request as {@link #userId}. */
+    @BeforeEach
+    void authenticateAsUserId() {
+        CurrentUserContext.set(userId);
+    }
+
+    @AfterEach
+    void cleanup() {
+        CurrentUserContext.clear();
+    }
+
+    @Test
+    void connect_callerIsNotThePathUser_throwsForbiddenWithoutCallingService() {
+        CurrentUserContext.set(UUID.randomUUID()); // some other authenticated user
+        ConnectCalendarRequest request = new ConnectCalendarRequest(tenantId, CalendarProvider.GOOGLE, "code", "https://app/cb");
+
+        assertThatThrownBy(() -> controller.connect(userId, request))
+            .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(oAuthService);
+    }
+
+    @Test
+    void connect_noAuthenticatedCaller_throwsForbidden() {
+        CurrentUserContext.clear();
+        ConnectCalendarRequest request = new ConnectCalendarRequest(tenantId, CalendarProvider.GOOGLE, "code", "https://app/cb");
+
+        assertThatThrownBy(() -> controller.connect(userId, request))
+            .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(oAuthService);
+    }
+
+    @Test
+    void list_callerIsNotThePathUser_throwsForbiddenWithoutQuerying() {
+        CurrentUserContext.set(UUID.randomUUID());
+
+        assertThatThrownBy(() -> controller.list(userId))
+            .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(connectionRepository);
+    }
+
+    @Test
+    void disconnect_callerIsNotThePathUser_throwsForbiddenWithoutDeleting() {
+        CurrentUserContext.set(UUID.randomUUID());
+        UUID connectionId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> controller.disconnect(userId, connectionId))
+            .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(connectionRepository);
+    }
 
     @Test
     void connect_delegatesToServiceAndReturnsSafeResponseWithoutToken() {

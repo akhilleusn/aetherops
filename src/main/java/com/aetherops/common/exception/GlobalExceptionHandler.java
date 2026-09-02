@@ -6,6 +6,7 @@ import com.aetherops.audit.service.AuditLogService;
 import com.aetherops.common.response.ErrorResponse;
 import com.aetherops.common.exception.AccountLockedException;
 import com.aetherops.common.exception.DuplicateEmailException;
+import com.aetherops.common.exception.ForbiddenException;
 import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidResetTokenException;
 import com.aetherops.common.exception.InvalidVerificationTokenException;
@@ -200,6 +201,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(
+        ForbiddenException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse.of(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
