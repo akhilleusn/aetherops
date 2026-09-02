@@ -24,6 +24,8 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     long countByTenantIdAndLastSeenAtBefore(UUID tenantId, Instant cutoff);
 
+    boolean existsByTenantId(UUID tenantId);
+
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM Incident i WHERE i.tenantId = :tenantId AND i.lastSeenAt < :cutoff")
     int deleteByTenantIdAndLastSeenAtBefore(@Param("tenantId") UUID tenantId, @Param("cutoff") Instant cutoff);
