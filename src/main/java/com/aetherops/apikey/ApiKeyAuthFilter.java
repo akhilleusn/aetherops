@@ -4,6 +4,7 @@ import com.aetherops.apikey.model.ApiKey;
 import com.aetherops.apikey.service.ApiKeyService;
 import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.response.ErrorResponse;
+import com.aetherops.tenant.TenantContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -45,8 +46,9 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        ApiKey apiKey;
         try {
-            ApiKey apiKey = apiKeyService.resolve(rawKey);
+            apiKey = apiKeyService.resolve(rawKey);
 
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     "apikey:" + apiKey.getTenantId(),
@@ -75,6 +77,14 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        chain.doFilter(request, response);
+        // Webhook/ingestion endpoints authenticate via this header instead of a JWT, so
+        // TenantContextFilter (which only reads a Bearer token) never runs for them — without
+        // this, app.tenant_id is never propagated to Postgres RLS for these requests at all.
+        try {
+            TenantContext.set(apiKey.getTenantId());
+            chain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
+        }
     }
 }

@@ -94,6 +94,12 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
+        // application.yml defaults this to true for local/dev convenience. DemoDataInitializer
+        // seeds a demo tenant + incidents directly via repositories with no TenantContext set.
+        // Demo seeding has no place in an automated test run, and this (unlike
+        // application-test.yml) also reaches tests like SecurityEnforcementTest that
+        // deliberately run under the default, non-"test" profile.
+        registry.add("demo.mode", () -> "false");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("app.jwt.secret", () -> "test-secret-key-minimum-32-characters-long");
         registry.add("spring.data.redis.host", redis::getHost);
