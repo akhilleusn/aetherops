@@ -102,6 +102,7 @@ public class PostmortemService {
         return response;
     }
 
+    @Transactional(readOnly = true)
     public PostmortemDraftResponse getLatest(UUID incidentId, UUID tenantId) {
         return postmortemDraftRepository
             .findTopByIncidentIdAndTenantIdOrderByCreatedAtDesc(incidentId, tenantId)

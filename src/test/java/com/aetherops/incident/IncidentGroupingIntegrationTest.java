@@ -52,7 +52,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
     void firstErrorLog_createsOpenIncidentWithMediumSeverity() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        var incidents = incidentRepository.findAll();
+        var incidents = withTenant(TENANT_A, () -> incidentRepository.findAll());
         assertThat(incidents).hasSize(1);
 
         var incident = incidents.get(0);
@@ -70,7 +70,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        var incidents = incidentRepository.findAll();
+        var incidents = withTenant(TENANT_A, () -> incidentRepository.findAll());
         assertThat(incidents).hasSize(1);
         assertThat(incidents.get(0).getEventCount()).isEqualTo(2);
     }
@@ -80,7 +80,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
         ingestEvent(TENANT_A, "order-svc",   LogLevel.ERROR, "Connection refused");
 
-        assertThat(incidentRepository.findAll()).hasSize(2);
+        assertThat(withTenant(TENANT_A, () -> incidentRepository.findAll())).hasSize(2);
     }
 
     @Test
@@ -88,10 +88,15 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
         ingestEvent(TENANT_B, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        var incidents = incidentRepository.findAll();
-        assertThat(incidents).hasSize(2);
-        assertThat(incidents).extracting("tenantId")
-            .containsExactlyInAnyOrder(TENANT_A, TENANT_B);
+        // RLS scopes every query to a single tenant at a time, so each tenant's incident
+        // is verified separately rather than via one cross-tenant findAll().
+        var tenantAIncidents = withTenant(TENANT_A, () -> incidentRepository.findAll());
+        assertThat(tenantAIncidents).hasSize(1);
+        assertThat(tenantAIncidents.get(0).getTenantId()).isEqualTo(TENANT_A);
+
+        var tenantBIncidents = withTenant(TENANT_B, () -> incidentRepository.findAll());
+        assertThat(tenantBIncidents).hasSize(1);
+        assertThat(tenantBIncidents.get(0).getTenantId()).isEqualTo(TENANT_B);
     }
 
     @Test
@@ -100,7 +105,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        var incident = incidentRepository.findAll().get(0);
+        var incident = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0));
         assertThat(incident.getEventCount()).isEqualTo(3);
         assertThat(incident.getSeverity()).isEqualTo(IncidentSeverity.HIGH);
     }
@@ -109,7 +114,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
     void fatalLog_createsCriticalIncident() throws Exception {
         ingestEvent(TENANT_A, "auth-svc", LogLevel.FATAL, "Out of memory");
 
-        var incident = incidentRepository.findAll().get(0);
+        var incident = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0));
         assertThat(incident.getSeverity()).isEqualTo(IncidentSeverity.CRITICAL);
     }
 
@@ -117,7 +122,7 @@ class IncidentGroupingIntegrationTest extends AbstractIntegrationTest {
     void warnLog_createsLowSeverityIncident() throws Exception {
         ingestEvent(TENANT_A, "cache-svc", LogLevel.WARN, "Cache miss rate high");
 
-        var incident = incidentRepository.findAll().get(0);
+        var incident = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0));
         assertThat(incident.getSeverity()).isEqualTo(IncidentSeverity.LOW);
     }
 

@@ -54,11 +54,11 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
     void errorLog_createsIncidentAndOneEvidenceItem() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        assertThat(incidentRepository.findAll()).hasSize(1);
-        assertThat(evidenceItemRepository.findAll()).hasSize(1);
+        assertThat(withTenant(TENANT_A, () -> incidentRepository.findAll())).hasSize(1);
+        assertThat(withTenant(TENANT_A, () -> evidenceItemRepository.findAll())).hasSize(1);
 
-        var item = evidenceItemRepository.findAll().get(0);
-        var incident = incidentRepository.findAll().get(0);
+        var item = withTenant(TENANT_A, () -> evidenceItemRepository.findAll().get(0));
+        var incident = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0));
         assertThat(item.getIncidentId()).isEqualTo(incident.getId());
         assertThat(item.getTenantId()).isEqualTo(TENANT_A);
     }
@@ -69,10 +69,10 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Connection refused");
 
-        assertThat(incidentRepository.findAll()).hasSize(1);
-        assertThat(evidenceItemRepository.findAll()).hasSize(2);
+        assertThat(withTenant(TENANT_A, () -> incidentRepository.findAll())).hasSize(1);
+        assertThat(withTenant(TENANT_A, () -> evidenceItemRepository.findAll())).hasSize(2);
 
-        var incident = incidentRepository.findAll().get(0);
+        var incident = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0));
         assertThat(incident.getEventCount()).isEqualTo(2);
     }
 
@@ -81,8 +81,8 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
     void evidencePack_containsLogEventIdSummaryAndLevel() throws Exception {
         ingestEvent(TENANT_A, "order-svc", LogLevel.ERROR, "Order processing failed");
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
-        UUID logEventId = logEventRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
+        UUID logEventId = withTenant(TENANT_A, () -> logEventRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -101,7 +101,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
     void tenantIsolation_wrongTenantReturns404() throws Exception {
         ingestEvent(TENANT_B, "auth-svc", LogLevel.ERROR, "Unauthorised access");
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_B, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -113,7 +113,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
     void fatalLog_criticalIncidentHasFatalEvidenceItem() throws Exception {
         ingestEvent(TENANT_A, "auth-svc", LogLevel.FATAL, "JVM out of memory");
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -128,7 +128,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         String rawMessage = "Auth failed: Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig";
         ingestEvent(TENANT_A, "api-gateway", LogLevel.ERROR, rawMessage);
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -144,7 +144,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
     void evidencePack_returnsFullIncidentContext() throws Exception {
         ingestEvent(TENANT_A, "checkout-svc", LogLevel.ERROR, "Payment gateway timeout");
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -166,7 +166,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
         ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -184,7 +184,7 @@ class EvidencePackIntegrationTest extends AbstractIntegrationTest {
         ingestEventAt(TENANT_A, "shipping-svc", LogLevel.ERROR, "Delivery failed", older);
         ingestEventAt(TENANT_A, "shipping-svc", LogLevel.ERROR, "Delivery failed", newer);
 
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(get("/api/v1/incidents/{id}/evidence-pack", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))

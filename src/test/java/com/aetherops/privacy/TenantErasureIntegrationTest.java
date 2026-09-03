@@ -67,8 +67,8 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.totalRowsAffected").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)));
 
         assertThat(tenantRepository.existsById(tenantId)).isTrue();
-        assertThat(logEventRepository.count()).isEqualTo(1);
-        assertThat(incidentRepository.count()).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> logEventRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> incidentRepository.count())).isEqualTo(1);
     }
 
     @Test
@@ -95,9 +95,9 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.tenantDeleted").value(true));
 
         assertThat(tenantRepository.existsById(tenantId)).isFalse();
-        assertThat(logEventRepository.findAll().stream()
+        assertThat(withTenant(tenantId, () -> logEventRepository.findAll()).stream()
             .anyMatch(e -> tenantId.equals(e.getTenantId()))).isFalse();
-        assertThat(incidentRepository.findAll().stream()
+        assertThat(withTenant(tenantId, () -> incidentRepository.findAll()).stream()
             .anyMatch(i -> tenantId.equals(i.getTenantId()))).isFalse();
     }
 
@@ -114,9 +114,9 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(tenantRepository.existsById(tenantA)).isFalse();
         assertThat(tenantRepository.existsById(tenantB)).isTrue();
-        assertThat(logEventRepository.findAll().stream()
+        assertThat(withTenant(tenantB, () -> logEventRepository.findAll()).stream()
             .anyMatch(e -> tenantB.equals(e.getTenantId()))).isTrue();
-        assertThat(incidentRepository.findAll().stream()
+        assertThat(withTenant(tenantB, () -> incidentRepository.findAll()).stream()
             .anyMatch(i -> tenantB.equals(i.getTenantId()))).isTrue();
     }
 
@@ -131,7 +131,7 @@ class TenantErasureIntegrationTest extends AbstractIntegrationTest {
             .andExpect(status().isForbidden());
 
         assertThat(tenantRepository.existsById(tenantA)).isTrue();
-        assertThat(logEventRepository.findAll().stream()
+        assertThat(withTenant(tenantA, () -> logEventRepository.findAll()).stream()
             .anyMatch(e -> tenantA.equals(e.getTenantId()))).isTrue();
     }
 

@@ -7,6 +7,7 @@ import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEventRequest;
 import com.aetherops.ingestion.model.LogLevel;
 import com.aetherops.ingestion.repository.LogEventRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -117,14 +118,16 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     @Test
     void manualUpdate_mediumToHigh_notifiesSlack() throws Exception {
         String body = createIncident(IncidentSeverity.MEDIUM);
-        UUID incidentId = UUID.fromString(
-            objectMapper.readTree(body).at("/data/id").asText());
+        JsonNode data = objectMapper.readTree(body).at("/data");
+        UUID incidentId = UUID.fromString(data.at("/id").asText());
+        UUID tenantId = UUID.fromString(data.at("/tenantId").asText());
         Mockito.clearInvocations(slackNotifier);
 
         var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         verify(slackNotifier).notify(argThat(i ->
@@ -134,14 +137,16 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     @Test
     void manualUpdate_highToHigh_doesNotNotifyAgain() throws Exception {
         String body = createIncident(IncidentSeverity.HIGH);
-        UUID incidentId = UUID.fromString(
-            objectMapper.readTree(body).at("/data/id").asText());
+        JsonNode data = objectMapper.readTree(body).at("/data");
+        UUID incidentId = UUID.fromString(data.at("/id").asText());
+        UUID tenantId = UUID.fromString(data.at("/tenantId").asText());
         Mockito.clearInvocations(slackNotifier);
 
         var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
         verify(slackNotifier, never()).notify(any());
@@ -165,11 +170,13 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String createIncident(IncidentSeverity severity) throws Exception {
+        UUID tenantId = UUID.randomUUID();
         var req = new CreateIncidentRequest(
-            UUID.randomUUID(), null, "Test incident title", null, severity, "test-svc", "production", null, null);
+            tenantId, null, "Test incident title", null, severity, "test-svc", "production", null, null);
         return mockMvc.perform(post("/api/v1/incidents")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(objectMapper.writeValueAsString(req))
+                .with(asTenant(tenantId)))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
     }

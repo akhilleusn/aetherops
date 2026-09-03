@@ -58,7 +58,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_createsAndReturnsAnalysis() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Database connection pool exhausted");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -78,7 +78,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_tenantMismatch_returns404() throws Exception {
         ingestEvent(TENANT_B, "auth-svc", LogLevel.ERROR, "Token validation failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_B, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -89,8 +89,8 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_evidenceRefsContainRealEvidenceItemIds() throws Exception {
         ingestEvent(TENANT_A, "order-svc", LogLevel.ERROR, "Order state machine failed");
-        UUID incidentId    = incidentRepository.findAll().get(0).getId();
-        String evidenceId  = evidenceItemRepository.findAll().get(0).getId().toString();
+        UUID incidentId    = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
+        String evidenceId  = withTenant(TENANT_A, () -> evidenceItemRepository.findAll().get(0).getId().toString());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -109,7 +109,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_unknownsReflectMissingDataSources() throws Exception {
         ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock level read failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -126,7 +126,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_confidenceIsLowForSingleWeakEvidence() throws Exception {
         ingestEvent(TENANT_A, "cache-svc", LogLevel.ERROR, "Cache miss");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -141,7 +141,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_recommendedChecksAreSafeAndNonDestructive() throws Exception {
         ingestEvent(TENANT_A, "billing-svc", LogLevel.ERROR, "Charge processing failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -162,7 +162,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     void analyze_doesNotExposeRawSecrets() throws Exception {
         String rawToken = "eyJhbGciOiJSUzI1NiJ9.payload.signature";
         ingestEvent(TENANT_A, "api-gateway", LogLevel.ERROR, "Auth failed: Bearer " + rawToken);
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -177,7 +177,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_repeatedCallCreatesNewVersionEachTime() throws Exception {
         ingestEvent(TENANT_A, "search-svc", LogLevel.ERROR, "Index query timeout");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body1 = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -193,9 +193,9 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
         String id2 = objectMapper.readTree(body2).at("/data/id").asText();
 
         assertThat(id1).isNotEqualTo(id2);
-        assertThat(aiAnalysisRepository.count()).isEqualTo(2);
+        assertThat(withTenant(TENANT_A, () -> aiAnalysisRepository.count())).isEqualTo(2);
 
-        var analyses = aiAnalysisRepository.findByIncidentIdOrderByCreatedAtDesc(incidentId);
+        var analyses = withTenant(TENANT_A, () -> aiAnalysisRepository.findByIncidentIdOrderByCreatedAtDesc(incidentId));
         assertThat(analyses).hasSize(2);
         assertThat(analyses).extracting("incidentId").containsOnly(incidentId);
     }
@@ -205,7 +205,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     void analyze_firstCallHasVersionOneAndCorrectEvidenceCount() throws Exception {
         ingestEvent(TENANT_A, "worker-svc", LogLevel.ERROR, "Job processing failed");
         ingestEvent(TENANT_A, "worker-svc", LogLevel.ERROR, "Job processing failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -218,7 +218,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_secondCallIncrementsVersion() throws Exception {
         ingestEvent(TENANT_A, "notification-svc", LogLevel.ERROR, "Email delivery failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -235,7 +235,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void analyze_likelyCauseContainsEvidenceItemId() throws Exception {
         ingestEvent(TENANT_A, "db-svc", LogLevel.ERROR, "Query execution timeout");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -255,7 +255,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     void analyze_noRawSecretInSummaryOrLikelyCause() throws Exception {
         String rawToken = "eyJhbGciOiJSUzI1NiJ9.hardened.secret";
         ingestEvent(TENANT_A, "gateway-svc", LogLevel.ERROR, "Auth failed: Bearer " + rawToken);
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -283,7 +283,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getLatestAnalysis_returnsLatest() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Timeout on checkout");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -301,7 +301,7 @@ class AIAnalysisIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getLatestAnalysis_noAnalysisYet_returns404() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Timeout on checkout");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/analyze/latest", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))

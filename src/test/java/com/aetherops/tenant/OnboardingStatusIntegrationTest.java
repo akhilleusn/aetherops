@@ -13,6 +13,7 @@ import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,11 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
         slackWorkspaceRepository.deleteAll();
         userRepository.deleteAll();
         tenantRepository.deleteAll();
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
     }
 
     @Test
@@ -129,6 +135,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void connectSlack(UUID tenantId) {
+        TenantContext.set(tenantId);
         slackWorkspaceRepository.save(SlackWorkspace.builder()
             .tenantId(tenantId)
             .teamId("T12345")

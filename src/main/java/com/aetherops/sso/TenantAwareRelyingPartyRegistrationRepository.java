@@ -6,6 +6,7 @@ import org.springframework.security.saml2.core.Saml2X509Credential;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistration;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,7 @@ public class TenantAwareRelyingPartyRegistrationRepository implements RelyingPar
     private String spEntityId;
 
     @Override
+    @Transactional(readOnly = true)
     public RelyingPartyRegistration findByRegistrationId(String registrationId) {
         UUID tenantId;
         try {
@@ -40,7 +42,13 @@ public class TenantAwareRelyingPartyRegistrationRepository implements RelyingPar
             return null;
         }
 
-        Optional<TenantSsoConfig> configOpt = ssoConfigRepository.findByTenantIdAndEnabledTrue(tenantId);
+        Optional<TenantSsoConfig> configOpt;
+        try {
+            com.aetherops.tenant.TenantContext.set(tenantId);
+            configOpt = ssoConfigRepository.findByTenantIdAndEnabledTrue(tenantId);
+        } finally {
+            com.aetherops.tenant.TenantContext.clear();
+        }
         if (configOpt.isEmpty()) {
             return null;
         }

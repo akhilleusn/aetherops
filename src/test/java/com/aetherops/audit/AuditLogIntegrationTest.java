@@ -80,7 +80,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
                 .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
-        var entries = auditLogRepository.findAll();
+        var entries = withTenant(tenantId, () -> auditLogRepository.findAll());
         assertThat(entries).hasSize(1);
 
         var entry = entries.get(0);
@@ -106,7 +106,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
                 .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
-        var entries = auditLogRepository.findAll();
+        var entries = withTenant(tenantId, () -> auditLogRepository.findAll());
         assertThat(entries).hasSize(1);
         assertThat(entries.get(0).getAction()).isEqualTo(AuditAction.RUNBOOK_GENERATED);
         assertThat(entries.get(0).getStatus()).isEqualTo(AuditStatus.SUCCESS);
@@ -123,7 +123,7 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
                 .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
-        var entries = auditLogRepository.findAll();
+        var entries = withTenant(tenantId, () -> auditLogRepository.findAll());
         assertThat(entries).hasSize(1);
         assertThat(entries.get(0).getAction()).isEqualTo(AuditAction.POSTMORTEM_GENERATED);
         assertThat(entries.get(0).getStatus()).isEqualTo(AuditStatus.SUCCESS);
@@ -144,13 +144,13 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
         }
 
         // Clear SUCCESS entries so we can assert only the BLOCKED entry
-        auditLogRepository.deleteAll();
+        withTenant(tenantId, () -> { auditLogRepository.deleteAll(); return null; });
 
         mockMvc.perform(post("/api/v1/incidents/{id}/analyze", incidentId)
                 .param("tenantId", tenantId.toString()).with(asTenant(tenantId)))
             .andExpect(status().isTooManyRequests());
 
-        var entries = auditLogRepository.findAll();
+        var entries = withTenant(tenantId, () -> auditLogRepository.findAll());
         assertThat(entries).hasSize(1);
 
         var entry = entries.get(0);

@@ -78,6 +78,7 @@ public class RunbookService {
         return response;
     }
 
+    @Transactional(readOnly = true)
     public RunbookSuggestionResponse getLatest(UUID incidentId, UUID tenantId) {
         return runbookSuggestionRepository
             .findTopByIncidentIdAndTenantIdOrderByCreatedAtDesc(incidentId, tenantId)

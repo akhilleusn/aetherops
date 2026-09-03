@@ -101,7 +101,7 @@ class LogEventIntegrationTest extends AbstractIntegrationTest {
                 .with(asTenant(TENANT_A)))
             .andExpect(status().isCreated());
 
-        var saved = logEventRepository.findAll().get(0);
+        var saved = withTenant(TENANT_A, () -> logEventRepository.findAll().get(0));
         assertThat(saved.getRawPayload()).doesNotContain("supersecret123");
         assertThat(saved.getRawPayload()).contains("[REDACTED]");
     }

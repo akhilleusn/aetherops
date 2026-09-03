@@ -93,12 +93,12 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.totalAffected").value(6));
 
         // Nothing deleted — all rows still present
-        assertThat(logEventRepository.count()).isEqualTo(1);
-        assertThat(evidenceItemRepository.count()).isEqualTo(1);
-        assertThat(incidentRepository.count()).isEqualTo(1);
-        assertThat(aiAnalysisRepository.count()).isEqualTo(1);
-        assertThat(runbookSuggestionRepository.count()).isEqualTo(1);
-        assertThat(postmortemDraftRepository.count()).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> logEventRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> evidenceItemRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> incidentRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> aiAnalysisRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> runbookSuggestionRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> postmortemDraftRepository.count())).isEqualTo(1);
     }
 
     // (2) Real run deletes only rows outside the retention window.
@@ -114,12 +114,12 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.dryRun").value(false))
             .andExpect(jsonPath("$.data.totalAffected").value(6));
 
-        assertThat(logEventRepository.count()).isEqualTo(0);
-        assertThat(evidenceItemRepository.count()).isEqualTo(0);
-        assertThat(incidentRepository.count()).isEqualTo(0);
-        assertThat(aiAnalysisRepository.count()).isEqualTo(0);
-        assertThat(runbookSuggestionRepository.count()).isEqualTo(0);
-        assertThat(postmortemDraftRepository.count()).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> logEventRepository.count())).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> evidenceItemRepository.count())).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> incidentRepository.count())).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> aiAnalysisRepository.count())).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> runbookSuggestionRepository.count())).isEqualTo(0);
+        assertThat(withTenant(tenantId, () -> postmortemDraftRepository.count())).isEqualTo(0);
     }
 
     // (3) Records newer than the cutoff are NOT deleted.
@@ -139,12 +139,12 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
             .andExpect(status().isOk());
 
         // One log event from the recent lifecycle must remain
-        assertThat(logEventRepository.count()).isEqualTo(1);
-        assertThat(evidenceItemRepository.count()).isEqualTo(1);
-        assertThat(incidentRepository.count()).isEqualTo(1);
-        assertThat(aiAnalysisRepository.count()).isEqualTo(1);
-        assertThat(runbookSuggestionRepository.count()).isEqualTo(1);
-        assertThat(postmortemDraftRepository.count()).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> logEventRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> evidenceItemRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> incidentRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> aiAnalysisRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> runbookSuggestionRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> postmortemDraftRepository.count())).isEqualTo(1);
     }
 
     // (4) Retention for tenant A never touches tenant B's data.
@@ -166,16 +166,18 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.logEventsAffected").value(1));
 
-        // Tenant A's data is gone
-        assertThat(logEventRepository.findAll().stream()
+        // Tenant A's data is gone. RLS scopes each query to a single tenant, so tenant
+        // A and tenant B are checked under separate TenantContext values rather than
+        // one cross-tenant findAll().
+        assertThat(withTenant(tenantA, () -> logEventRepository.findAll()).stream()
             .filter(e -> tenantA.equals(e.getTenantId())).count()).isEqualTo(0);
 
         // Tenant B's data is completely untouched
-        assertThat(logEventRepository.findAll().stream()
+        assertThat(withTenant(tenantB, () -> logEventRepository.findAll()).stream()
             .filter(e -> tenantB.equals(e.getTenantId())).count()).isEqualTo(1);
-        assertThat(evidenceItemRepository.findAll().stream()
+        assertThat(withTenant(tenantB, () -> evidenceItemRepository.findAll()).stream()
             .filter(e -> tenantB.equals(e.getTenantId())).count()).isEqualTo(1);
-        assertThat(incidentRepository.findAll().stream()
+        assertThat(withTenant(tenantB, () -> incidentRepository.findAll()).stream()
             .filter(i -> tenantB.equals(i.getTenantId())).count()).isEqualTo(1);
     }
 
@@ -206,8 +208,8 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.dryRun").value(true));
 
         // Nothing deleted
-        assertThat(logEventRepository.count()).isEqualTo(1);
-        assertThat(incidentRepository.count()).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> logEventRepository.count())).isEqualTo(1);
+        assertThat(withTenant(tenantId, () -> incidentRepository.count())).isEqualTo(1);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -264,15 +266,39 @@ class RetentionIntegrationTest extends AbstractIntegrationTest {
     /**
      * Backdates all timestamped rows for the given tenant using direct SQL,
      * bypassing @CreationTimestamp which cannot be overridden via JPA.
+     *
+     * Runs as a single ConnectionCallback (one physical connection, one implicit
+     * transaction) so the app.tenant_id session var set here is still in effect —
+     * these tables are RLS-protected, and JdbcTemplate calls outside a Spring
+     * transaction would otherwise each grab a fresh, unscoped connection from the pool.
      */
     private void backdateAll(UUID tenantId, Instant to) {
         Timestamp ts = Timestamp.from(to);
-        jdbcTemplate.update("UPDATE log_events       SET ingested_at = ? WHERE tenant_id = ?", ts, tenantId);
-        jdbcTemplate.update("UPDATE evidence_items   SET created_at  = ? WHERE tenant_id = ?", ts, tenantId);
-        jdbcTemplate.update("UPDATE incidents        SET last_seen_at = ?, first_seen_at = ? WHERE tenant_id = ?", ts, ts, tenantId);
-        jdbcTemplate.update("UPDATE ai_analyses      SET created_at  = ? WHERE tenant_id = ?", ts, tenantId);
-        jdbcTemplate.update("UPDATE runbook_suggestions SET created_at = ? WHERE tenant_id = ?", ts, tenantId);
-        jdbcTemplate.update("UPDATE postmortem_drafts   SET created_at = ? WHERE tenant_id = ?", ts, tenantId);
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) conn -> {
+            try (var setTenant = conn.prepareStatement("SELECT set_config('app.tenant_id', ?, false)")) {
+                setTenant.setString(1, tenantId.toString());
+                setTenant.execute();
+            }
+            try (var ps = conn.prepareStatement("UPDATE log_events SET ingested_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setObject(2, tenantId); ps.executeUpdate();
+            }
+            try (var ps = conn.prepareStatement("UPDATE evidence_items SET created_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setObject(2, tenantId); ps.executeUpdate();
+            }
+            try (var ps = conn.prepareStatement("UPDATE incidents SET last_seen_at = ?, first_seen_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setTimestamp(2, ts); ps.setObject(3, tenantId); ps.executeUpdate();
+            }
+            try (var ps = conn.prepareStatement("UPDATE ai_analyses SET created_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setObject(2, tenantId); ps.executeUpdate();
+            }
+            try (var ps = conn.prepareStatement("UPDATE runbook_suggestions SET created_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setObject(2, tenantId); ps.executeUpdate();
+            }
+            try (var ps = conn.prepareStatement("UPDATE postmortem_drafts SET created_at = ? WHERE tenant_id = ?")) {
+                ps.setTimestamp(1, ts); ps.setObject(2, tenantId); ps.executeUpdate();
+            }
+            return null;
+        });
     }
 
     private Instant daysAgo(int days) {

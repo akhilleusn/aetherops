@@ -3,6 +3,7 @@ package com.aetherops;
 import com.aetherops.auth.model.Role;
 import com.aetherops.auth.model.User;
 import com.aetherops.auth.service.JwtService;
+import com.aetherops.tenant.TenantContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @SpringBootTest
 public abstract class AbstractIntegrationTest {
@@ -23,7 +25,8 @@ public abstract class AbstractIntegrationTest {
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
             .withDatabaseName("aetherops_test")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            .withInitScript("create-app-role.sql");
 
     static final GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
@@ -41,6 +44,24 @@ public abstract class AbstractIntegrationTest {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private TestTransactionHelper testTransactionHelper;
+
+    /**
+     * Runs a raw repository call (or any code) under a real, RLS-honest tenant context.
+     * A bare repository call from test code (e.g. {@code incidentRepository.findAll()})
+     * does NOT reliably propagate app.tenant_id to Postgres on its own — Spring Data's own
+     * per-repository transactional advisor is a different object from the one
+     * TenantContextInterceptor's aspect reliably wins the ordering tie against for
+     * user-defined @Transactional service methods — so under enforced RLS it can silently
+     * see zero rows even after TenantContext.set(tenantId). Wrapping the call in a real
+     * @Transactional bean method (TestTransactionHelper) forces the same reliable path.
+     */
+    protected <T> T withTenant(UUID tenantId, Supplier<T> action) {
+        TenantContext.set(tenantId);
+        return testTransactionHelper.runInTransaction(action);
+    }
 
     /**
      * The "test" profile's security chain (TestSecurityConfig) is permit-all, but
@@ -91,8 +112,13 @@ public abstract class AbstractIntegrationTest {
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
+        // App runtime connects as a non-superuser role so RLS (which superusers/BYPASSRLS
+        // roles silently ignore even with FORCE ROW LEVEL SECURITY) is actually enforced
+        // in tests. Migrations still run as the superuser "test" role, separately below.
+        registry.add("spring.datasource.username", () -> "app_user");
+        registry.add("spring.datasource.password", () -> "apppass");
+        registry.add("spring.flyway.user", postgres::getUsername);
+        registry.add("spring.flyway.password", postgres::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         // application.yml defaults this to true for local/dev convenience. DemoDataInitializer
         // seeds a demo tenant + incidents directly via repositories with no TenantContext set.

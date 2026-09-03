@@ -158,10 +158,11 @@ class ServiceIntegrationTest extends AbstractIntegrationTest {
         UUID tenantId  = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         UUID projectId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
+        TenantContext.set(tenantId);
         serviceRegistryService.findOrRegister(tenantId, projectId, "dedup-svc", "PRODUCTION");
         serviceRegistryService.findOrRegister(tenantId, projectId, "dedup-svc", "PRODUCTION");
 
-        assertThat(serviceRepository.findByTenantIdAndProjectId(tenantId, projectId)).hasSize(1);
+        assertThat(withTenant(tenantId, () -> serviceRepository.findByTenantIdAndProjectId(tenantId, projectId))).hasSize(1);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

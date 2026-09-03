@@ -231,7 +231,7 @@ class UsageLimitIntegrationTest extends AbstractIntegrationTest {
         analyzeOnce(incidentId, tenantId);
 
         String expectedPeriod = YearMonth.now().toString();
-        var records = usageRepository.findAll();
+        var records = withTenant(tenantId, () -> usageRepository.findAll());
         assertThat(records).hasSize(1);
         assertThat(records.get(0).getPeriod()).isEqualTo(expectedPeriod);
 

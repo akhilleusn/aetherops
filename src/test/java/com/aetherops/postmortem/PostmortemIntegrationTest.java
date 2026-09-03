@@ -57,7 +57,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void generatePostmortem_createsAndReturnsDraft() throws Exception {
         ingestEvent(TENANT_A, "payment-svc", LogLevel.ERROR, "Database connection pool exhausted");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -75,7 +75,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void generatePostmortem_allRequiredSectionsPresent() throws Exception {
         ingestEvent(TENANT_A, "order-svc", LogLevel.ERROR, "Order processing failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -92,8 +92,8 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void generatePostmortem_timelineContainsRealEvidenceRefs() throws Exception {
         ingestEvent(TENANT_A, "inventory-svc", LogLevel.ERROR, "Stock check failed");
-        UUID incidentId   = incidentRepository.findAll().get(0).getId();
-        String evidenceId = evidenceItemRepository.findAll().get(0).getId().toString();
+        UUID incidentId   = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
+        String evidenceId = withTenant(TENANT_A, () -> evidenceItemRepository.findAll().get(0).getId().toString());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -120,7 +120,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void generatePostmortem_noDestructiveFollowUpActions() throws Exception {
         ingestEvent(TENANT_A, "billing-svc", LogLevel.ERROR, "Charge processing failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -141,7 +141,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     void generatePostmortem_noRawSecretInAnySection() throws Exception {
         String rawToken = "eyJhbGciOiJSUzI1NiJ9.payload.signature";
         ingestEvent(TENANT_A, "api-gateway", LogLevel.ERROR, "Auth failed: Bearer " + rawToken);
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -155,7 +155,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void generatePostmortem_repeatedCallCreatesNewVersionEachTime() throws Exception {
         ingestEvent(TENANT_A, "search-svc", LogLevel.ERROR, "Index query timeout");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         String body1 = mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -173,14 +173,14 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
         String id2 = objectMapper.readTree(body2).at("/data/id").asText();
 
         assertThat(id1).isNotEqualTo(id2);
-        assertThat(postmortemDraftRepository.count()).isEqualTo(2);
+        assertThat(withTenant(TENANT_A, () -> postmortemDraftRepository.count())).isEqualTo(2);
     }
 
     // (g) Tenant mismatch returns 404
     @Test
     void generatePostmortem_tenantMismatch_returns404() throws Exception {
         ingestEvent(TENANT_B, "auth-svc", LogLevel.ERROR, "Token validation failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_B, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -191,7 +191,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getLatestPostmortem_returnsLatestAfterTwoGenerations() throws Exception {
         ingestEvent(TENANT_A, "cache-svc", LogLevel.ERROR, "Cache miss");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(post("/api/v1/incidents/{id}/postmortem", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
@@ -213,7 +213,7 @@ class PostmortemIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getLatestPostmortem_noDraftExists_returns404() throws Exception {
         ingestEvent(TENANT_A, "worker-svc", LogLevel.ERROR, "Job processing failed");
-        UUID incidentId = incidentRepository.findAll().get(0).getId();
+        UUID incidentId = withTenant(TENANT_A, () -> incidentRepository.findAll().get(0).getId());
 
         mockMvc.perform(get("/api/v1/incidents/{id}/postmortem/latest", incidentId)
                 .param("tenantId", TENANT_A.toString()).with(asTenant(TENANT_A)))
