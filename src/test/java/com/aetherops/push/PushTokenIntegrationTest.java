@@ -94,6 +94,74 @@ class PushTokenIntegrationTest extends AbstractIntegrationTest {
         assertThat(saved.getTenantId()).isNotEqualTo(victimTenantId);
     }
 
+    // Regression test for the cross-tenant collision bug (see STEP_REPORT.md): the same
+    // physical device's expoPushToken registered by two DIFFERENT tenants used to hit a 500
+    // (RLS hid tenant A's row from tenant B's lookup, then the global unique index rejected
+    // tenant B's insert anyway). With uniqueness scoped to (tenant_id, expo_push_token), both
+    // registrations must succeed and coexist as separate rows.
+    @Test
+    void register_sameExpoPushToken_twoDifferentTenants_bothSucceed() throws Exception {
+        UUID tenantA = UUID.randomUUID();
+        UUID userA = UUID.randomUUID();
+        UUID tenantB = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        String sharedToken = "ExponentPushToken[" + UUID.randomUUID() + "]";
+
+        mockMvc.perform(post("/api/v1/users/me/push-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("expoPushToken", sharedToken, "platform", "ios")))
+                .with(asTenant(tenantA, userA, Role.MEMBER)))
+            .andExpect(status().isOk());
+
+        // Before the fix, this second registration of the identical token under a different
+        // tenant threw an uncaught DataIntegrityViolationException -> 500.
+        mockMvc.perform(post("/api/v1/users/me/push-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("expoPushToken", sharedToken, "platform", "android")))
+                .with(asTenant(tenantB, userB, Role.MEMBER)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.userId").value(userB.toString()))
+            .andExpect(jsonPath("$.data.tenantId").value(tenantB.toString()));
+
+        PushDeviceToken rowA = withTenant(tenantA, () -> tokenRepository.findByTenantIdAndExpoPushToken(tenantA, sharedToken))
+            .orElseThrow();
+        PushDeviceToken rowB = withTenant(tenantB, () -> tokenRepository.findByTenantIdAndExpoPushToken(tenantB, sharedToken))
+            .orElseThrow();
+        assertThat(rowA.getId()).isNotEqualTo(rowB.getId());
+        assertThat(rowA.getUserId()).isEqualTo(userA);
+        assertThat(rowB.getUserId()).isEqualTo(userB);
+    }
+
+    // The composite key must not turn same-tenant re-registration into a duplicate row -- it's
+    // still an upsert within a tenant, exactly as before this fix.
+    @Test
+    void register_sameTenantSameToken_reRegistering_isIdempotentUpdate_notDuplicateRow() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        String expoPushToken = "ExponentPushToken[" + UUID.randomUUID() + "]";
+
+        mockMvc.perform(post("/api/v1/users/me/push-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("expoPushToken", expoPushToken, "platform", "ios")))
+                .with(asTenant(tenantId, firstUserId, Role.MEMBER)))
+            .andExpect(status().isOk());
+
+        // Same tenant, same device token, a different user now holding it (e.g. device handed
+        // off to a teammate) -- must update the existing row, not insert a second one.
+        mockMvc.perform(post("/api/v1/users/me/push-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("expoPushToken", expoPushToken, "platform", "android")))
+                .with(asTenant(tenantId, secondUserId, Role.MEMBER)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.userId").value(secondUserId.toString()));
+
+        java.util.List<PushDeviceToken> rows = withTenant(tenantId, () -> tokenRepository.findByTenantId(tenantId));
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).getUserId()).isEqualTo(secondUserId);
+        assertThat(rows.get(0).getPlatform()).isEqualTo("android");
+    }
+
     @Test
     void register_oldUserIdPathVariable_noLongerExists_returns404() throws Exception {
         UUID tenantId = UUID.randomUUID();

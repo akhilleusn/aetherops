@@ -9,5 +9,4 @@ import java.util.UUID;
 public interface StatusPageRepository extends JpaRepository<StatusPage, UUID> {
     Optional<StatusPage> findBySlug(String slug);
     Optional<StatusPage> findByTenantId(UUID tenantId);
-    boolean existsBySlug(String slug);
 }

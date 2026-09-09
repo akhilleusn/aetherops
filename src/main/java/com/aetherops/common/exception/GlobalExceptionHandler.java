@@ -18,6 +18,7 @@ import com.aetherops.common.exception.InvalidGoogleTokenException;
 import com.aetherops.common.exception.InvalidInvitationException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
+import com.aetherops.common.exception.SlugAlreadyTakenException;
 import com.aetherops.common.exception.InvalidRefreshTokenException;
 import com.aetherops.common.exception.RefreshTokenReuseException;
 import com.aetherops.common.exception.RateLimitExceededException;
@@ -186,6 +187,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateEmail(
         DuplicateEmailException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(SlugAlreadyTakenException.class)
+    public ResponseEntity<ErrorResponse> handleSlugAlreadyTaken(
+        SlugAlreadyTakenException ex,
         HttpServletRequest request
     ) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

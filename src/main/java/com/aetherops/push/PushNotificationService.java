@@ -23,7 +23,11 @@ public class PushNotificationService {
 
     @Transactional
     public PushDeviceToken registerToken(UUID userId, UUID tenantId, String expoPushToken, String platform) {
-        PushDeviceToken token = tokenRepository.findByExpoPushToken(expoPushToken)
+        // Scoped by (tenantId, expoPushToken), matching the DB's unique index (V67) and the
+        // RLS policy's own tenant scoping -- a lookup by token alone would be blind to another
+        // tenant's registration of the same physical device (RLS hides it), which used to fall
+        // through into an INSERT that then collided with it anyway. See STEP_REPORT.md.
+        PushDeviceToken token = tokenRepository.findByTenantIdAndExpoPushToken(tenantId, expoPushToken)
             .orElseGet(() -> PushDeviceToken.builder().expoPushToken(expoPushToken).build());
         token.setUserId(userId);
         token.setTenantId(tenantId);

@@ -2,6 +2,8 @@ package com.aetherops.statuspage.service;
 
 import com.aetherops.branding.BrandingService;
 import com.aetherops.common.exception.ResourceNotFoundException;
+import com.aetherops.common.exception.SlugAlreadyTakenException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.incident.model.IncidentStatus;
@@ -44,14 +46,53 @@ class StatusPageServiceTest {
 
     @Test
     void configure_newTenant_createsPage() {
-        when(statusPageRepository.existsBySlug("acme")).thenReturn(false);
         when(statusPageRepository.findByTenantId(tenantId)).thenReturn(Optional.empty());
-        when(statusPageRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(statusPageRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
 
         StatusPage page = statusPageService.configure(tenantId, new CreateStatusPageRequest("Acme Status", "acme"));
 
         assertThat(page.getSlug()).isEqualTo("acme");
         assertThat(page.getTenantId()).isEqualTo(tenantId);
+    }
+
+    @Test
+    void configure_existingTenantPage_updatesInPlace() {
+        StatusPage existing = StatusPage.builder().id(UUID.randomUUID()).tenantId(tenantId).slug("old-slug").name("Old").build();
+        when(statusPageRepository.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
+        when(statusPageRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        StatusPage page = statusPageService.configure(tenantId, new CreateStatusPageRequest("New Name", "new-slug"));
+
+        assertThat(page.getId()).isEqualTo(existing.getId());
+        assertThat(page.getSlug()).isEqualTo("new-slug");
+        assertThat(page.getName()).isEqualTo("New Name");
+    }
+
+    // The bug this closes: the old pre-check (existsBySlug) ran under this tenant's own RLS
+    // scope and could never see another tenant's slug, so it let the INSERT proceed and crash
+    // with an uncaught DataIntegrityViolationException. Now the DB constraint is the sole
+    // source of truth, and a collision must surface as a clean SlugAlreadyTakenException.
+    @Test
+    void configure_newTenant_slugAlreadyOwnedByAnotherTenant_throwsSlugAlreadyTaken_notDataIntegrityViolation() {
+        when(statusPageRepository.findByTenantId(tenantId)).thenReturn(Optional.empty());
+        when(statusPageRepository.saveAndFlush(any()))
+            .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"idx_status_pages_slug\""));
+
+        assertThatThrownBy(() -> statusPageService.configure(tenantId, new CreateStatusPageRequest("Acme Status", "taken-slug")))
+            .isInstanceOf(SlugAlreadyTakenException.class)
+            .hasMessageContaining("taken-slug");
+    }
+
+    @Test
+    void configure_existingTenantPage_slugChangedToOneOwnedByAnotherTenant_throwsSlugAlreadyTaken() {
+        StatusPage existing = StatusPage.builder().id(UUID.randomUUID()).tenantId(tenantId).slug("my-own-slug").name("Mine").build();
+        when(statusPageRepository.findByTenantId(tenantId)).thenReturn(Optional.of(existing));
+        when(statusPageRepository.saveAndFlush(any()))
+            .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint \"idx_status_pages_slug\""));
+
+        assertThatThrownBy(() -> statusPageService.configure(tenantId, new CreateStatusPageRequest("Mine", "someone-elses-slug")))
+            .isInstanceOf(SlugAlreadyTakenException.class)
+            .hasMessageContaining("someone-elses-slug");
     }
 
     @Test

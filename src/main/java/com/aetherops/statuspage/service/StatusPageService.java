@@ -3,6 +3,7 @@ package com.aetherops.statuspage.service;
 import com.aetherops.branding.BrandingResponse;
 import com.aetherops.branding.BrandingService;
 import com.aetherops.common.exception.ResourceNotFoundException;
+import com.aetherops.common.exception.SlugAlreadyTakenException;
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.incident.model.IncidentStatus;
@@ -14,6 +15,7 @@ import com.aetherops.statuspage.repository.StatusPageIncidentUpdateRepository;
 import com.aetherops.statuspage.repository.StatusPageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -31,21 +33,39 @@ public class StatusPageService {
     private final IncidentRepository incidentRepository;
     private final BrandingService brandingService;
 
+    /**
+     * Slugs must be globally unique (they form the public status page URL — two tenants can't
+     * both own /status-pages/foo), so unlike push device tokens this does NOT relax the
+     * database constraint. The bug was that the pre-check ({@code existsBySlug}) runs under
+     * this tenant's own RLS scope and so can never see another tenant's slug — it would report
+     * a taken slug as available, let the INSERT proceed, and hit the (still fully enforced,
+     * RLS-independent) unique index anyway, surfacing as an uncaught 500. Fixed by treating the
+     * database constraint as the sole source of truth: attempt the write, and translate a
+     * collision into a clean {@link SlugAlreadyTakenException} (409) instead of pre-checking.
+     * {@code saveAndFlush} (not {@code save}) is required here — Hibernate can defer a plain
+     * {@code save()}'s INSERT/UPDATE until the transaction commits, which would happen after
+     * this method (and its try/catch) has already returned.
+     */
     @Transactional
     public StatusPage configure(UUID tenantId, CreateStatusPageRequest request) {
-        if (!statusPageRepository.existsBySlug(request.getSlug())
-                && statusPageRepository.findByTenantId(tenantId).isEmpty()) {
-            StatusPage created = statusPageRepository.save(StatusPage.builder()
+        Optional<StatusPage> ownPage = statusPageRepository.findByTenantId(tenantId);
+        try {
+            if (ownPage.isPresent()) {
+                StatusPage existing = ownPage.get();
+                existing.setName(request.getName());
+                existing.setSlug(request.getSlug());
+                StatusPage saved = statusPageRepository.saveAndFlush(existing);
+                log.info("Updated status page tenantId={} slug={}", tenantId, request.getSlug());
+                return saved;
+            }
+
+            StatusPage created = statusPageRepository.saveAndFlush(StatusPage.builder()
                 .tenantId(tenantId).slug(request.getSlug()).name(request.getName()).build());
             log.info("Created status page tenantId={} slug={}", tenantId, request.getSlug());
             return created;
+        } catch (DataIntegrityViolationException e) {
+            throw new SlugAlreadyTakenException(request.getSlug());
         }
-
-        StatusPage existing = statusPageRepository.findByTenantId(tenantId)
-            .orElseThrow(() -> new IllegalStateException("Slug '" + request.getSlug() + "' is already taken"));
-        existing.setName(request.getName());
-        existing.setSlug(request.getSlug());
-        return statusPageRepository.save(existing);
     }
 
     @Transactional

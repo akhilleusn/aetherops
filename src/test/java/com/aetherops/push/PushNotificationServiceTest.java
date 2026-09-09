@@ -48,7 +48,7 @@ class PushNotificationServiceTest {
     @Test
     void registerToken_newToken_savesIt() {
         UUID userId = UUID.randomUUID();
-        when(tokenRepository.findByExpoPushToken("ExponentPushToken[abc]")).thenReturn(Optional.empty());
+        when(tokenRepository.findByTenantIdAndExpoPushToken(tenantId, "ExponentPushToken[abc]")).thenReturn(Optional.empty());
         when(tokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         PushDeviceToken result = service.registerToken(userId, tenantId, "ExponentPushToken[abc]", "ios");
@@ -65,7 +65,7 @@ class PushNotificationServiceTest {
         PushDeviceToken existing = PushDeviceToken.builder()
             .id(UUID.randomUUID()).userId(oldUserId).tenantId(tenantId)
             .expoPushToken("ExponentPushToken[abc]").platform("ios").build();
-        when(tokenRepository.findByExpoPushToken("ExponentPushToken[abc]")).thenReturn(Optional.of(existing));
+        when(tokenRepository.findByTenantIdAndExpoPushToken(tenantId, "ExponentPushToken[abc]")).thenReturn(Optional.of(existing));
         when(tokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         PushDeviceToken result = service.registerToken(newUserId, tenantId, "ExponentPushToken[abc]", "android");
@@ -73,6 +73,23 @@ class PushNotificationServiceTest {
         assertThat(result.getId()).isEqualTo(existing.getId());
         assertThat(result.getUserId()).isEqualTo(newUserId);
         assertThat(result.getPlatform()).isEqualTo("android");
+    }
+
+    // The bug this composite-key lookup fixes: registering the same physical device's token
+    // under a DIFFERENT tenant must never be mistaken for "this tenant's existing
+    // registration" -- confirms the lookup key includes tenantId, not just the token.
+    @Test
+    void registerToken_sameTokenDifferentTenant_isTreatedAsANewRegistration_notTheOtherTenants() {
+        UUID otherTenantId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(tokenRepository.findByTenantIdAndExpoPushToken(tenantId, "ExponentPushToken[shared]")).thenReturn(Optional.empty());
+        when(tokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        PushDeviceToken result = service.registerToken(userId, tenantId, "ExponentPushToken[shared]", "ios");
+
+        assertThat(result.getTenantId()).isEqualTo(tenantId);
+        assertThat(result.getTenantId()).isNotEqualTo(otherTenantId);
+        verify(tokenRepository, never()).findByTenantIdAndExpoPushToken(eq(otherTenantId), any());
     }
 
     @Test
@@ -113,7 +130,7 @@ class PushNotificationServiceTest {
     @Test
     void registerToken_nullPlatform_savesWithNullPlatform() {
         UUID userId = UUID.randomUUID();
-        when(tokenRepository.findByExpoPushToken("ExponentPushToken[xyz]")).thenReturn(Optional.empty());
+        when(tokenRepository.findByTenantIdAndExpoPushToken(tenantId, "ExponentPushToken[xyz]")).thenReturn(Optional.empty());
         when(tokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         PushDeviceToken result = service.registerToken(userId, tenantId, "ExponentPushToken[xyz]", null);

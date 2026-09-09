@@ -28,8 +28,10 @@ public class PushDeviceToken {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    /** Expo push token, e.g. "ExponentPushToken[xxxxxxxx]". */
-    @Column(name = "expo_push_token", nullable = false, unique = true, length = 255)
+    /** Expo push token, e.g. "ExponentPushToken[xxxxxxxx]". Unique per (tenantId, expoPushToken)
+     *  -- see V67's javadoc on why not globally unique: the same physical device can
+     *  legitimately be registered under more than one tenant. */
+    @Column(name = "expo_push_token", nullable = false, length = 255)
     private String expoPushToken;
 
     @Column(length = 20)
