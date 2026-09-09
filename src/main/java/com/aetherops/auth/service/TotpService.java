@@ -10,6 +10,7 @@ import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.TwoFaAlreadyEnabledException;
 import com.aetherops.common.exception.TwoFaNotEnabledException;
+import com.aetherops.common.exception.TwoFaSessionLockedException;
 import dev.samstevens.totp.code.CodeVerifier;
 import dev.samstevens.totp.code.DefaultCodeGenerator;
 import dev.samstevens.totp.code.DefaultCodeVerifier;
@@ -44,6 +45,7 @@ public class TotpService {
     private final JwtService jwtService;
     private final AuthService authService;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final TwoFactorAttemptService twoFactorAttemptService;
 
     private final CodeVerifier codeVerifier = buildCodeVerifier();
 
@@ -105,6 +107,13 @@ public class TotpService {
             throw new InvalidTotpCodeException();
         }
 
+        // Checked before touching the code at all: once this session has hit the failure
+        // limit, no code — right or wrong — should succeed. The only way out is a fresh
+        // login, which mints a new partial token and thus a new counter.
+        if (twoFactorAttemptService.isLocked(partialToken)) {
+            throw new TwoFaSessionLockedException();
+        }
+
         UUID userId = jwtService.extractUserId(partialToken);
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new InvalidTotpCodeException());
@@ -124,6 +133,7 @@ public class TotpService {
             }
         }
 
+        twoFactorAttemptService.recordFailure(partialToken);
         throw new InvalidTotpCodeException();
     }
 

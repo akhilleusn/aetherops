@@ -66,6 +66,13 @@ app:
     # user out on 401 — so a shorter TTL would silently log out idle users. Revisit once
     # that refresh flow exists.
     expiry-hours: ${JWT_EXPIRY_HOURS:1}
+  security:
+    # Phase 1 Step C, item 1: number of trusted reverse-proxy hops in front of the app.
+    # ClientIpResolver counts this many entries in from the RIGHT of X-Forwarded-For to find
+    # the real client IP — everything to the left is attacker-suppliable. Default 1 because
+    # Railway (the live deployment target) puts exactly one proxy hop in front of the app;
+    # see kubernetes/ingress.yaml for the (also one-hop) alternative path.
+    trusted-proxy-count: ${APP_SECURITY_TRUSTED_PROXY_COUNT:1}
   rate-limit:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}

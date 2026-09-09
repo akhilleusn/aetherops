@@ -1,5 +1,6 @@
 package com.aetherops.ratelimit;
 
+import com.aetherops.security.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,7 +31,9 @@ class IpRateLimitFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new IpRateLimitFilter(slidingWindowRateLimiter);
+        // Real ClientIpResolver (not mocked) — one trusted proxy, matching the app's default —
+        // so this test exercises the actual, corrected X-Forwarded-For resolution logic.
+        filter = new IpRateLimitFilter(slidingWindowRateLimiter, new ClientIpResolver(1));
         ReflectionTestUtils.setField(filter, "limit", 20);
         ReflectionTestUtils.setField(filter, "windowSeconds", 60);
     }
@@ -75,13 +78,32 @@ class IpRateLimitFilterTest {
     }
 
     @Test
-    void usesXForwardedFor_whenPresent() throws Exception {
+    void usesXForwardedFor_takesTrustedEntry_notLeftmostAttackerControlledOne() throws Exception {
+        // "203.0.113.1" is the leftmost entry — supplied by whoever sent the request, never
+        // trustworthy. "10.0.0.1" is what the one trusted proxy (trustedProxyCount=1) actually
+        // observed connecting to it, so that's the entry the filter must key rate-limiting on.
         when(request.getRequestURI()).thenReturn("/api/v1/auth/login");
         when(request.getHeader("X-Forwarded-For")).thenReturn("203.0.113.1, 10.0.0.1");
         when(slidingWindowRateLimiter.isAllowed(anyString(), anyInt(), anyInt())).thenReturn(true);
 
         filter.doFilterInternal(request, response, filterChain);
 
-        verify(slidingWindowRateLimiter).isAllowed(contains("203.0.113.1"), anyInt(), anyInt());
+        verify(slidingWindowRateLimiter).isAllowed(contains("10.0.0.1"), anyInt(), anyInt());
+    }
+
+    @Test
+    void forgedLeftmostEntry_doesNotChangeResolvedKey_soBucketIsNotReset() throws Exception {
+        // An attacker varying only the spoofable leftmost entry, request after request, must
+        // still land on the SAME rate-limit key — the trusted entry never moves.
+        when(request.getRequestURI()).thenReturn("/api/v1/auth/login");
+        when(slidingWindowRateLimiter.isAllowed(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        when(request.getHeader("X-Forwarded-For")).thenReturn("1.1.1.1, 10.0.0.1");
+        filter.doFilterInternal(request, response, filterChain);
+
+        when(request.getHeader("X-Forwarded-For")).thenReturn("9.9.9.9, 10.0.0.1");
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(slidingWindowRateLimiter, times(2)).isAllowed(contains("10.0.0.1"), anyInt(), anyInt());
     }
 }

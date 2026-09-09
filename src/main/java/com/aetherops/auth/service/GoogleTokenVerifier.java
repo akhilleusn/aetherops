@@ -62,6 +62,21 @@ public class GoogleTokenVerifier {
             if (sub == null || email == null) {
                 throw new InvalidGoogleTokenException();
             }
+
+            // Google's tokeninfo endpoint returns this as the STRING "true"/"false", not a
+            // JSON boolean — Jackson deserializes it as a String, so check both shapes rather
+            // than assume one. Missing entirely is treated as unverified (fail closed): an
+            // unverified email means Google itself hasn't confirmed the caller owns it, so
+            // trusting it to log into (or silently join, via email match) an existing account
+            // would let anyone claim an unverified Gmail-workspace-style address they don't
+            // actually control.
+            Object emailVerified = payload.get("email_verified");
+            boolean verified = "true".equals(emailVerified) || Boolean.TRUE.equals(emailVerified);
+            if (!verified) {
+                log.warn("Google token rejected: email_verified is not true (email={})", email);
+                throw new InvalidGoogleTokenException();
+            }
+
             return new GoogleUserInfo(sub, email);
 
         } catch (RestClientException e) {

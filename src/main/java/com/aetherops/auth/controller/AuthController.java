@@ -19,7 +19,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import com.aetherops.auth.model.RefreshToken;
 import com.aetherops.auth.service.RefreshTokenService;
 
 import java.util.Map;
@@ -93,13 +92,14 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    @Operation(summary = "Refresh JWT using a valid refresh token")
+    @Operation(summary = "Refresh JWT using a valid refresh token. Rotates the refresh token on every use — the response carries the new one.")
     public ApiResponse<AuthResponse> refresh(@RequestBody Map<String, String> request) {
         String token = request.get("refreshToken");
-        RefreshToken refreshToken = refreshTokenService.validateRefreshToken(token);
-        String newJwt = authService.generateTokenForUser(refreshToken.getUserId());
+        RefreshTokenService.RotationResult rotation = refreshTokenService.rotate(token);
+        String newJwt = authService.generateTokenForUser(rotation.userId());
         return ApiResponse.success(AuthResponse.builder()
                 .token(newJwt)
+                .refreshToken(rotation.next().rawToken())
                 .build());
     }
 

@@ -18,9 +18,12 @@ import com.aetherops.common.exception.InvalidGoogleTokenException;
 import com.aetherops.common.exception.InvalidInvitationException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
+import com.aetherops.common.exception.InvalidRefreshTokenException;
+import com.aetherops.common.exception.RefreshTokenReuseException;
 import com.aetherops.common.exception.RateLimitExceededException;
 import com.aetherops.common.exception.TwoFaAlreadyEnabledException;
 import com.aetherops.common.exception.TwoFaNotEnabledException;
+import com.aetherops.common.exception.TwoFaSessionLockedException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -126,6 +129,15 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of(HttpStatus.LOCKED, ex.getMessage(), request.getRequestURI()));
     }
 
+    @ExceptionHandler(TwoFaSessionLockedException.class)
+    public ResponseEntity<ErrorResponse> handleTwoFaSessionLocked(
+        TwoFaSessionLockedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.LOCKED)
+            .body(ErrorResponse.of(HttpStatus.LOCKED, ex.getMessage(), request.getRequestURI()));
+    }
+
     @ExceptionHandler(InvalidInvitationException.class)
     public ResponseEntity<ErrorResponse> handleInvalidInvitation(
         InvalidInvitationException ex,
@@ -196,6 +208,24 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(
+        InvalidRefreshTokenException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(RefreshTokenReuseException.class)
+    public ResponseEntity<ErrorResponse> handleRefreshTokenReuse(
+        RefreshTokenReuseException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

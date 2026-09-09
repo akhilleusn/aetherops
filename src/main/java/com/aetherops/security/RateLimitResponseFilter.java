@@ -16,6 +16,7 @@ import java.io.IOException;
 public class RateLimitResponseFilter extends OncePerRequestFilter {
 
     private final RateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -25,19 +26,11 @@ public class RateLimitResponseFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
 
         if (response.getHeader("X-RateLimit-Remaining") == null) {
-            String key = resolveKey(request);
+            String key = clientIpResolver.resolve(request);
             RateLimiter.Result result = rateLimiter.peek(key);
             response.setHeader("X-RateLimit-Limit", String.valueOf(rateLimiter.getLimit()));
             response.setHeader("X-RateLimit-Remaining", String.valueOf(result.remaining()));
             response.setHeader("X-RateLimit-Reset", String.valueOf(result.resetAt()));
         }
-    }
-
-    private String resolveKey(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

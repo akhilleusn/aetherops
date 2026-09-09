@@ -283,6 +283,57 @@ class TotpIntegrationTest extends AbstractIntegrationTest {
             .andExpect(status().isBadRequest());
     }
 
+    // ── Phase 1 Step C, item 2: per-partial-token brute-force lockout ─────
+
+    @Test
+    void verify_5FailedAttempts_locksSessionEvenWithCorrectCode() throws Exception {
+        enable2FA();
+        String partialToken = partialJwt();
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/2fa/verify")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(
+                        Map.of("partialToken", partialToken, "code", "000000"))))
+                .andExpect(status().isBadRequest());
+        }
+
+        // The session is now locked — even the CORRECT code is rejected. Recovery is a fresh
+        // login (a new partial token), not retrying this one.
+        mockMvc.perform(post("/api/v1/auth/2fa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    Map.of("partialToken", partialToken, "code", currentTotpCode()))))
+            .andExpect(status().isLocked());
+    }
+
+    @Test
+    void verify_lockedSession_freshLoginGetsFreshPartialTokenThatWorks() throws Exception {
+        enable2FA();
+        String lockedToken = partialJwt();
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/2fa/verify")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(
+                        Map.of("partialToken", lockedToken, "code", "000000"))))
+                .andExpect(status().isBadRequest());
+        }
+
+        // A brand-new partial token (as if the user logged in again) is a different counter —
+        // this proves the lock is per-SESSION, not per-account. JWT "iat"/"exp" are NumericDate
+        // (whole seconds, per RFC 7519), so two tokens minted within the same second for the
+        // same user are byte-identical; sleep past the second boundary so this one is genuinely
+        // a different token, not an accidental duplicate of lockedToken.
+        Thread.sleep(1100);
+        String freshToken = partialJwt();
+        mockMvc.perform(post("/api/v1/auth/2fa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    Map.of("partialToken", freshToken, "code", currentTotpCode()))))
+            .andExpect(status().isOk());
+    }
+
     // ── partial token cannot access protected endpoints ───────────────────
 
     @Test

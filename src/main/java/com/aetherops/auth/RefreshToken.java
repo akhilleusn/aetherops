@@ -20,7 +20,12 @@ public class RefreshToken {
     private UUID id;
 
     @Column(nullable = false, unique = true)
-    private String token;
+    private String tokenHash;
+
+    /** Groups every token descended from one original login, so the whole chain can be
+     * revoked at once when a reused (already-rotated-away) token reveals a leak. */
+    @Column(nullable = false)
+    private UUID familyId;
 
     @Column(nullable = false)
     private UUID userId;
@@ -33,6 +38,11 @@ public class RefreshToken {
 
     @Column(nullable = false)
     private boolean revoked;
+
+    /** Set true the moment this token is rotated away from. Presenting a used token again is
+     * reuse — the signal that it (or another in its family) has leaked. */
+    @Column(nullable = false)
+    private boolean used;
 
     @CreationTimestamp
     @Column(updatable = false)

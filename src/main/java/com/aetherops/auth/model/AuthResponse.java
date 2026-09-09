@@ -11,6 +11,7 @@ import java.util.UUID;
 public class AuthResponse {
     private String token;
     private Instant expiresAt;
+    private String refreshToken;
     private UUID userId;
     private UUID tenantId;
     private String email;

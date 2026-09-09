@@ -1,5 +1,6 @@
 package com.aetherops.ratelimit;
 
+import com.aetherops.security.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,6 +20,7 @@ import java.io.IOException;
 public class IpRateLimitFilter extends OncePerRequestFilter {
 
     private final SlidingWindowRateLimiterService slidingWindowRateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.ip-rate-limit.requests-per-window:20}")
     private int limit;
@@ -30,7 +32,7 @@ public class IpRateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String ip = extractClientIp(request);
+        String ip = clientIpResolver.resolve(request);
         String path = request.getRequestURI();
 
         if (isProtectedPath(path)) {
@@ -52,14 +54,7 @@ public class IpRateLimitFilter extends OncePerRequestFilter {
     private boolean isProtectedPath(String path) {
         return path.startsWith("/api/v1/auth/login") ||
                 path.startsWith("/api/v1/auth/register") ||
-                path.startsWith("/api/v1/auth/forgot-password");
-    }
-
-    private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+                path.startsWith("/api/v1/auth/forgot-password") ||
+                path.startsWith("/api/v1/auth/2fa/verify");
     }
 }
