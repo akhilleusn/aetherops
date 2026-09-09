@@ -58,6 +58,14 @@ analysis:
   use-stub: false
 
 app:
+  jwt:
+    # Phase 1 Step B, item 6: cut from the prior 24h default. Role is a JWT claim, not
+    # reloaded per request, so this is also the window a demoted/removed user keeps acting
+    # under their old role. 1h (not the originally-requested 15m) because the frontend
+    # (index.html/dashboard.html) has no refresh-on-401 flow yet — it only ever logs the
+    # user out on 401 — so a shorter TTL would silently log out idle users. Revisit once
+    # that refresh flow exists.
+    expiry-hours: ${JWT_EXPIRY_HOURS:1}
   rate-limit:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}

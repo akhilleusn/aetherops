@@ -12,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class IncidentReportController {
 
     @PostMapping("/generate")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Trigger an on-demand weekly report for the tenant")
     public ApiResponse<IncidentReport> generate(@PathVariable UUID tenantId) {
         TenantContext.requireOwn(tenantId);

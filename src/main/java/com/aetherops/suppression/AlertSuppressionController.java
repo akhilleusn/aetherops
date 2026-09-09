@@ -5,6 +5,7 @@ import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +20,7 @@ public class AlertSuppressionController {
     private final AlertSuppressionService suppressionService;
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Mute alerts matching a service and/or alert name, optionally until a given time")
     public ApiResponse<AlertSuppressionRuleResponse> mute(
         @PathVariable UUID tenantId,
@@ -36,6 +38,7 @@ public class AlertSuppressionController {
     }
 
     @DeleteMapping("/{ruleId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Remove a suppression rule (unmute)")
     public ApiResponse<Void> unmute(@PathVariable UUID tenantId, @PathVariable UUID ruleId) {
         TenantContext.requireOwn(tenantId);

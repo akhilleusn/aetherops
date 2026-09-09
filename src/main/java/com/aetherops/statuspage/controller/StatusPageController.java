@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -24,6 +25,7 @@ public class StatusPageController {
     private final StatusPageService statusPageService;
 
     @PostMapping("/api/v1/tenants/{tenantId}/status-page")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Create or reconfigure the tenant's public status page")
     public ApiResponse<StatusPage> configure(
         @PathVariable UUID tenantId,
@@ -35,6 +37,7 @@ public class StatusPageController {
 
     @PostMapping("/api/v1/incidents/{id}/status-page-updates")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Post a customer-facing update for an incident. The first update makes it visible on the public status page.")
     public ApiResponse<StatusPageIncidentUpdate> postUpdate(
         @PathVariable UUID id,

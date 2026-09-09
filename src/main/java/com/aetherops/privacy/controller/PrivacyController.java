@@ -9,6 +9,7 @@ import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -38,6 +39,7 @@ public class PrivacyController {
     }
 
     @PostMapping("/{id}/privacy/erase")
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Erase every row held for a tenant, then the tenant itself. "
         + "Defaults to dryRun=true — counts rows without deleting anything. "
         + "Pass ?dryRun=false to actually erase. Irreversible.")

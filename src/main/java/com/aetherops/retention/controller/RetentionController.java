@@ -7,6 +7,7 @@ import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -20,6 +21,7 @@ public class RetentionController {
     private final RetentionService retentionService;
 
     @PostMapping("/{id}/retention/run")
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Run the retention policy for a tenant. "
         + "Defaults to dryRun=true — counts eligible rows without deleting. "
         + "Pass ?dryRun=false to perform actual deletion.")

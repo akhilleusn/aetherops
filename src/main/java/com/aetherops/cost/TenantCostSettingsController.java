@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -19,6 +20,7 @@ public class TenantCostSettingsController {
     private final IncidentCostService costService;
 
     @PutMapping
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Configure the tenant's hourly responder rate")
     public ApiResponse<TenantCostSettingsResponse> configure(
         @PathVariable UUID tenantId,

@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -28,6 +29,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/checkout-session")
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Create a Stripe Checkout session to subscribe/upgrade a tenant to a paid plan")
     public ApiResponse<Map<String, String>> createCheckoutSession(
             @PathVariable UUID tenantId,
@@ -38,6 +40,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/portal-session")
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Create a Stripe Billing Portal session (upgrade/downgrade/cancel/invoice history)")
     public ApiResponse<Map<String, String>> createPortalSession(@PathVariable UUID tenantId) {
         TenantContext.requireOwn(tenantId);

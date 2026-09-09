@@ -21,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -68,6 +69,7 @@ public class IncidentController {
     }
 
     @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Update incident status, severity, title, or description")
     public ApiResponse<IncidentResponse> update(
         @PathVariable UUID id,
@@ -148,6 +150,7 @@ public class IncidentController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Soft delete an incident")
     public void delete(@PathVariable UUID id) {
         incidentService.softDelete(id);

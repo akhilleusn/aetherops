@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +21,7 @@ public class EscalationPolicyController {
     private final EscalationPolicyService policyService;
 
     @PutMapping
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Configure the escalation policy for a service, or the tenant-wide default when serviceId is omitted")
     public ApiResponse<EscalationPolicyResponse> configure(
         @PathVariable UUID tenantId,
@@ -37,6 +39,7 @@ public class EscalationPolicyController {
     }
 
     @DeleteMapping("/{policyId}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Remove an escalation policy (the hardcoded default — CRITICAL after 5 minutes — applies once removed)")
     public ApiResponse<Void> delete(@PathVariable UUID tenantId, @PathVariable UUID policyId) {
         TenantContext.requireOwn(tenantId);

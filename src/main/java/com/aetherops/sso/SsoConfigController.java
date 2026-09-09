@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -19,6 +20,7 @@ public class SsoConfigController {
     private final SsoConfigService ssoConfigService;
 
     @PutMapping
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Configure SAML SSO for a tenant with their IdP's metadata")
     public ApiResponse<TenantSsoConfigResponse> configure(
         @PathVariable UUID tenantId,

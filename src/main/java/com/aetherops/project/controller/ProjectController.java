@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,6 +35,7 @@ public class ProjectController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Create a project for a tenant")
     public ApiResponse<Project> create(@Valid @RequestBody CreateProjectRequest request) {
         TenantContext.requireOwn(request.getTenantId());
@@ -49,6 +51,7 @@ public class ProjectController {
 
     @PostMapping("/{projectId}/keys")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Create an API key under a project (plaintext returned once)")
     public ApiResponse<CreateApiKeyResponse> createKey(
         @PathVariable UUID projectId,
@@ -71,6 +74,7 @@ public class ProjectController {
 
     @DeleteMapping("/{projectId}/keys/{keyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('OWNER')")
     @Operation(summary = "Revoke an API key")
     public void revokeKey(
         @PathVariable UUID projectId,
@@ -83,6 +87,7 @@ public class ProjectController {
 
     @PostMapping("/{projectId}/services")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Register a service under a project")
     public ApiResponse<Service> createService(
         @PathVariable UUID projectId,

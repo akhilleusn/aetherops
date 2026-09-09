@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -23,6 +24,7 @@ public class TicketIntegrationConfigController {
     private final TicketIntegrationConfigService configService;
 
     @PutMapping
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Configure (or reconfigure) a Jira or ServiceNow connection for a tenant")
     public ApiResponse<TicketIntegrationResponse> configure(
         @PathVariable UUID tenantId,
@@ -43,6 +45,7 @@ public class TicketIntegrationConfigController {
     }
 
     @DeleteMapping("/{provider}")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Remove a tenant's ticket integration connection")
     public ApiResponse<Void> delete(@PathVariable UUID tenantId, @PathVariable TicketProvider provider) {
         TenantContext.requireOwn(tenantId);

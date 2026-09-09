@@ -1,8 +1,8 @@
 package com.aetherops.tenant;
 
-import com.aetherops.auth.model.RegisterRequest;
 import com.aetherops.auth.model.RegistrationResult;
-import com.aetherops.auth.service.AuthService;
+import com.aetherops.auth.model.Role;
+import com.aetherops.auth.service.InternalTenantProvisioningService;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.model.TenantResponse;
@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,7 +28,7 @@ class TenantOnboardingServiceTest {
     private TenantService tenantService;
 
     @Mock
-    private AuthService authService;
+    private InternalTenantProvisioningService tenantProvisioningService;
 
     @InjectMocks
     private TenantOnboardingService onboardingService;
@@ -47,7 +48,7 @@ class TenantOnboardingServiceTest {
                 "Registration successful. Please check your email to verify your account.");
 
         when(tenantService.create(any(CreateTenantRequest.class))).thenReturn(tenantResponse);
-        when(authService.register(any(RegisterRequest.class))).thenReturn(authResponse);
+        when(tenantProvisioningService.registerIntoTenant(any(), any(), any(), any())).thenReturn(authResponse);
 
         TenantOnboardingService.OnboardingResult result =
                 onboardingService.onboard("Test Corp", Plan.STARTER, "admin@test.com", "password123");
@@ -55,7 +56,7 @@ class TenantOnboardingServiceTest {
         assertThat(result.tenantId()).isEqualTo(tenantId);
         assertThat(result.adminUserId()).isEqualTo(userId);
         verify(tenantService).create(any(CreateTenantRequest.class));
-        verify(authService).register(any(RegisterRequest.class));
+        verify(tenantProvisioningService).registerIntoTenant(eq("admin@test.com"), eq("password123"), eq(tenantId), eq(Role.OWNER));
     }
 
     @Test
@@ -67,12 +68,12 @@ class TenantOnboardingServiceTest {
                 "Registration successful. Please check your email to verify your account.");
 
         when(tenantService.create(any())).thenReturn(tenantResponse);
-        when(authService.register(any())).thenReturn(authResponse);
+        when(tenantProvisioningService.registerIntoTenant(any(), any(), any(), any())).thenReturn(authResponse);
 
         onboardingService.onboard("Corp", Plan.STARTER, "a@b.com", "pass");
 
-        var order = inOrder(tenantService, authService);
+        var order = inOrder(tenantService, tenantProvisioningService);
         order.verify(tenantService).create(any());
-        order.verify(authService).register(any());
+        order.verify(tenantProvisioningService).registerIntoTenant(any(), any(), any(), any());
     }
 }
