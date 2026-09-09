@@ -1,8 +1,11 @@
 package com.aetherops.auth;
 
 import com.aetherops.auth.model.GoogleUserInfo;
+import com.aetherops.auth.model.Invitation;
 import com.aetherops.auth.model.Role;
 import com.aetherops.auth.model.User;
+import com.aetherops.auth.repository.InvitationRepository;
+import com.aetherops.auth.service.InvitationTokenGenerator;
 import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.auth.service.GoogleTokenVerifier;
 import com.aetherops.common.exception.GoogleAuthNotConfiguredException;
@@ -22,6 +25,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,6 +43,7 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired UserRepository userRepository;
     @Autowired TenantRepository tenantRepository;
+    @Autowired InvitationRepository invitationRepository;
     @MockitoBean  GoogleTokenVerifier googleTokenVerifier;
 
     private UUID tenantId;
@@ -83,12 +88,18 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
             .build());
     }
 
-    private String googleBody(UUID tenantOverride) throws Exception {
-        if (tenantOverride != null) {
-            return objectMapper.writeValueAsString(
-                Map.of("idToken", FAKE_ID_TOKEN, "tenantId", tenantOverride.toString()));
-        }
+    private String googleBody() throws Exception {
         return objectMapper.writeValueAsString(Map.of("idToken", FAKE_ID_TOKEN));
+    }
+
+    private String googleBodyWithForgedTenantId(UUID forgedTenantId) throws Exception {
+        return objectMapper.writeValueAsString(
+            Map.of("idToken", FAKE_ID_TOKEN, "tenantId", forgedTenantId.toString()));
+    }
+
+    private String googleBodyWithInvitation(String invitationToken) throws Exception {
+        return objectMapper.writeValueAsString(
+            Map.of("idToken", FAKE_ID_TOKEN, "invitationToken", invitationToken));
     }
 
     // ── tests ─────────────────────────────────────────────────────────────
@@ -101,7 +112,7 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBody()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.token").isNotEmpty())
@@ -116,48 +127,106 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBody()))
             .andExpect(status().isOk());
 
         assertThat(userRepository.findById(user.getId()).orElseThrow().getGoogleSub())
             .isEqualTo(GOOGLE_SUB);
     }
 
+    // ── tenant binding (Phase 1 remediation item 2) ──────────────────────────
+
     @Test
-    void googleLogin_validToken_newUser_withTenantId_createsUserAndReturnsJwt() throws Exception {
+    void googleLogin_validToken_newUser_withoutInvitation_createsNewTenantAndReturnsJwt() throws Exception {
         when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
             .thenReturn(new GoogleUserInfo(GOOGLE_SUB, "newuser@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(tenantId)))
+                .content(googleBody()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.token").isNotEmpty())
             .andExpect(jsonPath("$.data.email").value("newuser@example.com"));
 
-        assertThat(userRepository.findByEmail("newuser@example.com")).isPresent();
+        User created = userRepository.findByEmail("newuser@example.com").orElseThrow();
+        // No invitationToken was supplied, so this must be a brand-new tenant — never the
+        // pre-existing fixture tenant from setUp().
+        assertThat(created.getTenantId()).isNotNull().isNotEqualTo(tenantId);
+        assertThat(tenantRepository.findById(created.getTenantId())).isPresent();
+        assertThat(created.getRole()).isEqualTo(Role.OWNER);
     }
 
     @Test
-    void googleLogin_validToken_newUser_withoutTenantId_returns422() throws Exception {
+    void googleLogin_validToken_newUser_withForgedTenantId_isRejected() throws Exception {
         when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
             .thenReturn(new GoogleUserInfo(GOOGLE_SUB, "newuser@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBodyWithForgedTenantId(tenantId)))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.details.tenantId").isNotEmpty());
+
+        assertThat(userRepository.findByEmail("newuser@example.com")).isEmpty();
+    }
+
+    @Test
+    void googleLogin_newUser_withForgedVictimTenantId_doesNotJoinVictimTenant() throws Exception {
+        // Regression test (c): a "victim" already belongs to tenantId (set up below). An
+        // attacker, authenticating as a brand-new (never-before-seen) Google-verified email,
+        // must not be able to force their way into the victim's tenant by naming it directly.
+        userRepository.save(User.builder()
+            .email("victim@example.com")
+            .role(Role.MEMBER)
+            .tenantId(tenantId)
+            .build());
+
+        when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
+            .thenReturn(new GoogleUserInfo("attacker-google-sub", "attacker@example.com"));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(googleBodyWithForgedTenantId(tenantId)))
             .andExpect(status().isUnprocessableEntity());
+
+        assertThat(userRepository.findByEmail("attacker@example.com")).isEmpty();
     }
 
     @Test
-    void googleLogin_validToken_newUser_invalidTenantId_returns404() throws Exception {
+    void googleLogin_validToken_newUser_withValidInvitation_joinsInvitedTenant() throws Exception {
+        String token = InvitationTokenGenerator.generateToken();
+        invitationRepository.save(Invitation.builder()
+            .tokenHash(InvitationTokenGenerator.hash(token))
+            .tenantId(tenantId)
+            .email("invitee@example.com")
+            .role(Role.MEMBER)
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build());
+
         when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
-            .thenReturn(new GoogleUserInfo(GOOGLE_SUB, "newuser@example.com"));
+            .thenReturn(new GoogleUserInfo("invitee-google-sub", "invitee@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(UUID.randomUUID())))
-            .andExpect(status().isNotFound());
+                .content(googleBodyWithInvitation(token)))
+            .andExpect(status().isOk());
+
+        User created = userRepository.findByEmail("invitee@example.com").orElseThrow();
+        assertThat(created.getTenantId()).isEqualTo(tenantId);
+        assertThat(created.getRole()).isEqualTo(Role.MEMBER);
+    }
+
+    @Test
+    void googleLogin_validToken_newUser_withInvalidInvitationToken_returns400() throws Exception {
+        when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
+            .thenReturn(new GoogleUserInfo("nobody-google-sub", "nobody-invited@example.com"));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(googleBodyWithInvitation("not-a-real-token")))
+            .andExpect(status().isBadRequest());
+
+        assertThat(userRepository.findByEmail("nobody-invited@example.com")).isEmpty();
     }
 
     @Test
@@ -167,7 +236,7 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBody()))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.message").value("Invalid Google ID token."));
     }
@@ -179,7 +248,7 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBody()))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message").value("Google authentication is not configured."));
     }
@@ -196,7 +265,7 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(googleBody(null)))
+                .content(googleBody()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.requiresTwoFactor").value(true))
             .andExpect(jsonPath("$.data.partialToken").isNotEmpty());

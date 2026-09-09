@@ -8,10 +8,11 @@ import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.auth.service.AuthService;
 import com.aetherops.auth.service.EmailService;
 import com.aetherops.auth.service.EmailVerificationService;
+import com.aetherops.auth.service.InvitationService;
 import com.aetherops.auth.service.JwtService;
 import com.aetherops.auth.service.LoginAttemptService;
 import com.aetherops.common.exception.InvalidVerificationTokenException;
-import com.aetherops.tenant.repository.TenantRepository;
+import com.aetherops.tenant.service.TenantService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -82,21 +83,23 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    void login_demoUser_withEmailVerified_returnsToken() {
-        // DemoDataInitializer sets emailVerified=true; verify that AuthService.login()
-        // succeeds for such a user (no 403 thrown).
+    void login_withEmailVerified_returnsToken() {
+        // Verifies AuthService.login() succeeds for a verified user (no 403 thrown).
         UserRepository mockRepo = mock(UserRepository.class);
         BCryptPasswordEncoder mockEncoder = mock(BCryptPasswordEncoder.class);
         JwtService mockJwt = mock(JwtService.class);
         LoginAttemptService mockLas = mock(LoginAttemptService.class);
         EmailVerificationService mockEvs = mock(EmailVerificationService.class);
-        TenantRepository mockTenantRepo = mock(TenantRepository.class);
+        TenantService mockTenantService = mock(TenantService.class);
+        InvitationService mockInvitationService = mock(InvitationService.class);
 
+        // login() never touches tenantService/invitationService — only register() does.
         AuthService authService = new AuthService(
-                mockRepo, mockTenantRepo, mockEncoder, mockJwt, mockLas, mockEvs);
+                mockRepo, mockTenantService, mockInvitationService,
+                mockEncoder, mockJwt, mockLas, mockEvs);
 
-        String email = "demo@aetherops.io";
-        String password = "AetherOps_Demo_2024!";
+        String email = "verifieduser@example.com";
+        String password = "correctpass";
         User demoUser = User.builder()
                 .id(UUID.randomUUID())
                 .email(email)

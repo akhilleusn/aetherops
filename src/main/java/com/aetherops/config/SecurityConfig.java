@@ -57,7 +57,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,  "/api/v1/auth/google/client-id").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/api/v1/auth/verify-email").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/resend-verification").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/v1/tenants").permitAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/slack/oauth/callback").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/interactivity").permitAll()
@@ -68,7 +67,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                 .requestMatchers("/*.html").permitAll()
                 .requestMatchers("/weblogos/**").permitAll()
-                .requestMatchers("/api/v1/demo/**").permitAll()
                 .anyRequest().authenticated()
             )
             .headers(headers -> headers

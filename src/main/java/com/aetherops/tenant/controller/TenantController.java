@@ -34,11 +34,11 @@ public class TenantController {
     }
 
     @GetMapping
-    @Operation(summary = "List all tenants (paginated)")
+    @Operation(summary = "List tenants the authenticated caller belongs to")
     public ApiResponse<Page<TenantResponse>> list(
         @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        return ApiResponse.success(tenantService.findAll(pageable));
+        return ApiResponse.success(tenantService.findOwn(TenantContext.get(), pageable));
     }
 
     @GetMapping("/{id}")

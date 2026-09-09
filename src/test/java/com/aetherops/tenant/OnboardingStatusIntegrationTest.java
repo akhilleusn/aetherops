@@ -1,7 +1,11 @@
 package com.aetherops.tenant;
 
 import com.aetherops.AbstractIntegrationTest;
+import com.aetherops.auth.model.Invitation;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.Role;
+import com.aetherops.auth.repository.InvitationRepository;
+import com.aetherops.auth.service.InvitationTokenGenerator;
 import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.ingestion.model.LogEventRequest;
@@ -38,6 +42,7 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired TenantRepository tenantRepository;
     @Autowired UserRepository userRepository;
+    @Autowired InvitationRepository invitationRepository;
     @Autowired SlackWorkspaceRepository slackWorkspaceRepository;
     @Autowired IncidentRepository incidentRepository;
     @Autowired LogEventRepository logEventRepository;
@@ -120,14 +125,27 @@ class OnboardingStatusIntegrationTest extends AbstractIntegrationTest {
         var request = new CreateTenantRequest("Onboarding Test Tenant " + UUID.randomUUID(), Plan.STARTER, 0, 30);
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());
     }
 
     private void registerAdmin(UUID tenantId) throws Exception {
-        var request = new RegisterRequest("admin-" + UUID.randomUUID() + "@example.com", "password123", tenantId);
+        // Registration can no longer take a tenantId directly (Phase 1 remediation item 2) —
+        // join this specific pre-created tenant via a server-issued invitation instead.
+        String email = "admin-" + UUID.randomUUID() + "@example.com";
+        String token = InvitationTokenGenerator.generateToken();
+        invitationRepository.save(Invitation.builder()
+            .tokenHash(InvitationTokenGenerator.hash(token))
+            .tenantId(tenantId)
+            .email(email)
+            .role(Role.OWNER)
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build());
+
+        var request = new RegisterRequest(email, "password123", token);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))

@@ -51,6 +51,21 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void createTenant_noToken_returns401() throws Exception {
+        // Phase 1 remediation item 3: an unauthenticated caller must not be able to create a
+        // tenant — that bypasses plan limits/billing and hands an attacker a foothold tenant.
+        // Uses the real SecurityConfig (this class doesn't set @ActiveProfiles("test")),
+        // unlike TenantIntegrationTest, whose "test" profile loads a permit-all
+        // TestSecurityConfig and so cannot actually exercise this enforcement.
+        String body = "{\"name\":\"Acme Corp\",\"plan\":\"STARTER\",\"aiMonthlyBudgetCents\":5000,\"retentionDays\":30}";
+
+        mockMvc.perform(post("/api/v1/tenants")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void protectedEndpoint_invalidToken_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/tenants")
                 .header("Authorization", "Bearer this.is.garbage"))
@@ -60,7 +75,7 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
 
     @Test
     void protectedEndpoint_validToken_returns2xx() throws Exception {
-        var regReq = new RegisterRequest("sectest@example.com", "password123", tenant.getId());
+        var regReq = new RegisterRequest("sectest@example.com", "password123", null);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
@@ -79,7 +94,7 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
 
     @Test
     void authRegisterEndpoint_noToken_isPublic() throws Exception {
-        var req = new RegisterRequest("pub@example.com", "password123", tenant.getId());
+        var req = new RegisterRequest("pub@example.com", "password123", null);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))

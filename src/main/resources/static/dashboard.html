@@ -220,7 +220,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 1.5r
 <div id="boot">
   <div class="boot-inner">
     <div class="boot-logo">Aether<span>Ops</span></div>
-    <div class="boot-sub">Connecting to demo environment…</div>
+    <div class="boot-sub">Loading…</div>
     <div class="spinner"></div>
   </div>
 </div>
@@ -230,7 +230,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 1.5r
   <div class="err-inner">
     <i class="ti ti-wifi-off"></i>
     <h2>Unable to connect</h2>
-    <p id="err-msg">Could not reach the demo environment. Make sure the server is running.</p>
+    <p id="err-msg">Could not reach the server. Make sure it is running.</p>
     <button class="btn-retry" onclick="init()">Retry</button>
   </div>
 </div>
@@ -240,7 +240,6 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 1.5r
   <nav>
     <div class="nav-left">
       <a href="/landing.html" class="logo">Aether<span>Ops</span></a>
-      <span class="demo-badge">Demo</span>
     </div>
     <div class="nav-stats" id="nav-stats"></div>
     <div class="nav-right">
@@ -331,6 +330,12 @@ async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (S.token) headers['Authorization'] = 'Bearer ' + S.token;
   const res = await fetch(path, { headers, ...opts });
+  if (res.status === 401) {
+    localStorage.removeItem('ao_token');
+    localStorage.removeItem('ao_tenant_id');
+    window.location.replace('/login.html');
+    throw new Error('Authentication required');
+  }
   const json = await res.json();
   if (!res.ok) throw Object.assign(new Error(json.message || json.error || 'HTTP ' + res.status), { status: res.status });
   return json;
@@ -342,24 +347,27 @@ async function init() {
   document.getElementById('boot').style.display = 'flex';
   document.getElementById('app').style.display  = 'none';
 
-  try {
-    // 1. Get pre-authenticated demo JWT
-    const authRes = await api('/api/v1/demo/auth');
-    S.token    = authRes.data.token;
-    S.tenantId = authRes.data.tenantId;
+  // Require a real login — no pre-authenticated demo session is issued.
+  S.token    = localStorage.getItem('ao_token');
+  S.tenantId = localStorage.getItem('ao_tenant_id');
+  if (!S.token || !S.tenantId) {
+    window.location.replace('/login.html');
+    return;
+  }
 
-    // 2. Load incidents
+  try {
+    // 1. Load incidents
     const incRes = await api('/api/v1/incidents?tenantId=' + S.tenantId + '&size=50&sort=lastSeenAt,desc');
     S.incidents  = incRes.data.content || [];
 
-    // 3. Render chrome
+    // 2. Render chrome
     renderStats();
     renderList();
 
-    // 4. Auto-select first incident
+    // 3. Auto-select first incident
     if (S.incidents.length > 0) selectIncident(S.incidents[0]);
 
-    // 5. Transition to app
+    // 4. Transition to app
     document.getElementById('boot').style.opacity = '0';
     setTimeout(() => {
       document.getElementById('boot').style.display = 'none';

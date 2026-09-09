@@ -6,12 +6,14 @@ import com.aetherops.tenant.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -57,9 +59,21 @@ public class TenantService {
         return response;
     }
 
+    /**
+     * Every tenant the caller belongs to — this codebase has exactly one tenant per user
+     * (User.tenantId), so that's a single-element page, never every tenant in the system.
+     * {@code callerTenantId} is null only if this is reached without authentication, which
+     * production SecurityConfig doesn't allow; fail closed with an empty page rather than a
+     * lookup exception.
+     */
     @Transactional(readOnly = true)
-    public Page<TenantResponse> findAll(Pageable pageable) {
-        return tenantRepository.findAll(pageable).map(this::toResponse);
+    public Page<TenantResponse> findOwn(UUID callerTenantId, Pageable pageable) {
+        if (callerTenantId == null) {
+            return new PageImpl<>(List.of(), pageable, 0);
+        }
+        return tenantRepository.findById(callerTenantId)
+            .map(tenant -> new PageImpl<>(List.of(toResponse(tenant)), pageable, 1))
+            .orElseGet(() -> new PageImpl<>(List.of(), pageable, 0));
     }
 
     private TenantResponse toResponse(Tenant tenant) {

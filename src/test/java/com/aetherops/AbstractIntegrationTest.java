@@ -94,7 +94,7 @@ public abstract class AbstractIntegrationTest {
     void cleanState() {
         jdbcTemplate.execute(
             "TRUNCATE TABLE " +
-            "totp_backup_codes, refresh_tokens, password_reset_tokens, " +
+            "totp_backup_codes, refresh_tokens, password_reset_tokens, invitations, " +
             "ai_analyses, evidence_items, runbook_suggestions, postmortem_drafts, " +
             "audit_logs, api_keys, usage_records, tenant_monthly_usage, " +
             "idempotency_keys, incident_events, outbox_events, saga_steps, " +
@@ -120,12 +120,6 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.flyway.user", postgres::getUsername);
         registry.add("spring.flyway.password", postgres::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
-        // application.yml defaults this to true for local/dev convenience. DemoDataInitializer
-        // seeds a demo tenant + incidents directly via repositories with no TenantContext set.
-        // Demo seeding has no place in an automated test run, and this (unlike
-        // application-test.yml) also reaches tests like SecurityEnforcementTest that
-        // deliberately run under the default, non-"test" profile.
-        registry.add("demo.mode", () -> "false");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("app.jwt.secret", () -> "test-secret-key-minimum-32-characters-long");
         registry.add("spring.data.redis.host", redis::getHost);

@@ -86,7 +86,8 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
         );
         String tenantBody = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(tenantRequest)))
+                .content(objectMapper.writeValueAsString(tenantRequest))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.data.id").isNotEmpty())
             .andExpect(jsonPath("$.data.name").value("AcmeCorp Demo"))

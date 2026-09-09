@@ -192,7 +192,8 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
         var request = new CreateTenantRequest("Test Tenant", Plan.STARTER, 0, 30);
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());

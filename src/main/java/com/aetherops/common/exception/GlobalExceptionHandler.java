@@ -15,6 +15,7 @@ import com.aetherops.common.exception.InvalidApiKeyException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.GoogleAuthNotConfiguredException;
 import com.aetherops.common.exception.InvalidGoogleTokenException;
+import com.aetherops.common.exception.InvalidInvitationException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
 import com.aetherops.common.exception.RateLimitExceededException;
@@ -29,6 +30,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -121,6 +123,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.LOCKED)
             .body(ErrorResponse.of(HttpStatus.LOCKED, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidInvitationException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidInvitation(
+        InvalidInvitationException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(InvalidResetTokenException.class)
@@ -229,6 +240,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+        NoResourceFoundException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse.of(HttpStatus.NOT_FOUND, "Not found", request.getRequestURI()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

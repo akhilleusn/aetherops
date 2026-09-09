@@ -13,6 +13,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.UUID;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -35,7 +37,8 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").isNotEmpty())
@@ -51,7 +54,8 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.error").value("Validation failed"))
             .andExpect(jsonPath("$.details.name").isNotEmpty())
@@ -64,7 +68,8 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.details.aiMonthlyBudgetCents").isNotEmpty());
     }
@@ -75,35 +80,46 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isUnprocessableEntity())
             .andExpect(jsonPath("$.details.retentionDays").isNotEmpty());
     }
 
     @Test
-    void listTenants_returnsPagedResults() throws Exception {
-        mockMvc.perform(post("/api/v1/tenants")
+    void listTenants_returnsOnlyCallersOwnTenant() throws Exception {
+        // Phase 1 remediation item 3: GET /tenants must never return every tenant in the
+        // system — only the ones the authenticated caller belongs to, derived from the JWT.
+        String alphaBody = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Alpha", Plan.STARTER, 0, 30))))
-            .andExpect(status().isCreated());
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Alpha", Plan.STARTER, 0, 30)))
+                .with(asTenant(UUID.randomUUID())))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        UUID alphaId = UUID.fromString(objectMapper.readTree(alphaBody).path("data").path("id").asText());
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Beta", Plan.TEAM, 10000, 90))))
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Beta", Plan.TEAM, 10000, 90)))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated());
 
-        mockMvc.perform(get("/api/v1/tenants"))
+        // Regression test (d): a member of tenant Alpha never sees tenant Beta.
+        mockMvc.perform(get("/api/v1/tenants").with(asTenant(alphaId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.content").isArray())
-            .andExpect(jsonPath("$.data.page.totalElements").value(2));
+            .andExpect(jsonPath("$.data.page.totalElements").value(1))
+            .andExpect(jsonPath("$.data.content[0].id").value(alphaId.toString()))
+            .andExpect(jsonPath("$.data.content[0].name").value("Alpha"));
     }
 
     @Test
     void getTenantById_existingTenant_returnsCorrectData() throws Exception {
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Gamma Inc", Plan.GROWTH, 20000, 180))))
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Gamma Inc", Plan.GROWTH, 20000, 180)))
+                .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
 
