@@ -14,6 +14,7 @@ import com.aetherops.oncall.IncidentPagingService;
 import com.aetherops.oncall.IncidentTimeline;
 import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
@@ -146,7 +147,7 @@ public class IncidentService {
 
     @Transactional(readOnly = true)
     public IncidentResponse findById(UUID id) {
-        return incidentRepository.findById(id)
+        return incidentRepository.findByIdAndTenantId(id, TenantContext.get())
                 .map(this::toResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
     }
@@ -168,7 +169,7 @@ public class IncidentService {
 
     @Transactional
     public IncidentResponse update(UUID id, UpdateIncidentRequest request) {
-        Incident incident = incidentRepository.findById(id)
+        Incident incident = incidentRepository.findByIdAndTenantId(id, TenantContext.get())
                 .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
 
         IncidentSeverity previousSeverity = incident.getSeverity();
@@ -246,7 +247,7 @@ public class IncidentService {
 
     @Transactional
     public void softDelete(UUID id) {
-        Incident incident = incidentRepository.findById(id)
+        Incident incident = incidentRepository.findByIdAndTenantId(id, TenantContext.get())
                 .orElseThrow(() -> new ResourceNotFoundException("Incident not found: " + id));
         incident.setDeletedAt(Instant.now());
         incidentRepository.save(incident);

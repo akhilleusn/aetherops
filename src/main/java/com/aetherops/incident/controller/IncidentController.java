@@ -50,7 +50,16 @@ public class IncidentController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get incident by ID")
-    public ApiResponse<IncidentResponse> getById(@PathVariable UUID id) {
+    public ApiResponse<IncidentResponse> getById(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        // Defense in depth: this only validates the caller's OWN claimed tenant matches
+        // their JWT — it can't and doesn't prove `id` belongs to that tenant (a caller
+        // could pass their own real tenantId alongside someone else's incident id). The
+        // primary control is IncidentService.findById filtering by TenantContext.get() in
+        // the query itself; this check just fails fast on an obviously-wrong tenantId.
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(incidentService.findById(id));
     }
 
@@ -73,8 +82,12 @@ public class IncidentController {
     @Operation(summary = "Update incident status, severity, title, or description")
     public ApiResponse<IncidentResponse> update(
         @PathVariable UUID id,
+        @RequestParam UUID tenantId,
         @Valid @RequestBody UpdateIncidentRequest request
     ) {
+        // See getById — controller-level check is defense in depth, not the primary
+        // control. IncidentService.update filters by TenantContext.get() in the query.
+        TenantContext.requireOwn(tenantId);
         return ApiResponse.success(incidentService.update(id, request));
     }
 
@@ -152,7 +165,10 @@ public class IncidentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
     @Operation(summary = "Soft delete an incident")
-    public void delete(@PathVariable UUID id) {
+    public void delete(@PathVariable UUID id, @RequestParam UUID tenantId) {
+        // See getById — controller-level check is defense in depth, not the primary
+        // control. IncidentService.softDelete filters by TenantContext.get() in the query.
+        TenantContext.requireOwn(tenantId);
         incidentService.softDelete(id);
     }
 

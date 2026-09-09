@@ -11,8 +11,10 @@ import com.aetherops.incident.severity.SeverityDetector;
 import com.aetherops.oncall.IncidentPagingService;
 import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,6 +55,7 @@ class IncidentCreationEnrichmentTest {
 
     @BeforeEach
     void setUp() {
+        TenantContext.set(tenantId);
         lenient().when(idempotencyKeyRepository
             .findByIdempotencyKeyAndTenantIdAndResourceType(any(), any(), any()))
             .thenReturn(Optional.empty());
@@ -63,6 +66,11 @@ class IncidentCreationEnrichmentTest {
             }
             return incident;
         });
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
     }
 
     private CreateIncidentRequest request(String title, String description, IncidentSeverity severity,
@@ -225,7 +233,7 @@ class IncidentCreationEnrichmentTest {
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .tags(Map.of("old", "value"))
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, null, null, Map.of("new", "value"));
         incidentService.update(id, update);
@@ -244,7 +252,7 @@ class IncidentCreationEnrichmentTest {
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .tags(Map.of("keep", "me"))
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest("New title", null, null, null, null);
         incidentService.update(id, update);
@@ -264,7 +272,7 @@ class IncidentCreationEnrichmentTest {
             .severity(IncidentSeverity.HIGH).serviceId("svc").fingerprint("fp").eventCount(1)
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null);
         incidentService.update(id, update);
@@ -284,7 +292,7 @@ class IncidentCreationEnrichmentTest {
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .acknowledgedAt(firstAck)
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.INVESTIGATING, null, null);
         incidentService.update(id, update);
@@ -329,7 +337,7 @@ class IncidentCreationEnrichmentTest {
             .severity(IncidentSeverity.LOW).serviceId("svc").fingerprint("fp").eventCount(1)
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, null, IncidentSeverity.CRITICAL, null);
         incidentService.update(id, update);
@@ -346,7 +354,7 @@ class IncidentCreationEnrichmentTest {
             .severity(IncidentSeverity.HIGH).serviceId("svc").fingerprint("fp").eventCount(1)
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, IncidentStatus.RESOLVED, null, null);
         incidentService.update(id, update);
@@ -363,7 +371,7 @@ class IncidentCreationEnrichmentTest {
             .severity(IncidentSeverity.LOW).serviceId("svc").fingerprint("fp").eventCount(1)
             .firstSeenAt(Instant.now()).lastSeenAt(Instant.now())
             .build();
-        when(incidentRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(existing));
 
         UpdateIncidentRequest update = new UpdateIncidentRequest(null, null, null, IncidentSeverity.CRITICAL, null);
         incidentService.update(id, update);

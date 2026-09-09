@@ -6,8 +6,10 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.service.IncidentService;
 import com.aetherops.slack.IncidentSlackNotificationService;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -38,6 +40,11 @@ class IdempotencyKeyTest {
 
     @InjectMocks
     private IncidentService incidentService;
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @Test
     void create_withNewIdempotencyKey_processesAndSavesKey() {
@@ -93,7 +100,8 @@ class IdempotencyKeyTest {
                 .serviceId("svc").fingerprint("fp").eventCount(1)
                 .firstSeenAt(Instant.now()).lastSeenAt(Instant.now()).build();
 
-        when(incidentRepository.findById(existingIncidentId))
+        TenantContext.set(tenantId);
+        when(incidentRepository.findByIdAndTenantId(existingIncidentId, tenantId))
                 .thenReturn(Optional.of(existing));
 
         IncidentResponse response = incidentService.create(request, key);

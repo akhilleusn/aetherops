@@ -125,6 +125,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
 
         var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
+                .param("tenantId", tenantId.toString())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req))
                 .with(asTenant(tenantId)))
@@ -144,6 +145,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
 
         var req = new UpdateIncidentRequest(null, null, null, IncidentSeverity.HIGH, null);
         mockMvc.perform(patch("/api/v1/incidents/{id}", incidentId)
+                .param("tenantId", tenantId.toString())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req))
                 .with(asTenant(tenantId)))

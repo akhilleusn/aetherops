@@ -9,9 +9,11 @@ import com.aetherops.incident.service.IncidentService;
 import com.aetherops.incident.service.IncidentTemplateService;
 import com.aetherops.incident.severity.SeverityDetector;
 import com.aetherops.slack.IncidentSlackNotificationService;
+import com.aetherops.tenant.TenantContext;
 import com.aetherops.usage.model.UsageType;
 import com.aetherops.usage.service.UsageLimitService;
 import com.aetherops.webhook.WebhookService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +41,11 @@ class IncidentUsageLimitTest {
 
     @InjectMocks
     private IncidentService incidentService;
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContext.clear();
+    }
 
     @Test
     void create_checksIncidentCreationLimit_beforeSavingIncident() {
@@ -80,7 +87,8 @@ class IncidentUsageLimitTest {
             .serviceId("svc").fingerprint("fp").eventCount(1)
             .firstSeenAt(java.time.Instant.now()).lastSeenAt(java.time.Instant.now()).build();
 
-        when(incidentRepository.findById(existingIncidentId)).thenReturn(Optional.of(existing));
+        TenantContext.set(tenantId);
+        when(incidentRepository.findByIdAndTenantId(existingIncidentId, tenantId)).thenReturn(Optional.of(existing));
 
         incidentService.create(request, key);
 

@@ -26,6 +26,14 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     boolean existsByTenantId(UUID tenantId);
 
+    /**
+     * Phase 1 Step D: the tenant predicate lives IN the query, not in a .filter() a future
+     * caller could forget to add. Deliberately returns empty (never a distinguishable
+     * result) for both "no such incident" and "exists, wrong tenant" — callers must map
+     * empty to a single 404, never leak the difference via a 403.
+     */
+    Optional<Incident> findByIdAndTenantId(UUID id, UUID tenantId);
+
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM Incident i WHERE i.tenantId = :tenantId AND i.lastSeenAt < :cutoff")
     int deleteByTenantIdAndLastSeenAtBefore(@Param("tenantId") UUID tenantId, @Param("cutoff") Instant cutoff);
