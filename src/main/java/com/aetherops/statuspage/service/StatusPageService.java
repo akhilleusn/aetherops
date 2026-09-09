@@ -86,17 +86,23 @@ public class StatusPageService {
     }
 
     /**
-     * Resolves the slug to a tenantId WITHOUT touching any RLS-protected table (status_pages
-     * carries no RLS policy), so this is safe to call before TenantContext is set. The caller
-     * (PublicStatusPageController) must set TenantContext to this value before calling
-     * getPublicPage — that method reads the RLS-protected incidents table, and this endpoint
-     * has no JWT to derive a tenant context from otherwise.
+     * Resolves the slug to a tenantId so the caller (PublicStatusPageController) can set
+     * TenantContext before calling getPublicPage — that method reads RLS-protected tables
+     * (incidents, services, etc.), and this endpoint has no JWT to derive a tenant context
+     * from otherwise. status_pages itself IS RLS-protected (FORCE ROW LEVEL SECURITY, since
+     * V60) — a plain {@code findBySlug} here would silently match nothing for every slug,
+     * because app.tenant_id isn't set yet at this exact point (that's the chicken-and-egg this
+     * method exists to resolve). {@code resolveTenantIdBySlugBypassingRls} is the one sanctioned
+     * exception: a narrowly-scoped Postgres function (V68) that returns ONLY a tenant_id for a
+     * given slug, gated by a transaction-local flag nothing else can set — see V68's javadoc.
      */
     @Transactional(readOnly = true)
     public UUID resolveTenantIdForSlug(String slug) {
-        return statusPageRepository.findBySlug(slug)
-            .orElseThrow(() -> new ResourceNotFoundException("Status page not found: " + slug))
-            .getTenantId();
+        UUID tenantId = statusPageRepository.resolveTenantIdBySlugBypassingRls(slug);
+        if (tenantId == null) {
+            throw new ResourceNotFoundException("Status page not found: " + slug);
+        }
+        return tenantId;
     }
 
     @Transactional(readOnly = true)

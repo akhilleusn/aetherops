@@ -24,9 +24,11 @@ public class PublicStatusPageController {
     @Operation(summary = "Get the public status page by slug — no authentication required")
     public ApiResponse<PublicStatusPageResponse> get(@PathVariable String slug) {
         // This is an unauthenticated route (no JWT), so TenantContextFilter never populates
-        // TenantContext — but getPublicPage() reads the RLS-protected incidents table, which
-        // silently returns nothing without app.tenant_id set. Resolve tenantId from the
-        // (non-RLS) status_pages table first, then set context before the real query.
+        // TenantContext — but getPublicPage() reads RLS-protected tables (incidents, services,
+        // etc.), which silently return nothing without app.tenant_id set. resolveTenantIdForSlug
+        // uses a narrowly-scoped, sanctioned RLS bypass (see its own javadoc, and V68) to resolve
+        // the slug to a tenantId first; TenantContext is then set to that value before the real
+        // query, and everything after this point is governed by ordinary RLS as usual.
         UUID tenantId = statusPageService.resolveTenantIdForSlug(slug);
         try {
             TenantContext.set(tenantId);

@@ -97,10 +97,17 @@ class StatusPageServiceTest {
 
     @Test
     void resolveTenantIdForSlug_unknownSlug_throwsResourceNotFound() {
-        when(statusPageRepository.findBySlug("missing")).thenReturn(Optional.empty());
+        when(statusPageRepository.resolveTenantIdBySlugBypassingRls("missing")).thenReturn(null);
 
         assertThatThrownBy(() -> statusPageService.resolveTenantIdForSlug("missing"))
             .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void resolveTenantIdForSlug_knownSlug_returnsTenantId() {
+        when(statusPageRepository.resolveTenantIdBySlugBypassingRls("acme")).thenReturn(tenantId);
+
+        assertThat(statusPageService.resolveTenantIdForSlug("acme")).isEqualTo(tenantId);
     }
 
     @Test

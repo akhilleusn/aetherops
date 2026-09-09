@@ -1,9 +1,9 @@
 # Step F — Cross-Tenant Unique-Constraint Collisions Under RLS
 
-Status: **Both approved fixes IMPLEMENTED and tested — push_device_tokens (composite
-tenant-scoped key) and status_pages.slug (clean 409 via caught DataIntegrityViolationException,
-global uniqueness preserved). The dead public-status-page endpoint found during recon is
-reported only, NOT fixed, per explicit instruction.** Nothing committed.
+Status: **All three fixes IMPLEMENTED and tested — push_device_tokens (composite tenant-scoped
+key), status_pages.slug (clean 409 via caught DataIntegrityViolationException, global uniqueness
+preserved), and the dead public status page (narrow, auditable RLS bypass for slug resolution
+only — see Fix 3). Nothing committed.**
 
 ---
 
@@ -295,20 +295,194 @@ Narrow run at implementation time —
 
 ---
 
+## Fix 3: the dead public status page (previously reported, NOT fixed — now fixed)
+
+### Recon, round 2 — re-confirmed and extended
+
+**Mechanism, confirmed by code trace (unchanged from the earlier report):**
+`PublicStatusPageController.get()` calls `resolveTenantIdForSlug(slug)` before
+`TenantContext.set(...)`. With `app.tenant_id` unset, `NULLIF(..., '')::uuid` is `NULL`, and
+`tenant_id = NULL` is never `TRUE` in SQL — `findBySlug` matched zero rows for every slug,
+unconditionally, ever since `V60` added `FORCE ROW LEVEL SECURITY` to `status_pages`.
+
+**What the public path actually reads, field by field** (traced every line of `getPublicPage`):
+- `status_pages.findBySlug` → only `tenantId`, `name` used.
+- `status_page_incident_updates.findTop50ByTenantId...` → only `status`, `message`, `postedAt`
+  — curated, customer-facing by construction (an incident is invisible here until someone
+  explicitly posts an update for it).
+- `incidents.findAllById(...)` — the **full** `Incident` row is loaded into memory, but only
+  `title`, `status`, `severity`, `serviceId` are ever read. Never copied into the response:
+  `resolutionNotes` (internal, postmortem-adjacent text), `slackChannelId`/`slackThreadTs`,
+  `tags`, `description`, `acknowledgedAt`, both SLA-breach flags, `correlationGroupId`.
+  Confirmed structurally, not just by inspection: `PublicStatusPageResponse`'s DTO has no field
+  to put any of them in even if the mapper tried.
+- `services.findByTenantId` → only `.getName()`; `ownerTeam` is loaded but never exposed.
+- `tenant_branding` → all four fields it has are meant to be public; nothing extra exists on
+  that table.
+- Responder identity and postmortems live in tables this path never queries at all
+  (`IncidentTimeline`, `postmortem_drafts`) — structurally can't leak from here.
+- **Correct today, not guaranteed tomorrow:** nothing stops a future edit from adding e.g.
+  `.description(incident.getDescription())` to the mapper. Flagging, not fixing — out of scope.
+
+**Test coverage gap, re-confirmed:** the only prior test touching this path
+(`StatusPageServiceTest`) mocks `StatusPageRepository` entirely — every stub returns canned data
+regardless of `TenantContext` or real RLS. This bug had zero coverage that could ever have
+caught it, not because the test *harness* bypasses RLS (it deliberately doesn't — see below) but
+because no integration test existed for this path in the first place. Fixed by adding
+`PublicStatusPageIntegrationTest` (real Postgres, real RLS — see Tests below).
+
+**Database role, answered separately for test and production, per your explicit instruction not
+to assume they match:**
+
+*Test:* role `app_user`, created by `src/test/resources/create-app-role.sql`:
+```sql
+CREATE ROLE app_user WITH LOGIN PASSWORD 'apppass';
+```
+No `SUPERUSER`, no `BYPASSRLS` — neither is granted here or anywhere else in the repo (grepped
+every `.sql`/`.yaml`/`.yml`/`.md`/`.sh` file for `BYPASSRLS`/`SUPERUSER`/`CREATEROLE`; the only
+hits are comments, never a grant). This is what the application itself connects as in tests:
+```java
+// AbstractIntegrationTest.java:115-118
+// App runtime connects as a non-superuser role so RLS (which superusers/BYPASSRLS...
+// ...Migrations still run as the superuser "test" role, separately below.
+registry.add("spring.datasource.username", () -> "app_user");
+```
+Migrations run separately, as `"test"` — Testcontainers' bootstrap `POSTGRES_USER`, which the
+official `postgres` image always makes a superuser. **Test's app role has neither attribute —
+RLS is genuinely exercised in the suite.**
+
+*Production: cannot be verified from this repository — stated plainly rather than guessed.*
+Three deployment paths exist and disagree:
+- `kubernetes/secret.yaml` documents intent (*"principle of least privilege — do not use the
+  superuser account"*) but enforces nothing — there is no `CREATE ROLE ... NOSUPERUSER
+  NOBYPASSRLS` script for this path the way `create-app-role.sql` exists for tests.
+- `docker-compose.yml` sets `DB_USERNAME: ${POSTGRES_USER:-aetherops_user}` — **the same
+  variable used to create the Postgres container's bootstrap superuser.** Checked whether this
+  wiring actually works: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD` don't match Spring's
+  relaxed-binding convention (`SPRING_DATASOURCE_*`), and no translation layer exists (`Dockerfile`'s
+  `ENTRYPOINT` is a bare `JarLauncher`, no wrapper script; no `application-docker.yml`) — this
+  file most likely doesn't configure the datasource at all and is stale, but if it or something
+  like it ever did work as written, the app would run AS the Postgres superuser: stronger than
+  BYPASSRLS, a total bypass of every RLS policy in the codebase.
+- `railway.toml` (the file `application.yml` itself calls "the live deployment target") only
+  configures build/healthcheck/restart behavior — no env vars, no role info. Railway's actual
+  project variables live outside this repository.
+
+**Direct answer:** I cannot rule out that production runs with `BYPASSRLS` or as a superuser.
+The repo documents an intent against it and enforces it nowhere; one of its three deployment
+paths would grant full superuser access if it worked at all. If Railway's real provisioning
+matches the documented intent, RLS is real in production. If it doesn't, every RLS policy in
+this codebase — including the one this fix just added — provides no protection beyond whatever
+the application layer already enforces, and that can only be confirmed by inspecting Railway's
+actual project configuration, which is outside this repository.
+
+### The fix
+
+Your proposed shape (one narrow mechanism, resolve `tenant_id` only, nothing else) is right, but
+a plain `SECURITY DEFINER` function wouldn't work: `FORCE ROW LEVEL SECURITY` means even a
+function owned by the table owner is still subject to RLS — making it actually bypass would need
+the owner to hold `BYPASSRLS`, i.e. a new role, exactly what you said not to introduce.
+
+Implemented instead as a **second, `SELECT`-only permissive RLS policy**, visible only while a
+transaction-local flag is set — and the only thing that ever sets that flag is one PL/pgSQL
+function (`V68__public_status_page_slug_resolution.sql`):
+```sql
+CREATE POLICY slug_lookup_bypass ON status_pages FOR SELECT
+    USING (current_setting('app.allow_status_page_slug_lookup', true) = 'true');
+
+CREATE FUNCTION resolve_status_page_tenant(p_slug VARCHAR) RETURNS UUID
+LANGUAGE plpgsql AS $$
+DECLARE result UUID;
+BEGIN
+    PERFORM set_config('app.allow_status_page_slug_lookup', 'true', true);
+    SELECT tenant_id INTO result FROM status_pages WHERE slug = p_slug;
+    PERFORM set_config('app.allow_status_page_slug_lookup', 'false', true);
+    RETURN result;
+EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('app.allow_status_page_slug_lookup', 'false', true);
+    RAISE;
+END; $$;
+```
+Postgres OR's multiple permissive policies together, so this adds visibility without touching
+or weakening `tenant_isolation` — every other query against `status_pages` (i.e. every query
+except this one function's own `SELECT`, since nothing else ever sets the flag) is completely
+unaffected. No new database role, no `BYPASSRLS` grant anywhere — needs nothing beyond the
+ordinary `CREATE POLICY`/`CREATE FUNCTION` privilege the table's owner already has.
+
+**Addition: the `EXCEPTION` block, per your review.** My first version reset the flag only after
+the `SELECT`, relying on `is_local = true` reverting it automatically once the enclosing
+transaction aborts if something threw instead. You're right that's incidental, not guaranteed by
+the function itself — it depends on the caller actually letting the whole transaction abort
+rather than, say, catching the error some other way and continuing. The `EXCEPTION WHEN OTHERS`
+block now resets the flag on the error path explicitly, then `RAISE`s so the original error still
+propagates to the caller unchanged — the reset no longer depends on anything outside this
+function's own control flow.
+
+**Addition: a comment on the policy warning against copying the pattern**, per your request —
+both a `COMMENT ON POLICY` (queryable from the database itself, e.g. via `\d+ status_pages` or
+`pg_policies`) and expanded prose directly above the `CREATE POLICY` statement in the migration,
+explaining exactly why this is safe here (the one column it exposes, `tenant_id` keyed by an
+already-public slug, isn't sensitive on its own) and explicitly warning it must not be replicated
+on a table where cross-tenant `SELECT` visibility would actually matter.
+
+Wired in via a native-query repository method (`StatusPageRepository.resolveTenantIdBySlugBypassingRls`),
+called from `StatusPageService.resolveTenantIdForSlug`. **The stale, false comment — *"status_pages
+carries no RLS policy... safe to call before TenantContext is set"* — is deleted**, not softened;
+replaced with an accurate description of the actual mechanism now in place. The matching stale
+comment in `PublicStatusPageController` is corrected the same way.
+
+### Tests, per your spec (BY NAME, confirmed from surefire XML) — real database, not mocked
+
+`PublicStatusPageIntegrationTest` (5 — deliberately never calls `asTenant(...)` anywhere in the
+file, simulating a genuinely anonymous visitor with no JWT and no tenant context at request
+time, which is exactly the condition that broke this endpoint):
+- `get_validSlug_noTenantContextAtRequestTime_returnsCorrectTenantsPage` — the core regression
+  case: a real slug resolves correctly with zero tenant context set at request time
+- `get_unknownSlug_returns404`
+- `get_tenantASlug_neverReturnsTenantBData` — two tenants, each with their own status page and
+  incident; tenant A's slug returns only tenant A's data
+- `get_publicResponse_containsNoInternalOnlyFields` — asserts the raw response body contains
+  none of `resolutionNotes`, `slackChannelId`, `slackThreadTs`, `tenantId`, `ownerTeam`,
+  `fingerprint`, `eventCount`, `acknowledgedAt`, `correlationGroupId` — every internal-only field
+  identified in the recon above, checked directly against the actual serialized JSON rather than
+  trusted from reading the DTO mapping code alone
+- `resolveTenantIdBySlugBypassingRls_doesNotLeakVisibility_intoSubsequentQueryInSameTransaction`
+  — new, added per your review; **this is the test that actually proves the flag reset works**,
+  not merely that the whole suite passes. Both calls run inside ONE transaction
+  (`withTenant`'s single `@Transactional` boundary), with `TenantContext` set to tenant A
+  throughout: first the bypass resolves tenant B's slug (asserted — that's the function's whole
+  job), then an ordinary, RLS-governed `findByTenantId(tenantB)` runs in the *same* transaction,
+  still under tenant A's context, and is asserted `empty`. Without this test, a future edit that
+  deleted the reset line (either the success-path one or the new `EXCEPTION`-block one) would
+  pass the entire rest of the suite undetected.
+
+`StatusPageServiceTest.xml` (+1, was 15, now 16):
+- `resolveTenantIdForSlug_knownSlug_returnsTenantId` — new; the mocked-repository counterpart,
+  kept alongside the real integration tests above rather than replacing them
+
+Narrow run at implementation time —
+`mvn test -Dtest=PublicStatusPageIntegrationTest,StatusPageServiceTest,StatusPageIntegrationTest`
+→ **Tests run: 23, Failures: 0, Errors: 0, Skipped: 0** (5 + 16 + 2).
+
+---
+
 ## Full test run
 
-Docker Desktop confirmed running before the run.
+Docker Desktop confirmed running before every run in this step. Three full-suite runs happened:
+after Fixes 1+2 (943), after Fix 3's initial implementation (948), and after the
+EXCEPTION-block/leak-test hardening below (949, current/final).
 
 ```
 mvn test
 ...
-[INFO] Tests run: 943, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 949, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
 
-**943 tests, 0 failures, 0 errors, 0 skipped.** (935 going into this step + 8 new: 1 in
-`PushNotificationServiceTest` + 2 in `PushTokenIntegrationTest` + 3 in `StatusPageServiceTest` +
-2 in the new `StatusPageIntegrationTest` — matches exactly.)
+**949 tests, 0 failures, 0 errors, 0 skipped.** (943 after Fixes 1+2 + 6 new for Fix 3: 5 in
+`PublicStatusPageIntegrationTest` (4 from the initial implementation +
+`resolveTenantIdBySlugBypassingRls_doesNotLeakVisibility_intoSubsequentQueryInSameTransaction`
+from this review round) + 1 in `StatusPageServiceTest` — matches exactly.)
 
 No test was skipped, disabled, or weakened to get here.
 
@@ -338,7 +512,21 @@ Modified:
   `findByTenantIdAndExpoPushToken`, added 1 test
 - `src/test/java/com/aetherops/push/PushTokenIntegrationTest.java` — added 2 tests
 - `src/test/java/com/aetherops/statuspage/service/StatusPageServiceTest.java` — removed stale
-  stub, `save`→`saveAndFlush`, added 3 tests
+  stub, `save`→`saveAndFlush`, added 3 tests (then +1 more in Fix 3, see below)
 
-Not changed (reported only, per explicit instruction): `StatusPageService.resolveTenantIdForSlug`,
-`PublicStatusPageController` — the dead public status page endpoint described above.
+Fix 3 (public status page):
+- `src/main/resources/db/migration/V68__public_status_page_slug_resolution.sql` — new
+- `src/test/java/com/aetherops/statuspage/PublicStatusPageIntegrationTest.java` — new
+- `src/main/java/com/aetherops/statuspage/repository/StatusPageRepository.java` — added
+  `resolveTenantIdBySlugBypassingRls` native query
+- `src/main/java/com/aetherops/statuspage/service/StatusPageService.java` —
+  `resolveTenantIdForSlug` rewritten to use it; stale/false RLS comment deleted, replaced with an
+  accurate one
+- `src/main/java/com/aetherops/statuspage/controller/PublicStatusPageController.java` —
+  matching stale comment corrected
+- `src/test/java/com/aetherops/statuspage/service/StatusPageServiceTest.java` — updated the
+  `resolveTenantIdForSlug_unknownSlug_...` stub to the new method, added
+  `resolveTenantIdForSlug_knownSlug_returnsTenantId`
+
+Nothing left unfixed from this step — all three findings (push token collision, status-page-slug
+collision, dead public status page) are now implemented and tested.
