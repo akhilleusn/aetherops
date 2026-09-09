@@ -6,6 +6,7 @@ import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.monitoring.model.AlertmanagerWebhookRequest;
 import com.aetherops.monitoring.model.DatadogWebhookRequest;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
+import com.aetherops.monitoring.service.MonitoringAlertReplayGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ class MonitoringWebhookControllerTest {
 
     @Mock private ApiKeyService apiKeyService;
     @Mock private MonitoringAlertIngestionService ingestionService;
+    @Mock private MonitoringAlertReplayGuard replayGuard;
 
     @InjectMocks
     private MonitoringWebhookController controller;

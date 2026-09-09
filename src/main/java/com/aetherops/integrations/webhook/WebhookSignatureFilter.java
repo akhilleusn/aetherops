@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Phase 1 Step E, item 2 (finding 5): verifies provider request signatures for the three
@@ -48,10 +49,21 @@ import java.util.Optional;
 @Slf4j
 public class WebhookSignatureFilter extends OncePerRequestFilter {
 
-    private static final Map<String, WebhookSigningProvider> PROTECTED_PATHS = Map.of(
-        "/api/v1/integrations/github", WebhookSigningProvider.GITHUB,
-        "/api/v1/integrations/pagerduty", WebhookSigningProvider.PAGERDUTY,
-        "/api/v1/integrations/grafana", WebhookSigningProvider.GRAFANA
+    private static final Map<String, WebhookSigningProvider> PROTECTED_PATHS = Map.ofEntries(
+        Map.entry("/api/v1/integrations/github", WebhookSigningProvider.GITHUB),
+        Map.entry("/api/v1/integrations/pagerduty", WebhookSigningProvider.PAGERDUTY),
+        Map.entry("/api/v1/integrations/grafana", WebhookSigningProvider.GRAFANA),
+        Map.entry("/api/v1/integrations/new-relic", WebhookSigningProvider.NEW_RELIC),
+        Map.entry("/api/v1/integrations/opsgenie", WebhookSigningProvider.OPSGENIE),
+        Map.entry("/api/v1/integrations/rollbar", WebhookSigningProvider.ROLLBAR),
+        Map.entry("/api/v1/monitoring/datadog", WebhookSigningProvider.DATADOG),
+        Map.entry("/api/v1/monitoring/prometheus/alertmanager", WebhookSigningProvider.ALERTMANAGER)
+    );
+
+    /** These sign the raw body — verification needs CachedBodyHttpServletRequest. The rest
+     *  (STATIC_TOKEN) check a header or query param only; the body is never touched. */
+    private static final Set<WebhookSigningProvider> HMAC_PROVIDERS = Set.of(
+        WebhookSigningProvider.GITHUB, WebhookSigningProvider.PAGERDUTY, WebhookSigningProvider.GRAFANA
     );
 
     private static final String HMAC_SHA256 = "HmacSHA256";
@@ -59,6 +71,17 @@ public class WebhookSignatureFilter extends OncePerRequestFilter {
     private static final String GITHUB_DEFAULT_HEADER = "X-Hub-Signature-256";
     private static final String PAGERDUTY_DEFAULT_HEADER = "X-PagerDuty-Signature";
     private static final String GRAFANA_DEFAULT_HEADER = "X-Grafana-Alerting-Signature";
+
+    /** Default header for STATIC_TOKEN providers other than Rollbar. Not provider-mandated
+     *  like Grafana's signature header — these providers don't dictate a header name, the
+     *  tenant configures whatever their sending side lets them send, so one fixed default
+     *  name (overridable via WebhookSigningSecret.headerName, same field Grafana uses) is
+     *  simplest. */
+    private static final String STATIC_TOKEN_DEFAULT_HEADER = "X-Webhook-Secret";
+
+    /** Rollbar's own documented convention is a URL query token, e.g. ".../poke?auth=..." —
+     *  not a header at all. */
+    private static final String ROLLBAR_QUERY_PARAM = "auth";
 
     private final ApiKeyService apiKeyService;
     private final WebhookSigningSecretService signingSecretService;
@@ -73,13 +96,14 @@ public class WebhookSignatureFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         WebhookSigningProvider provider = PROTECTED_PATHS.get(request.getRequestURI());
-        CachedBodyHttpServletRequest wrapped = new CachedBodyHttpServletRequest(request);
+        boolean requiresRawBody = HMAC_PROVIDERS.contains(provider);
+        HttpServletRequest downstreamRequest = requiresRawBody ? new CachedBodyHttpServletRequest(request) : request;
 
         String rawKey = request.getHeader("X-Api-Key");
         if (rawKey == null || rawKey.isBlank()) {
             // No key at all — let the existing ApiKeyAuthFilter / controller reject this the
             // same way it always has. There's no tenant to look a signing secret up for yet.
-            chain.doFilter(wrapped, response);
+            chain.doFilter(downstreamRequest, response);
             return;
         }
 
@@ -87,7 +111,7 @@ public class WebhookSignatureFilter extends OncePerRequestFilter {
         try {
             apiKey = apiKeyService.resolve(rawKey);
         } catch (InvalidApiKeyException e) {
-            chain.doFilter(wrapped, response);
+            chain.doFilter(downstreamRequest, response);
             return;
         }
 
@@ -97,28 +121,69 @@ public class WebhookSignatureFilter extends OncePerRequestFilter {
             if (configured.isEmpty()) {
                 log.warn("No {} signing secret configured for tenantId={} — falling back to API-key-only auth",
                     provider, apiKey.getTenantId());
-                chain.doFilter(wrapped, response);
+                chain.doFilter(downstreamRequest, response);
                 return;
             }
 
             String secret = signingSecretService.decrypt(configured.get());
-            boolean valid = switch (provider) {
-                case GITHUB -> verifyGitHub(request, wrapped.getCachedBody(), secret);
-                case PAGERDUTY -> verifyPagerDuty(request, wrapped.getCachedBody(), secret);
-                case GRAFANA -> verifyGrafana(request, wrapped.getCachedBody(), secret, configured.get());
-            };
+            boolean valid;
+            if (requiresRawBody) {
+                byte[] rawBody = ((CachedBodyHttpServletRequest) downstreamRequest).getCachedBody();
+                valid = switch (provider) {
+                    case GITHUB -> verifyGitHub(request, rawBody, secret);
+                    case PAGERDUTY -> verifyPagerDuty(request, rawBody, secret);
+                    case GRAFANA -> verifyGrafana(request, rawBody, secret, configured.get());
+                    default -> throw new IllegalStateException("Unexpected HMAC provider: " + provider);
+                };
+            } else {
+                valid = verifyStaticToken(request, provider, secret, configured.get());
+            }
 
             if (!valid) {
+                Instant graceEndsAt = configured.get().getGracePeriodEndsAt();
+                if (graceEndsAt != null && Instant.now().isBefore(graceEndsAt)) {
+                    // This secret was generated FOR the tenant by the existing-tenant migration
+                    // (LegacyWebhookSecretBackfillRunner), not configured by them yet — a
+                    // manually configured secret never has a grace period (see V66/the entity
+                    // javadoc), so this branch can only be reached during that transition
+                    // window. Treat it the same as "no secret configured" until the tenant has
+                    // had a chance to actually add it to their sending side, or until it expires.
+                    log.warn("{} webhook signature missing/invalid for tenantId={}, but a migration-generated "
+                        + "secret is still within its grace period (ends {}) — falling back to API-key-only "
+                        + "auth rather than rejecting", provider, apiKey.getTenantId(), graceEndsAt);
+                    chain.doFilter(downstreamRequest, response);
+                    return;
+                }
                 log.warn("Rejected {} webhook request with missing/invalid signature tenantId={}",
                     provider, apiKey.getTenantId());
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return;
             }
 
-            chain.doFilter(wrapped, response);
+            chain.doFilter(downstreamRequest, response);
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** DATADOG/NEW_RELIC/OPSGENIE/ALERTMANAGER check a header (default X-Webhook-Secret,
+     *  overridable per WebhookSigningSecret.headerName); ROLLBAR checks its own documented
+     *  URL query parameter instead, per that provider's convention. Either way this is a
+     *  direct constant-time string compare — there is no signature to compute, only a shared
+     *  secret to match. */
+    private boolean verifyStaticToken(HttpServletRequest request, WebhookSigningProvider provider,
+                                       String secret, WebhookSigningSecret config) {
+        String presented;
+        if (provider == WebhookSigningProvider.ROLLBAR) {
+            presented = request.getParameter(ROLLBAR_QUERY_PARAM);
+        } else {
+            String headerName = config.getHeaderName() != null ? config.getHeaderName() : STATIC_TOKEN_DEFAULT_HEADER;
+            presented = request.getHeader(headerName);
+        }
+        if (presented == null || presented.isBlank()) {
+            return false;
+        }
+        return constantTimeEquals(secret, presented);
     }
 
     private boolean verifyGitHub(HttpServletRequest request, byte[] rawBody, String secret) {

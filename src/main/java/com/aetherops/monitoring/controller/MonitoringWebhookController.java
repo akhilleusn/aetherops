@@ -6,6 +6,7 @@ import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.monitoring.model.AlertmanagerWebhookRequest;
 import com.aetherops.monitoring.model.DatadogWebhookRequest;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
+import com.aetherops.monitoring.service.MonitoringAlertReplayGuard;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ public class MonitoringWebhookController {
 
     private final ApiKeyService apiKeyService;
     private final MonitoringAlertIngestionService ingestionService;
+    private final MonitoringAlertReplayGuard replayGuard;
 
     @PostMapping("/datadog")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -39,6 +41,11 @@ public class MonitoringWebhookController {
     ) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         boolean firing = !"Recovered".equalsIgnoreCase(request.getAlertTransition());
+
+        if (replayGuard.isReplay(apiKey.getTenantId(), "datadog",
+                ingestionService.computeFingerprint(apiKey.getTenantId(), request.getServiceId(), request.getTitle()))) {
+            return ResponseEntity.accepted().build();
+        }
 
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), request.getServiceId(), request.getTitle(),
@@ -67,6 +74,11 @@ public class MonitoringWebhookController {
             String summary = annotations.getOrDefault("summary", alertName);
             String description = annotations.getOrDefault("description", summary);
             boolean firing = "firing".equalsIgnoreCase(alert.getStatus());
+
+            if (replayGuard.isReplay(apiKey.getTenantId(), "alertmanager",
+                    ingestionService.computeFingerprint(apiKey.getTenantId(), serviceId, alertName))) {
+                continue;
+            }
 
             ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
                 apiKey.getTenantId(), apiKey.getProjectId(), serviceId, alertName,

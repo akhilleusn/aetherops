@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -48,5 +49,29 @@ public class WebhookSigningSecretService {
         WebhookSigningSecret saved = repository.save(secret);
         log.info("Configured {} webhook signing secret for tenantId={}", provider, tenantId);
         return saved;
+    }
+
+    /**
+     * Used only by {@code LegacyWebhookSecretBackfillRunner} to generate a secret for an
+     * existing tenant that has none yet, without disturbing one that already exists — an
+     * operator who already configured a real secret for (tenantId, provider) must never have
+     * it silently overwritten by a re-run of a startup migration. Returns false (no-op) if a
+     * row already exists, true if one was created.
+     */
+    @Transactional
+    public boolean backfillIfAbsent(UUID tenantId, WebhookSigningProvider provider, String plaintextSecret,
+                                     Instant gracePeriodEndsAt) {
+        if (repository.findByTenantIdAndProviderAndEnabledTrue(tenantId, provider).isPresent()) {
+            return false;
+        }
+        WebhookSigningSecret secret = WebhookSigningSecret.builder()
+            .tenantId(tenantId)
+            .provider(provider)
+            .encryptedSecret(encryptor.encrypt(plaintextSecret))
+            .enabled(true)
+            .gracePeriodEndsAt(gracePeriodEndsAt)
+            .build();
+        repository.save(secret);
+        return true;
     }
 }

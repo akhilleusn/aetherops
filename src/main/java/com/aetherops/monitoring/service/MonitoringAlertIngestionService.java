@@ -134,7 +134,14 @@ public class MonitoringAlertIngestionService {
     }
 
     private String buildFingerprint(AlertSignal signal) {
-        String raw = signal.tenantId() + ":" + signal.serviceId() + ":" + signal.alertName();
+        return computeFingerprint(signal.tenantId(), signal.serviceId(), signal.alertName());
+    }
+
+    /** Exposed so MonitoringAlertReplayGuard can key on the exact same fingerprint this
+     *  service already uses for find-or-create, without needing a full AlertSignal (the
+     *  replay check runs in the controller before severity/title/etc. are even decided). */
+    public String computeFingerprint(UUID tenantId, String serviceId, String alertName) {
+        String raw = tenantId + ":" + serviceId + ":" + alertName;
         return FingerprintUtil.sha256Hex(raw);
     }
 }

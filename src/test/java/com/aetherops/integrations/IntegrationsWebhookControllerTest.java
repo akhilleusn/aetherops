@@ -7,6 +7,7 @@ import com.aetherops.integrations.controller.IntegrationsWebhookController;
 import com.aetherops.integrations.model.*;
 import com.aetherops.integrations.webhook.SnsSignatureVerifier;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
+import com.aetherops.monitoring.service.MonitoringAlertReplayGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ class IntegrationsWebhookControllerTest {
     @Mock private MonitoringAlertIngestionService ingestionService;
     @Mock private RestClient.Builder restClientBuilder;
     @Mock private SnsSignatureVerifier snsSignatureVerifier;
+    @Mock private MonitoringAlertReplayGuard replayGuard;
 
     private IntegrationsWebhookController controller;
 
@@ -39,7 +41,7 @@ class IntegrationsWebhookControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new IntegrationsWebhookController(apiKeyService, ingestionService, restClientBuilder, snsSignatureVerifier);
+        controller = new IntegrationsWebhookController(apiKeyService, ingestionService, restClientBuilder, snsSignatureVerifier, replayGuard);
         lenient().when(apiKeyService.resolve(API_KEY)).thenReturn(
             ApiKey.builder().id(UUID.randomUUID()).tenantId(tenantId).projectId(projectId).active(true).build());
         // Existing CloudWatch tests below predate signature verification and exercise the

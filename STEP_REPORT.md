@@ -1,253 +1,1026 @@
-# Phase 1 Remediation — Step D: Tenant Isolation, Defence in Depth
+# Step E — Webhooks and Push Tokens (findings 5 and 7)
 
-Closes audit finding 4. D0 (recon) approved; D1 (fix) is now implemented, per go-ahead. `PushTokenController` (finding 7) stayed out of scope for Step D throughout — belongs to Step E. **Nothing committed.**
+Status: **E1 implemented and tested. E2 signature verification IMPLEMENTED for GitHub, AWS
+SNS/cloudwatch, PagerDuty, Grafana (HMAC/certificate) AND Datadog, New Relic, Opsgenie, Rollbar,
+Alertmanager (static-token). Splunk is a documented, accepted risk — no mechanism exists to
+close it, by design, not oversight. Sentry, VictorOps, Sumo Logic remain deliberately
+unimplemented (unconfirmed schemes). Existing-tenant migration (item 4) IMPLEMENTED: a
+grace-period column plus an off-by-default `LegacyWebhookSecretBackfillRunner` that generates a
+per-provider secret for every tenant across the five static-token providers, with a transition
+window before enforcement begins. Generated secrets are written to an owner-only-permissions
+file or, only with an explicit `--print-secrets` flag, to stdout — never logged.** Nothing
+committed.
 
-## Addendum 1 — verification requested before D1 approval
+---
 
-**One test was added** (`src/test/java/com/aetherops/tenant/TenantContextOrderingTest.java`) to empirically settle the D0(b) uncertainty about AOP ordering, rather than leave it resting on documented-but-unverified behavior. Details below, after the re-printed (a)/(b) sections.
+## E1. Push Token IDOR (finding 7) — IMPLEMENTED
 
-## Addendum 2 — D1 implementation
+### The vulnerability
 
-### What changed and why
+`POST /api/v1/users/{userId}/push-token` took `userId` from the path and `tenantId` from the
+request body. Neither was checked against the caller's own identity. Any authenticated tenant
+member could overwrite any other member's push token by supplying that member's `userId` in the
+path and `tenantId` in the body — silently un-paging them. In an incident-response product this
+is an availability failure, not just a privacy one.
 
-**Primary control — service/repository layer:**
-- `IncidentRepository` — added `Optional<Incident> findByIdAndTenantId(UUID id, UUID tenantId)`. The predicate now lives in the query itself, not a `.filter()` a future caller could omit.
-- `IncidentService.findById`, `.update`, `.softDelete` — all three now call `incidentRepository.findByIdAndTenantId(id, TenantContext.get())` instead of a bare `findById(id)`. `TenantContext.get()` is the caller's own JWT-derived tenant (already populated per-request by the existing filter chain — no new input needed). A not-found ID and a wrong-tenant ID both produce an empty `Optional` from the same query, so both paths hit the exact same `orElseThrow(() -> new ResourceNotFoundException(...))` — **there is no branch that could return a different status for "doesn't exist" vs "exists, wrong tenant."** Confirmed by the `.filter(...)` alternative being structurally impossible here (there's nothing to filter after the fact — the query itself returns nothing).
-- This automatically closes `IncidentCommandController.resolve` too: it calls `IncidentCommandService.handle(ResolveIncidentCommand)` → `incidentService.update(...)`, the same method. No change was needed in the command controller or service — confirmed by `resolveCommand_otherTenantsIncident_returns404_notForbidden` below.
+### Fix
 
-**Secondary control — controller layer (defense in depth, as instructed):**
-- `IncidentController.getById`, `.update`, `.delete` now each take a `tenantId` query param and call `TenantContext.requireOwn(tenantId)` before delegating to the service, matching the pattern every other `IncidentController` endpoint already uses. This is explicitly *not* the primary control — it only proves the caller's own tenant claim is genuine; it cannot and does not prove the target incident belongs to that tenant (that's `findByIdAndTenantId`'s job). `requireOwn`'s `ForbiddenException` (403) fires only on a self-consistency failure (caller's tenant param doesn't match their JWT) — never on "this incident belongs to someone else," which is always a 404 from the service layer. These two failure modes stay on separate, non-conflatable code paths, so a wrong-tenant incident ID can never surface as a 403.
-- `IncidentCommandController.resolve` already had `requireOwn` from Step B — unchanged.
+Both identifiers are now derived exclusively from the authenticated principal
+(`CurrentUserContext.get()` / `TenantContext.get()`) — the same ThreadLocal pattern already used
+throughout the codebase, populated from the caller's own JWT. They are **not accepted as request
+input at all**, not validated-and-rejected-if-mismatched. There is no field, path variable, or
+JSON property anywhere in the request that a caller's identity claim could land in.
 
-**`SlackWorkspaceRepository.findByTenantId` — traced, all 3 call sites guarded, no fix needed:**
-- `PostmortemService.fetchSlackTranscript` — `tenantId` arrives already validated: `PostmortemService.generate`/`.getLatest` are only reachable via `IncidentController`, which calls `TenantContext.requireOwn(tenantId)` before invoking them.
-- `OnboardingStatusService.getStatus` — same: `OnboardingController.status` calls `requireOwn(id)` first.
-- `EscalationService.notifySlack` — uses `incident.getTenantId()`, the already-loaded entity's own field, not any caller-supplied value at all. Safe by construction regardless of how the incident was loaded.
+### Files changed and why
 
-### Tests
+- **`src/main/java/com/aetherops/push/RegisterPushTokenRequest.java`** — removed the `tenantId`
+  field entirely. The request now carries only `expoPushToken` (`@NotBlank`) and `platform`.
+  Removing the field (rather than keeping it and ignoring it) means there's no slot left for a
+  caller to be misled into thinking selects who the token is registered for.
 
-All Mockito-unit and MockMvc-integration tests below assert **404, never 403**, for the cross-tenant case, per instruction.
+- **`src/main/java/com/aetherops/push/PushTokenController.java`** — route changed from
+  `/api/v1/users/{userId}/push-token` to `/api/v1/users/me/push-token`; the `@PathVariable UUID
+  userId` is gone. The handler now reads `CurrentUserContext.get()` and `TenantContext.get()`
+  directly and passes them to `PushNotificationService.registerToken(...)`, whose signature was
+  not changed.
 
-**New — `IncidentServiceTest.java`** (pure Mockito, no Spring, no database, no RLS — proves the app check alone suffices):
-- `findById_ownTenant_returnsIncident`
-- `findById_otherTenantsIncident_throwsNotFound_notForbidden`
-- `update_ownTenant_appliesChange`
-- `update_otherTenantsIncident_throwsNotFound_notForbidden`
+  **Reasoning on removing the path variable (per your "consider... report your reasoning"
+  instruction):** I removed it rather than leaving it in the route as a decorative/ignored
+  parameter. Once the path segment can never affect which row is written, keeping it displayed in
+  the URL would misrepresent the API as letting the caller target an arbitrary user — which is
+  worse than not having the segment, because it invites exactly the assumption that caused the
+  original bug (that the path value means something). `/users/me/push-token` keeps the resource
+  under the same `/users/` namespace as `CalendarConnectionController`'s existing
+  `/users/{userId}/...` routes, while making the self-only-ness part of the URL itself instead of
+  something a reader has to go verify inside the handler body.
 
-**Extended — `IncidentSoftDeleteTest.java`** (existing file, fixed for the new repository signature, one test added):
-- `softDelete_setsDeletedAt` (fixed)
-- `softDelete_throwsWhenNotFound` (fixed)
-- `softDelete_otherTenantsIncident_throwsNotFound_notForbidden` (new — same independent-of-RLS proof as above)
+- **`src/test/java/com/aetherops/push/PushTokenControllerTest.java`** — rewritten (Mockito unit
+  test). Sets `CurrentUserContext`/`TenantContext` in `@BeforeEach`, clears in `@AfterEach`.
 
-**New — `IncidentTenantIsolationIntegrationTest.java`** (full-stack MockMvc, real Postgres, real RLS — proves the *whole* stack agrees, not just the unit-level app check):
-- `getById_ownIncident_returns200`
-- `getById_otherTenantsIncident_returns404_notForbidden`
-- `update_ownIncident_returns200`
-- `update_otherTenantsIncident_returns404_notForbidden`
-- `delete_ownIncident_returns204`
-- `delete_otherTenantsIncident_returns404_notForbidden` (also confirms the incident was NOT silently deleted despite the 404)
-- `resolveCommand_ownIncident_returns200`
-- `resolveCommand_otherTenantsIncident_returns404_notForbidden` (the `IncidentCommandController` downstream case)
+- **`src/test/java/com/aetherops/push/PushTokenIntegrationTest.java`** — new file (MockMvc,
+  extends `AbstractIntegrationTest`).
 
-**Fixed (broken by the repository signature change, not new coverage):** `IncidentCreationEnrichmentTest.java` (7 stubs updated to `findByIdAndTenantId` + `TenantContext.set`), `IdempotencyKeyTest.java` and `IncidentUsageLimitTest.java` (both hit `IncidentService.create`'s idempotency-replay path, which internally calls the now-tenant-scoped `findById` — an incidental but correct tightening: idempotent-replay responses are now also tenant-scoped), `SlackAlertIntegrationTest.java` (2 `PATCH` calls needed the now-required `tenantId` param added).
+- **`PushNotificationService.java`, `PushDeviceToken.java`, `CurrentUserContext.java`** — read
+  only, not modified. `registerToken(userId, tenantId, expoPushToken, platform)`'s signature is
+  unchanged, so this fix is entirely at the controller/request-DTO boundary.
 
-### Full `mvn test`
+### New tests, confirmed BY NAME from surefire XML
+
+`target/surefire-reports/TEST-com.aetherops.push.PushTokenControllerTest.xml`:
+- `register_delegatesToServiceWithAuthenticatedPrincipal`
+- `register_ignoresWhicheverPrincipalIsCurrentlySet_neverAClientValue`
+
+`target/surefire-reports/TEST-com.aetherops.push.PushTokenIntegrationTest.xml`:
+- `register_persistsUnderTheCallersOwnIdentity`
+- `register_smuggledUserIdAndTenantIdInBody_areSilentlyIgnored_notHonored` — sends a raw JSON body
+  with extra, unknown `userId`/`tenantId` fields pointing at a "victim" identity; confirms Jackson
+  silently drops the unknown properties and the persisted row belongs to the real caller.
+- `register_oldUserIdPathVariable_noLongerExists_returns404` — confirms the old vulnerable route
+  is gone, not merely reauthorized.
+
+Narrow run at implementation time: `mvn test -Dtest=PushTokenControllerTest,PushTokenIntegrationTest,PushNotificationServiceTest`
+→ **Tests run: 13, Failures: 0, Errors: 0, Skipped: 0** (8 + 2 + 3). Full-suite result is in the
+"Full test run" section below.
+
+### A separate bug found and NOT fixed (out of scope for E1)
+
+While testing E1 I wrote a fourth integration test,
+`register_existingTokenFromAnotherCaller_reassignsToNewCallersOwnIdentity_neverToAThirdParty`,
+which registered the same `expoPushToken` from two different tenants in sequence. It failed with
+`500` instead of `200`, and I removed it from the test file rather than leave a permanently-red
+test or silently fix something outside E1's scope. Reporting it here instead, as instructed:
+
+- `PushNotificationService.registerToken` upserts by doing
+  `tokenRepository.findByExpoPushToken(expoPushToken)`, falling back to `.orElseGet(() -> new
+  PushDeviceToken(...))` and then `save()`.
+- `push_device_tokens` is RLS-protected (`FORCE ROW LEVEL SECURITY`, `tenant_isolation` policy,
+  `V60__enable_rls_on_remaining_tenant_tables.sql`), so that `findByExpoPushToken` is scoped to
+  `app.tenant_id` for whichever tenant is calling.
+- If tenant B's user registers the same `expoPushToken` string that tenant A already has on
+  file, RLS hides tenant A's existing row from tenant B's `SELECT` (correctly — that's the
+  isolation working as intended). The code then falls into `orElseGet`, builds a **new** entity
+  with no id, and `save()` attempts an **INSERT**. `expo_push_token` has a unique constraint
+  across the whole table (not scoped per-tenant), so the insert throws a constraint violation
+  that isn't caught anywhere, surfacing as an uncaught 500 instead of either a sane reassignment
+  or a clean rejection.
+- This is a genuine bug (a device that reinstalls the app under a different tenant, or any token
+  collision, currently 500s instead of failing gracefully), but it is not the IDOR in finding 7 —
+  it reproduces with a single honest caller acting entirely within their own identity, no
+  cross-tenant impersonation involved. I left it alone per "fix nothing outside these items" and
+  am flagging it here per "anything you were unsure about."
+
+---
+
+## E2. Webhook Signature Verification (finding 5) — RECON ONLY, per instruction
+
+**No verification code has been written for this section.** This is findings from documentation
+research only, provider by provider, exactly as requested. Where a source could not be confirmed
+with confidence, I've said so rather than guessing.
+
+Endpoints in scope: `IntegrationsWebhookController` (grafana, newRelic, splunk, sentry, rollbar,
+sumoLogic, opsgenie, victorOps, pagerDuty, cloudWatch, gitHub) and
+`MonitoringWebhookController` (datadog, prometheus/alertmanager). All 13 currently authenticate
+via `X-Api-Key` only, resolved through `apiKeyService.resolve(...)`, with no provider-specific
+signature or replay check anywhere.
+
+(Note, out of the 14-provider list I also noticed `LaunchDarklyController` uses the identical
+`X-Api-Key`-only pattern. It wasn't named in your list of 12/14, so I'm not reporting it in detail
+below — flagging its existence only in case it should be in scope for a later pass.)
+
+### GitHub
+
+- **Mechanism:** `X-Hub-Signature-256` — HMAC-SHA256 of the **raw request body**, using the
+  webhook secret, hex-encoded, header value prefixed `sha256=`. Legacy `X-Hub-Signature`
+  (HMAC-SHA1) also sent for backward compatibility but should not be relied on.
+- **Timestamp/replay header:** **None.** GitHub documents no timestamp or nonce mechanism for
+  webhook deliveries; replay protection isn't offered at the protocol level (GitHub does send a
+  unique `X-GitHub-Delivery` ID per delivery attempt, which could be used for application-level
+  deduplication, but that's not a signed anti-replay control).
+- **Mandatory/optional:** Optional — only present if a secret is configured on the GitHub webhook.
+- **Correct verification:** Compute HMAC-SHA256 over the raw (unparsed) request body bytes with
+  the shared secret, hex-encode, compare to the value after `sha256=` using a constant-time
+  comparison. Must operate on the raw body, not a re-serialized JSON object (whitespace/key-order
+  differences would break the hash).
+- **Confidence:** High — directly confirmed against GitHub's own docs.
+
+### AWS SNS (feeds the `cloudWatch` endpoint)
+
+- **Mechanism:** X.509-certificate-based signing, not HMAC. Every SNS message (`Notification`,
+  `SubscriptionConfirmation`, `UnsubscribeConfirmation`) includes a `Signature`, `SigningCertURL`,
+  and `SignatureVersion` field in the JSON body itself (not an HTTP header). Verification requires:
+  1. Validating `SigningCertURL`'s host is a genuine `sns.<region>.amazonaws.com` domain (reject
+     anything else — this is the step that stops a forged cert URL from being trusted).
+  2. Fetching the X.509 cert from that URL and extracting its public key.
+  3. Building a "string to sign" from a fixed, message-type-dependent ordered set of fields
+     (different field lists for `Notification` vs `SubscriptionConfirmation`/
+     `UnsubscribeConfirmation`), each as `FieldName\nFieldValue\n`.
+  4. Verifying the base64-decoded `Signature` against that string using the public key —
+     SHA1 for `SignatureVersion` 1, SHA256 for `SignatureVersion` 2.
+- **Timestamp/replay:** The signed string includes `Timestamp`, but AWS's own docs (per this
+  fetch) don't describe an enforced replay window — an application that wants replay protection
+  has to check message age and cache seen `MessageId`s itself.
+- **Mandatory/optional:** Effectively mandatory for any real trust in the source — this is the
+  only mechanism SNS offers; there is no separate HMAC-secret option.
+- **Correct verification:** Implement (or use an AWS-provided/well-vetted library for) the exact
+  procedure above — this is the most complex of the 13 and the easiest to get subtly wrong (wrong
+  field order, wrong field set for the message type, not validating the cert URL's host). Note
+  the existing `confirmSnsSubscription` code already validates the confirmation-callback URL's
+  host — it does **not** validate message *signatures*, so `Notification` messages currently pass
+  through with zero cryptographic verification.
+- **Confidence:** High — confirmed against AWS's own current documentation.
+
+### PagerDuty
+
+- **Mechanism:** V3 webhook subscriptions send `X-PagerDuty-Signature`, formatted as one or more
+  `v1=<hex-hmac>` entries. Multiple secrets/rotation appears to be supported (I could not get
+  PagerDuty's dedicated "verifying signatures" doc page to load its content through the fetch
+  tool — two attempts at that specific page came back empty — so I can't quote PagerDuty's own
+  text on whether the header can carry multiple `v1=` values comma-separated for key rotation, or
+  confirm from their primary source whether it's body-only or body+something-else that's hashed).
+  Secondary sources (not PagerDuty's own docs) consistently describe it as HMAC-SHA256 of the raw
+  request body using a per-webhook secret shown at subscription-creation time.
+- **Timestamp/replay header:** Not established from a source I'd call authoritative in this pass.
+- **Mandatory/optional:** Optional — only applies to v3 webhook subscriptions, and only when a
+  signing secret exists for that subscription.
+- **Correct verification:** Very likely HMAC-SHA256 of the raw body, compared against the
+  `v1=`-prefixed hex digest in `X-PagerDuty-Signature`, constant-time compare — but **I'm flagging
+  this one as needing a direct read of PagerDuty's own "verifying signatures" page before
+  implementing**, since I was not able to load it and don't want to hand you a scheme sourced only
+  from third parties for something you'll actually implement.
+- **Confidence:** Medium — header name and general v1=/HMAC-SHA256 shape corroborated by multiple
+  independent secondary sources, but not verified against PagerDuty's own primary doc text in this
+  pass.
+
+### Sentry
+
+- **Mechanism:** `Sentry-Hook-Signature` header — HMAC-SHA256 over the **raw request body**, using
+  the integration's Client Secret, hex-encoded. A `Sentry-Hook-Timestamp` header is also sent,
+  and `Sentry-Hook-Resource` identifies the payload type (e.g. `event_alert`).
+- **Critical caveat — mandatory/optional depends on integration type:** These headers are
+  documented as belonging to Sentry's **Internal Integration** / integration-platform webhooks
+  (Settings → Developer Settings → Custom Integrations → "Internal Integration"), not to Sentry's
+  older/simpler issue-alert "Webhook" notification action. **I could not confirm from this pass
+  which of the two `IntegrationsWebhookController.sentry(...)` is actually built to receive.** If
+  it expects the legacy simple issue-alert webhook payload, there may be no `Sentry-Hook-*`
+  headers sent at all regardless of any secret configured, and this would need a code-level check
+  of the expected payload shape (and possibly a decision to switch to the Internal Integration
+  type) before signature verification could be added at all.
+- **Timestamp/replay header:** `Sentry-Hook-Timestamp` exists; I did not confirm whether Sentry's
+  own docs specify it as part of the signed material (i.e. HMAC over `timestamp + body`) or purely
+  informational — the code example I found signs the body alone.
+- **Correct verification (if the Internal Integration payload is what's received):** HMAC-SHA256
+  of the raw body with the Client Secret, hex-encoded, constant-time compare to
+  `Sentry-Hook-Signature`.
+- **Confidence:** Medium-high on the mechanism itself, **low** on whether it applies to this
+  codebase's actual Sentry integration without a code/config check first.
+
+### Grafana
+
+- **Mechanism:** Configurable HMAC-SHA256, header name configurable (**default**
+  `X-Grafana-Alerting-Signature`), computed either over the raw body alone, or over
+  `timestamp + ":" + body` when an optional "Timestamp Header" setting is also configured (that
+  same timestamp is then sent in the configured timestamp header, giving replay protection when
+  enabled).
+- **Timestamp/replay header:** Optional, off unless explicitly configured (see above).
+- **Mandatory/optional:** **Optional and off by default.** Signing is a contact-point setting the
+  Grafana operator (the sender) must explicitly enable (Secret + Header, optionally Timestamp
+  Header) — this is a relatively new feature (added ~Grafana 12.0, May 2025). If whoever
+  configured this codebase's Grafana alerting contact point didn't turn signing on, no signature
+  will ever be sent regardless of what verification code exists here.
+- **Correct verification:** HMAC-SHA256 with the shared secret over either the raw body or
+  `timestamp + ":" + body` (must match whichever mode the sender is configured for) compared to
+  the configured header, constant-time. Given it's configurable per-installation, verification
+  code would need the header name, whether a timestamp header is in use, and the secret as
+  configuration, not hardcoded assumptions.
+- **Confidence:** High on the mechanism from Grafana's own docs; **the practical question of
+  whether it's actually enabled for whatever Grafana instance(s) send to this endpoint is unknown
+  to me** and would need to be confirmed operationally, not just in code.
+
+### VictorOps (Splunk On-Call)
+
+- **Mechanism:** Multiple secondary sources reference an `X-VictorOps-Signature` (also written
+  `X-Victorops-Signature`) header tied to the webhook's auth/routing key, used specifically for
+  VictorOps's **outgoing/custom webhook** feature (distinct from the plain "REST Endpoint
+  Integration," whose docs I fetched and which describes no signing at all — just a routing key in
+  the URL). I could not obtain VictorOps/Splunk On-Call's own primary documentation text
+  describing the exact string-to-sign construction or algorithm in this pass — the "REST Endpoint
+  Integration" doc I successfully fetched is the wrong feature (no signature), and I was not able
+  to load the specific "Escalation Webhooks" / outgoing-webhook page with signing details.
+- **Timestamp/replay header:** Not confirmed.
+- **Mandatory/optional:** Appears optional/feature-specific (tied to which VictorOps
+  integration type is configured — outgoing custom webhook vs. REST endpoint), but I can't state
+  this with confidence.
+- **Correct verification:** **I do not have a confirmed answer for this provider.** I am
+  explicitly not reporting the HMAC-SHA1/"MAC-SHA1"-with-sorted-POST-variables construction I'd
+  seen referenced in earlier, lower-confidence secondary sources, because I could not verify it
+  against VictorOps's own docs in this pass and you were explicit that a wrong scheme here is
+  worse than the current gap. **This one needs a primary-source doc page before any verification
+  code is written**, and I'd also want to confirm which VictorOps integration type
+  `IntegrationsWebhookController.victorOps(...)` is actually built to receive, since it changes
+  the payload shape as well as the auth mechanism.
+
+### Opsgenie
+
+- **Mechanism:** **No signature mechanism documented.** Opsgenie's own outgoing-webhook docs
+  describe only the JSON payload shape and the ability to attach arbitrary custom headers (e.g.
+  for a static API-key-style secret carried in a header of your choosing) — no built-in HMAC or
+  signing capability is mentioned anywhere in their webhook integration documentation.
+- **Timestamp/replay header:** None documented.
+- **Mandatory/optional:** Absent — the feature doesn't exist.
+- **What correct verification would look like:** Nothing cryptographic to verify. The only
+  hardening available is the custom-header approach Opsgenie already supports on the sending
+  side — i.e., what this codebase already does with a static `X-Api-Key`. There's no stronger
+  provider-side mechanism to move to for Opsgenie specifically.
+- **Confidence:** High.
+
+### Datadog
+
+- **Mechanism:** **No signature mechanism documented.** Datadog's webhook integration docs
+  describe HTTP Basic Auth (embedded in the URL) and OAuth 2.0 as the available authentication
+  options for the outbound call, plus arbitrary custom headers — no HMAC/signing feature is
+  mentioned.
+- **Timestamp/replay header:** None documented.
+- **Mandatory/optional:** Absent.
+- **What correct verification would look like:** Same as Opsgenie — nothing cryptographic
+  available from Datadog itself; the strongest available control is a shared secret carried via
+  a custom header or the URL, which is functionally what the existing `X-Api-Key` scheme already
+  is.
+- **Confidence:** Medium-high — one early search result had claimed Datadog does shared-secret
+  "signing," but the direct fetch against `docs.datadoghq.com/integrations/webhooks/` found no
+  such mechanism, only Basic Auth/OAuth/custom headers. I'm going with the primary-source result
+  and reporting the earlier claim as unconfirmed/likely wrong.
+
+### Prometheus Alertmanager
+
+- **Mechanism:** **No signature mechanism documented.** `webhook_config`'s only authentication
+  surface is the generic `http_config` block: HTTP Basic Auth, `Authorization` header
+  (bearer/custom), OAuth2 client-credentials, TLS client certificates, and custom headers. No
+  HMAC/request-signing capability exists in Alertmanager's webhook receiver config.
+- **Timestamp/replay header:** None.
+- **Mandatory/optional:** Absent.
+- **What correct verification would look like:** Alertmanager is self-hosted by the customer, not
+  a third-party SaaS sender, so there's no provider-side signing to adopt. The available hardening
+  is the same shared-secret-via-header/bearer-token/mTLS options `http_config` already exposes on
+  the sending side — again, roughly equivalent in strength to today's `X-Api-Key`, though mTLS
+  would be a meaningfully stronger option if that's viable for this deployment.
+- **Confidence:** High.
+
+### Splunk
+
+- **Mechanism:** **No signature mechanism documented.** Splunk Enterprise's built-in webhook alert
+  action POSTs a fixed JSON payload to a configured URL with no signing, no custom headers, and no
+  authentication mechanism beyond what's baked into the target URL itself (per Splunk's own docs:
+  "the webhook makes an HTTP POST request to the URL" — no auth options are described at all for
+  the built-in action). Third-party Splunkbase apps (e.g. "Better Webhooks") can add signing, but
+  that is not the built-in action this codebase's `splunk` endpoint would be receiving from unless
+  a specific non-default app is confirmed to be in use.
+- **Timestamp/replay header:** None.
+- **Mandatory/optional:** Absent.
+- **What correct verification would look like:** Nothing native to verify from the built-in
+  Splunk webhook action. If stronger authentication is wanted, it would have to come from
+  configuring Splunk to send a static shared secret as a header value if that Splunk version's
+  webhook action supports custom headers (not confirmed in this pass), or a different Splunkbase
+  app entirely.
+- **Confidence:** High that the built-in action has no signing; not confirmed whether the
+  built-in action supports custom headers at all in current Splunk versions.
+
+### New Relic
+
+- **Mechanism:** **No signature mechanism documented.** New Relic's webhook notification channel
+  docs describe Basic Auth, Bearer Token, and custom (optionally "encrypted"/masked) headers as
+  the available authentication options for the outbound call — no HMAC/signing capability.
+- **Timestamp/replay header:** None.
+- **Mandatory/optional:** Absent.
+- **What correct verification would look like:** Same pattern as Opsgenie/Datadog — no
+  cryptographic mechanism from New Relic; a shared secret via custom header or Bearer token is the
+  available option, equivalent in strength to today's `X-Api-Key`.
+- **Confidence:** High.
+
+### Rollbar
+
+- **Mechanism:** **No signature mechanism documented.** Rollbar's own webhook security guidance
+  explicitly recommends embedding an auth token as a query parameter in the target URL (e.g.
+  `.../poke?auth=abc123...`) and validating it server-side — i.e., Rollbar's own recommended
+  practice is functionally identical to a static API key, not a cryptographic signature.
+- **Timestamp/replay header:** None.
+- **Mandatory/optional:** Absent.
+- **What correct verification would look like:** Nothing stronger available from Rollbar; the
+  existing `X-Api-Key` approach is already in line with what Rollbar itself recommends (Rollbar
+  suggests a URL query param specifically instead of a header, but the security property is the
+  same).
+- **Confidence:** High.
+
+### Sumo Logic
+
+- **Mechanism:** **Could not confirm either way in this pass.** I fetched Sumo Logic's webhook
+  connections doc page twice (once via a redirect) and got only a high-level description of the
+  feature ("Our webhook connections send Sumo Logic alerts to third-party applications") with no
+  detail on authentication/signing options at all — not enough to say confidently whether a
+  signature mechanism exists or is absent. I'm explicitly not reporting "no mechanism documented"
+  here as a confirmed finding the way I am for Opsgenie/Datadog/New Relic/Rollbar/Splunk/
+  Alertmanager, because in those cases I saw the actual authentication section and it plainly
+  didn't include signing; for Sumo Logic I did not get to the relevant section of the docs at all.
+  **This one needs another look before being treated as "confirmed absent."**
+
+### Summary table
+
+| Provider | Mechanism | Mandatory/Optional | Confidence |
+|---|---|---|---|
+| GitHub | `X-Hub-Signature-256`, HMAC-SHA256, raw body | Optional (secret must be set) | High |
+| AWS SNS (cloudWatch) | X.509 cert-based signing, fields in body | Effectively mandatory to trust | High |
+| PagerDuty | `X-PagerDuty-Signature`, `v1=`+HMAC-SHA256 (likely) | Optional | Medium — primary doc unreachable |
+| Sentry | `Sentry-Hook-Signature`, HMAC-SHA256, raw body | Only for Internal Integration type | Medium — unsure which integration type this codebase expects |
+| Grafana | Configurable header, HMAC-SHA256, optional timestamp | Optional, **off by default** | High on mechanism; operational status unknown |
+| VictorOps | `X-VictorOps-Signature` referenced, construction unconfirmed | Unconfirmed | **Low — needs primary source** |
+| Opsgenie | None documented | Absent | High |
+| Datadog | None documented | Absent | High |
+| Prometheus Alertmanager | None documented | Absent | High |
+| Splunk | None documented | Absent | High |
+| New Relic | None documented | Absent | High |
+| Rollbar | None documented | Absent | High |
+| Sumo Logic | Not established | Unknown | **Low — inconclusive research** |
+
+### Where I'm explicitly uncertain (repeating per your instruction not to guess)
+
+1. **PagerDuty** — couldn't load PagerDuty's own "verifying signatures" doc page (two attempts,
+   both returned empty content through the fetch tool). What I've reported is corroborated by
+   multiple independent secondary sources but not confirmed against PagerDuty's primary text.
+2. **Sentry** — mechanism is well-documented, but I don't know whether this codebase's Sentry
+   integration is set up as an "Internal Integration" (which would send the signed headers) or the
+   legacy issue-alert webhook (which likely wouldn't). This needs a check of what payload
+   `IntegrationsWebhookController.sentry(...)` currently parses/expects, or of how the Sentry side
+   is configured, before it's known whether signature verification is even possible without first
+   changing the integration type.
+3. **Grafana** — mechanism confirmed, but it's opt-in on the sending side and I have no visibility
+   into whether it's turned on for whatever Grafana instance(s) point at this endpoint.
+4. **VictorOps** — could not get primary-source confirmation of the signature construction at all.
+   Do not want to guess given "wrong implementation silently drops alerts."
+5. **Sumo Logic** — inconclusive; the docs I reached didn't cover authentication at all.
+
+I did **not** write any verification code for any provider in this pass, per your instruction to
+review findings first and tell me which to implement.
+
+---
+
+## E2 implementation — GitHub, AWS SNS, PagerDuty, Grafana
+
+Per your decision: implement signature verification for these four only. Sentry, VictorOps,
+Sumo Logic explicitly not implemented (unconfirmed schemes — a wrong implementation silently
+drops alerts).
+
+### Design
+
+**Raw body vs. parsing — how I solved it.** GitHub/PagerDuty/Grafana sign the raw request
+body; verification has to run before Jackson parses it. Spring's `ContentCachingRequestWrapper`
+(what `SlackSignatureFilter` uses for Slack) only *tees* bytes into its cache as something else
+reads them via `getInputStream()` — that works for Slack because Spring parses its
+form-encoded body via `getParameterMap()`, which `ContentCachingRequestWrapper` specifically
+special-cases to populate the cache without consuming the stream. That special case does not
+apply to a JSON body read via `getInputStream()`: draining it in a filter to verify a signature
+would leave the stream empty, and Jackson would parse nothing afterward, silently breaking every
+signed request's payload. Instead I wrote `CachedBodyHttpServletRequest`
+(`com.aetherops.integrations.webhook`) — reads the body once into a `byte[]` in its constructor,
+and overrides `getInputStream()`/`getReader()` to hand back a fresh stream over that same array
+every time they're called. The filter verifies against `getCachedBody()` directly; the
+controller's `@RequestBody` parsing later gets an independent, fully-intact stream over the
+identical bytes. This is the standard "cache once as byte[], serve N times" pattern used broadly
+for webhook signature verification — deliberately not `ContentCachingRequestWrapper`, for the
+reason above.
+
+**Where verification runs.** A new `WebhookSignatureFilter` (`OncePerRequestFilter`, plain
+`@Component` like `SlackSignatureFilter`/`ApiKeyAuthFilter` — Spring Boot auto-registers any
+`Filter` bean globally regardless of which `SecurityFilterChain` is active, so no `SecurityConfig`
+change was needed) is scoped to exactly `POST /api/v1/integrations/{github,pagerduty,grafana}`.
+It independently resolves `X-Api-Key` (same as `ApiKeyAuthFilter` does) to learn the tenant, then
+looks up that tenant's signing-secret configuration.
+
+**Opt-in, per your rule.** No enabled `WebhookSigningSecret` row for (tenant, provider) → log a
+WARN ("No {provider} signing secret configured for tenantId={} — falling back to API-key-only
+auth") and let the request through unchanged — existing behavior for tenants who haven't
+configured signing is untouched. A row DOES exist → a missing or invalid signature is rejected
+with 401, full stop, before the request reaches the controller.
+
+**Constant-time comparison** — `MessageDigest.isEqual`, same as `SlackRequestVerifier`, never
+`String.equals`/`.equals()`.
+
+**PagerDuty secret rotation** — `X-PagerDuty-Signature` is split on `,`, each candidate trimmed,
+verified independently; accepted if ANY matches. Directly tested (see below): a header with a
+stale first value and a matching second value is accepted.
+
+**Grafana replay window** — when a tenant configures a `timestampHeaderName`, the signature is
+computed over `timestamp + ":" + body` (matching Grafana's documented scheme) and the timestamp
+is checked against a 300-second window — same constant (`MAX_CLOCK_SKEW_SECONDS = 300`) and same
+"outside skew → reject" logic as `SlackRequestVerifier`, per your instruction to match it.
+Grafana's header name is also configurable per-tenant (`headerName` on the secret row), since
+Grafana lets the *sender* choose it — defaults to `X-Grafana-Alerting-Signature` if unset.
+
+**AWS SNS / cloudwatch is handled differently, deliberately.** SNS's own signing scheme (see E2
+recon) is certificate-based and operates over specific **parsed field values** (Message,
+MessageId, Timestamp, TopicArn, Type, etc. — exactly the fields AWS's own docs list, in the exact
+order they specify), not raw bytes — so there's no "verify before parsing" concern for this one;
+parsing must happen first by definition of AWS's own algorithm. It's also not a per-tenant opt-in
+secret: AWS signs every SNS message unconditionally, so `SnsSignatureVerifier.verify(...)` is
+called unconditionally in the `cloudwatch` handler (both `Notification` and
+`SubscriptionConfirmation` types) and a missing/invalid signature is always a 401 — no fallback.
+
+The specific mistake you flagged — trusting an attacker-suppliable `SigningCertURL` — is closed
+by `AwsSnsHostValidator.isValidSnsHost(...)`, which rejects anything that isn't a genuine
+`sns.{region}.amazonaws.com`(`.cn`) host **before the URL is ever fetched**. This is the exact
+same check the endpoint's pre-existing `SubscriptionConfirmation` confirm-flow already did
+(previously a private method/regex on the controller) — I extracted it into this shared utility
+so both AWS-URL checks in the codebase stay in lockstep rather than risking drift between two
+copies of the same regex.
+
+### Files changed/added
+
+New (`com.aetherops.integrations.webhook`):
+- `WebhookSigningProvider.java` — enum: GITHUB, PAGERDUTY, GRAFANA (deliberately not the other
+  9 — see above).
+- `WebhookSigningSecret.java` — entity, table `inbound_webhook_signing_secrets`.
+- `WebhookSigningSecretRepository.java`
+- `WebhookSigningSecretService.java` — `@Transactional` lookup/configure; reuses
+  `TicketIntegrationTokenEncryptor` (AES/GCM, `app.integrations.token-encryption-key`) rather
+  than adding a new encryptor/env-var, since this table lives in the same
+  `com.aetherops.integrations` domain that encryptor already exists to protect secrets for.
+- `CachedBodyHttpServletRequest.java` — see "Raw body vs. parsing" above.
+- `WebhookSignatureFilter.java` — GitHub/PagerDuty/Grafana verification.
+- `AwsSnsHostValidator.java` — shared SNS-host check.
+- `SnsSignatureVerifier.java` — AWS SNS certificate-based verification.
+
+New migration:
+- `V65__create_inbound_webhook_signing_secrets.sql` — table + RLS (`ENABLE`/`FORCE ROW LEVEL
+  SECURITY` + `tenant_isolation` policy, same pattern as V60). `header_name`/
+  `timestamp_header_name` columns are Grafana-only (nullable, meaningless for GitHub/PagerDuty).
+  AWS SNS deliberately has no row here — see design notes above.
+
+Modified:
+- `IntegrationsWebhookController.java` — injected `SnsSignatureVerifier`; `cloudwatch(...)` now
+  verifies the SNS signature unconditionally before doing anything else; the old private
+  `SNS_HOST_PATTERN`/`isValidSnsSubscribeUrl` were removed in favor of the shared
+  `AwsSnsHostValidator`. **The github/pagerDuty/grafana handler methods themselves are
+  UNCHANGED** — verification is entirely enforced by the filter before the controller runs.
+- `CloudWatchSnsRequest.java` — added `messageId`, `topicArn`, `timestamp`, `subject`, `token`,
+  `signature`, `signingCertURL`, `signatureVersion` fields (previously only `type`, `message`,
+  `subscribeURL` existed — insufficient to build AWS's "string to sign" or verify anything).
+- `IntegrationsWebhookControllerTest.java` — added a mocked `SnsSignatureVerifier` (existing
+  CloudWatch tests default it to "valid" so they keep testing what they tested before — alarm
+  mapping and subscription-confirmation logic, not signature verification); added one new test
+  for the SNS-rejected path.
+
+### Judgment calls made without stopping to ask (report per your standing rule)
+
+1. **Where per-tenant signing secrets live and how they're set.** You didn't specify a storage
+   design, so I added persistence (entity + repository + service, keyed by tenant + provider,
+   matching `TenantTicketIntegration`'s existing precedent) but **did not add a public
+   configuration API** (no controller to PUT/GET/DELETE a tenant's signing secret) — that felt
+   like a separate, larger decision (who can set it, what the request/response shape is) beyond
+   "implement verification." Right now the only way to populate a row is directly via
+   `WebhookSigningSecretService.configure(...)` — which is what the tests do — or a direct DB
+   write. **This means the feature is inert for every real tenant until a configuration path
+   exists.** Flagging this explicitly: do you want a management endpoint next, or is
+   ops/support-provisioned fine for now?
+2. **Per-tenant, not per-project, secrets.** `ApiKey` is project-scoped but your own instruction
+   said "a signing secret configured for that tenant's integration" — I followed that literally
+   and scoped `WebhookSigningSecret` to `tenantId`, not `projectId`. If a tenant has multiple
+   projects each receiving GitHub webhooks from different repos/orgs with different secrets,
+   this design can't express that (one GitHub secret per tenant, not per project). Flagging in
+   case that's wrong for how tenants actually use projects here.
+3. **SNS verification is unconditional, not opt-in with API-key fallback**, unlike the other
+   three. I made this call because AWS signs every message unconditionally (there's nothing to
+   "opt into" — every real SNS message can be verified), and your own framing of SNS in the E2
+   recon as "effectively mandatory to trust" pointed the same direction. Flagging in case you'd
+   rather it also fall back to API-key-only when unsigned, for parity with the other three.
+
+### Tests, per your spec (valid accepted / invalid → 401 / missing+configured → 401 / PagerDuty multi-sig)
+
+New file `WebhookSignatureIntegrationTest` (MockMvc, real Postgres via Testcontainers, exercises
+the actual filter chain — not a direct controller call, since the filter is what enforces this):
+
+- `github_validSignature_accepted`
+- `github_invalidSignature_rejected`
+- `github_missingSignature_secretConfigured_rejected`
+- `github_noSecretConfigured_fallsBackToApiKeyOnly_accepted`
+- `pagerDuty_validSignature_accepted`
+- `pagerDuty_invalidSignature_rejected`
+- `pagerDuty_missingSignature_secretConfigured_rejected`
+- `pagerDuty_multiSignatureHeader_onlySecondValueMatches_accepted` — the specific rotation case
+  you called out: a stale first value + a matching second value is accepted.
+- `grafana_validSignature_accepted`
+- `grafana_invalidSignature_rejected`
+- `grafana_missingSignature_secretConfigured_rejected`
+- `grafana_customHeaderName_validSignature_accepted` — Grafana's configurable header name
+- `grafana_timestampMode_validSignatureWithinWindow_accepted`
+- `grafana_timestampMode_outsideReplayWindow_rejected` — the 300s skew check
+
+New file `SnsSignatureVerifierTest` (unit test):
+- `validSignature_accepted`
+- `tamperedMessage_afterSigning_rejected`
+- `signatureFromDifferentKeyPair_rejected`
+- `nonAwsSigningCertUrl_rejected_withoutEverFetchingIt` — the SigningCertURL-spoofing check,
+  and confirms the cert URL is never even fetched when the host check fails
+- `httpNotHttpsSigningCertUrl_rejected_withoutEverFetchingIt`
+- `missingSignature_rejected`
+- `subscriptionConfirmation_validSignature_accepted`
+
+This required generating a real self-signed X.509 certificate + RSA key pair to produce
+genuinely verifiable signatures — there's no public `java.security` API to construct/sign a
+certificate (only to parse one), so the test shells out to the JDK's own bundled `keytool` once
+in `@BeforeAll` to generate a throwaway PKCS12 keystore, then does all the actual
+signing/verification through plain `java.security.Signature`. No new test dependency added.
+
+New file `AwsSnsHostValidatorTest` (unit test): genuine host accepted, China-partition host
+accepted, lookalike host (`sns.us-east-1.amazonaws.com.evil.com`) rejected, http (not https)
+rejected, arbitrary attacker host rejected, null/blank/malformed rejected.
+
+Modified `IntegrationsWebhookControllerTest`: added
+`cloudWatch_invalidSnsSignature_rejectedAndNeverIngestedOrConfirmed`.
+
+Narrow run at implementation time —
+`mvn test -Dtest=WebhookSignatureIntegrationTest,SnsSignatureVerifierTest,AwsSnsHostValidatorTest,IntegrationsWebhookControllerTest`
+→ **Tests run: 58, Failures: 0, Errors: 0, Skipped: 0** (14 + 7 + 7 + 30). Full-suite result is
+in the "Full test run" section below.
+
+---
+
+## E2 implementation — Datadog, New Relic, Opsgenie, Rollbar, Alertmanager (static-token), plus Splunk risk acceptance and replay guard
+
+Approved with three changes to my original proposal, addressed in order below.
+
+### 1. Static-token verification — implemented for all five
+
+`WebhookSigningProvider` extended with `DATADOG, NEW_RELIC, OPSGENIE, ROLLBAR, ALERTMANAGER`
+(alongside the existing `GITHUB, PAGERDUTY, GRAFANA`). No schema change was needed —
+`WebhookSigningSecret`'s existing `encryptedSecret`/`headerName` columns are exactly what a
+static token needs; the mode (HMAC vs static-token) is decided in code by which enum constant
+it is (`WebhookSignatureFilter.HMAC_PROVIDERS`), not a stored column, since the mapping is fixed
+per provider, never a tenant choice.
+
+**Mechanism per provider**, matching what each one's own docs support for outbound custom auth
+(per E2 recon):
+- Datadog, New Relic, Opsgenie, Alertmanager: a header, default name `X-Webhook-Secret`,
+  overridable per tenant via the same `headerName` field Grafana uses (these providers don't
+  mandate a header name the way Grafana does — the tenant configures whatever their sending
+  side lets them send — so one fixed, sensible default keeps this simple without losing the
+  override escape hatch).
+- Rollbar: a URL query parameter, `?auth=...`, per Rollbar's own documented convention (their
+  guidance is explicitly a query token, not a header) — `WebhookSignatureFilter.verifyStaticToken`
+  branches on `provider == ROLLBAR` to check `request.getParameter("auth")` instead of a header.
+
+All five are plain constant-time string comparison (`MessageDigest.isEqual`) against the
+decrypted secret — there's no signature to compute, only a shared value to match. Because
+there's no raw body involved, these five do NOT go through `CachedBodyHttpServletRequest` at
+all (`WebhookSignatureFilter.HMAC_PROVIDERS` gates that) — the body stream is never touched by
+the filter for these, avoiding needless buffering.
+
+**Cross-provider isolation — tested explicitly, as required.** Since each `WebhookSigningSecret`
+row is looked up by `(tenantId, provider)`, a secret configured for Datadog is structurally
+invisible to an Opsgenie lookup — there is no code path where Opsgenie's check could ever
+consult Datadog's row. Tested directly: `datadogSecret_doesNotAuthenticateOnOpsgenieEndpoint_
+evenWithBothConfigured` configures BOTH providers with *different* secrets for the same tenant,
+then presents Datadog's secret to Opsgenie's endpoint (401) and Opsgenie's own secret to
+Opsgenie's endpoint as a control (202). Also tested:
+`datadogSecret_rejectedWhenUsedAsApiKeyOnSplunkEndpoint` — presents a Datadog static token as
+the `X-Api-Key` itself against Splunk's endpoint; rejected 401, since it's not a valid API-key
+hash. Splunk has no static-token mechanism to bypass in the first place (see #2 below) — this
+test confirms a webhook-signing secret from elsewhere doesn't accidentally work as a substitute
+credential anywhere, not even where there's nothing provider-specific to check.
+
+### 2. Splunk — residual risk accepted, documented, not built around
+
+Per your instruction: no Splunkbase app, no workaround. Splunk's built-in webhook alert action
+supports no custom headers, signing, or auth of any kind beyond the target URL — there is
+nothing to carry a second secret through, unlike the other five. Documented in two places:
+- A code comment directly on `IntegrationsWebhookController.splunk(...)` (added), explicitly
+  labeled "KNOWN, ACCEPTED GAP," explaining why (no mechanism exists) and what closing it would
+  require (a third-party Splunkbase app, or dropping the built-in action), so a future reader
+  sees a deliberate decision, not an oversight.
+- Here, and in the E2 recon section above.
+
+Splunk is excluded from `WebhookSigningProvider` entirely — there was never a design where it
+could participate.
+
+### 3. Replay protection — redesigned per your correction, then implemented
+
+You're right that raw-body-hash was the wrong key — Datadog/Alertmanager legitimately resend a
+byte-identical payload every time an unresolved alert re-evaluates, and hashing the body would
+silently drop those. Redesigned to key on **(tenant, provider, alert fingerprint)**, reusing
+`MonitoringAlertIngestionService`'s existing fingerprint (`sha256(tenantId:serviceId:alertName)`)
+rather than inventing a second one — I exposed it as a new public
+`computeFingerprint(tenantId, serviceId, alertName)` method (the existing private
+`buildFingerprint(AlertSignal)` now just delegates to it), so the controller can compute the
+identical fingerprint *before* `ingest()` is ever called, without needing a full `AlertSignal`
+(severity/title/etc. aren't decided yet at that point).
+
+**New `MonitoringAlertReplayGuard`** (Redis-backed, `SETNX`-with-TTL via
+`StringRedisTemplate.opsForValue().setIfAbsent(key, "1", window)`), called from the controller
+immediately before `ingestionService.ingest(...)` at all five static-token call sites
+(Alertmanager's per-alert loop calls it once per alert, not once per request). A hit within the
+window is logged at WARN with provider/tenant/fingerprint and the request is *not* ingested —
+never silent — but still ack'd 202 to the sender, since a resend isn't the sender's fault to see
+as an error.
+
+**Window: 30 seconds by default** (`app.webhooks.replay-window-seconds`, test profile overrides
+it to 1s so tests don't need a real 30s sleep). This is a judgment call, not a value you
+specified — I picked it to sit well below any real provider's minimum re-fire interval (minutes,
+at the fastest, from what I could find), so it only catches a near-immediate resend of a
+captured request, not a legitimate periodic re-fire. If you know a provider that re-fires faster
+than 30s, this needs to be shorter, or that provider's replay guard should be disabled entirely
+rather than risk dropping real alerts.
+
+**On honesty about value, per your note:** you're right that this is low-value — the existing
+find-or-create-against-**open**-incidents path already absorbs the common case (a replay while
+open just bumps `eventCount`, harmless), and the residual attack this closes is a replay
+reopening/recreating an already-**resolved** incident, which is noise, not compromise. I
+implemented it anyway because, once I actually designed it, it turned out **not** to be
+invasive — it required no change to the shared `AlertSignal` record or its other 8 call sites,
+just one new small component, one new public method, and one line at each of the 5 relevant
+call sites. If you'd rather not carry this for the value it provides, it's easy to remove:
+delete `MonitoringAlertReplayGuard`, the 5 call-site checks, and the `computeFingerprint`
+exposure (`buildFingerprint` can revert to its original one-line form). I did not drop it
+myself since it wasn't the invasive case your instruction anticipated, but I'm flagging that
+the value-vs-code-added tradeoff is genuinely marginal, in case you'd still rather not carry it.
+
+### 4. Migration for existing tenants — reconsidered per your follow-up, now implemented
+
+My original judgment call above (not building a migration, because there's no table recording
+which tenants use which provider) is still factually true, but you overrode it: you want existing
+integrations to actually get a secret rather than staying permanently unauthenticated, with an
+explicit distribution story and a transition window. Implemented as follows.
+
+**The unresolved data problem, and how the design works around it rather than solving it.**
+There is still no table anywhere recording "tenant X has a Datadog integration configured" —
+that fact hasn't changed. Rather than trying to infer real per-provider usage (which would need
+either a new usage-tracking table or mining webhook access logs, both out of scope here), the
+migration generates a secret for **every tenant, for all five static-token providers**,
+regardless of whether that tenant actually uses each one. This is the "waste" I flagged
+originally — most (tenant, provider) pairs it creates will never be used — but it's cheap waste
+(one row and one log line each, no ongoing cost) and it's the only way to guarantee no real,
+currently-unauthenticated integration is missed without the missing usage data.
+
+**New: a grace period, so a generated-but-not-yet-adopted secret never breaks anyone.**
+`inbound_webhook_signing_secrets` gained a nullable `grace_period_ends_at` column
+(`V66__add_webhook_signing_secret_grace_period.sql`). It's NULL (and enforcement is exactly as
+strict as before) for every secret a tenant/operator configures directly via
+`WebhookSigningSecretService.configure(...)` — only a migration-generated row ever sets it.
+`WebhookSignatureFilter` now checks it before rejecting a failed check: if the row has a future
+`gracePeriodEndsAt`, a missing/invalid static token is treated exactly like "no secret
+configured" (logged at WARN, falls back to API-key-only auth) instead of a 401. Once that
+verifies successfully — i.e. the tenant has actually added the generated value to their sending
+side — it's accepted immediately, grace period or not. Once the grace period elapses, enforcement
+becomes strict, same as any operator-configured secret.
+
+**New: `LegacyWebhookSecretBackfillRunner`** (`ApplicationRunner`, off by default via
+`app.webhooks.migration.backfill-legacy-secrets: false`) — meant to be flipped on for exactly one
+deploy, then back off; it's idempotent regardless (`WebhookSigningSecretService.backfillIfAbsent`
+never touches a (tenant, provider) row that already exists, so it will never clobber a secret an
+operator already configured for real, and re-running it is harmless, just wasted work). For every
+tenant × the same five static-token providers from item 1, it generates a 256-bit random secret
+(`SecureRandom`, URL-safe base64) and inserts it with `gracePeriodEndsAt = now + grace-period-days`
+(config, default 30 — `app.webhooks.migration.grace-period-days`).
+
+Deliberately limited to the same five static-token providers as item 1, NOT GitHub/PagerDuty/
+Grafana: those are real HMAC secrets the tenant already owns and configured on the sending side
+(e.g. a secret typed into GitHub's own webhook settings) — a randomly generated value here would
+never match what the sender actually signs with. A static token is different: it starts working
+the moment the tenant copies the generated value into their sending side's custom header (or, for
+Rollbar, the `auth` query param), which is exactly the mechanism the grace period gives them time
+to do.
+
+**How an operator distributes the generated secrets — and a mistake I made and then fixed.**
+My first version of this runner logged each newly created secret as a single line
+(`WEBHOOK_SECRET_BACKFILL tenantId=... provider=... secret=... graceEndsAt=...`). You caught this
+before it went anywhere: that's live credential material flowing through the logger into
+whatever log aggregation this deployment forwards to — retained indefinitely, readable by anyone
+with log access. A credential leak, not a distribution mechanism, and I should not have reached
+for it. Replaced with two explicit, mutually-exclusive outputs, neither of which ever goes
+through the logger:
+
+- `app.webhooks.migration.secrets-output-path` — if set, generated secrets are appended in
+  plaintext to that file, which `LegacyWebhookSecretBackfillRunner.createOwnerOnlyFile` creates
+  with owner-only permissions (`rw-------` via POSIX ACLs where the filesystem supports them —
+  production targets a POSIX host — with a create-then-restrict fallback for a non-POSIX
+  filesystem like a local Windows dev box). Only the secret **count** and the file **path** are
+  logged; the log line never contains a value.
+- `--print-secrets` (a CLI argument, not a config property, read via
+  `ApplicationArguments.containsOption(...)`) — for a deployment where a file genuinely isn't an
+  option. Secrets are written straight to `System.out`, never through the logger, and a WARN
+  (with no secret values in it) records that this happened and how many. This is an explicit,
+  per-invocation choice the operator opts into, not a default.
+
+If neither is given, the runner now refuses to run at all — it doesn't query tenants, doesn't
+generate anything, just logs an error naming both options. I chose "refuse" over "generate anyway
+and drop the values" because a secret this runner can't hand back to the operator is
+permanently undistributable the moment `run()` returns (it's stored encrypted, never held in
+memory afterward) — silently generating one anyway would be strictly worse than not generating it.
+
+There is still no self-service secrets UI or vault integration (same gap already flagged for the
+four HMAC providers) — the file/stdout output above gets a value out of this runner, it isn't a
+secure long-term home for it. The operator is expected to move each secret from the output file
+to wherever they actually hand it to the tenant, then remove/rotate access to that file once
+done. A proper fix (self-service rotation UI, tenant-visible integration status, secrets-vault
+handoff) is real follow-up work, not something this migration can substitute for.
+
+**Is the secret stored hashed or in plaintext? — confirmed: reversible AES/GCM encryption, not a
+hash, and here's why.** `WebhookSigningSecretService.configure`/`backfillIfAbsent` both call
+`TicketIntegrationTokenEncryptor.encrypt(...)` (the same AES/GCM encryptor Jira/ServiceNow tokens
+already use) and store the result in `encryptedSecret`; verification
+(`WebhookSignatureFilter`) calls `signingSecretService.decrypt(...)` to get the plaintext back.
+This is genuinely necessary for the three HMAC providers (GitHub/PagerDuty/Grafana): verifying an
+HMAC signature means recomputing it with the *exact original key* the sender used — a one-way
+hash of that key cannot reproduce the same HMAC, so reversible encryption isn't a weaker choice
+there, it's the only one that works at all.
+
+For the five static-token providers, though, a one-way hash **was** an option — this codebase
+already has the pattern (`ApiKey.keyHash`, SHA-256, compared via
+`findByKeyHashAndActiveTrue` in `ApiKeyService`), and it's strictly stronger: a compromise of the
+DB plus the AES key would let an attacker recover every static-token secret in plaintext, where a
+hash-and-compare design wouldn't be reversible at all. I did not switch the static-token
+providers to hashing — `WebhookSigningSecret` is one entity/table/service shared by both
+HMAC and static-token providers, and splitting storage strategy by provider type would have been
+a larger, uninstructed redesign of item 1's already-approved-and-tested design, not a fix to the
+logging bug you actually flagged. Flagging this as a real, separate hardening opportunity (hash
+the five static-token secrets like `ApiKey` does, keep encryption only for the three HMAC ones)
+if you want it — happy to do it as its own change, just didn't fold it into this one uninvited.
+
+**Why nobody's alerting breaks on deploy.** Unchanged from before, but now for a slightly
+different reason: it's not that zero rows are created (the migration now creates many), it's that
+every newly created row starts inside its grace period, during which a request that doesn't yet
+present the new secret is treated identically to "no secret configured" — logged, not rejected.
+The only way a real integration starts failing is if its grace period fully elapses without the
+tenant ever adopting the secret, which is exactly the outcome the distribution step above exists
+to prevent.
+
+### Tests, per your spec
+
+All added to the existing `WebhookSignatureIntegrationTest` (real filter chain via MockMvc):
+
+- `datadog_validStaticToken_accepted`, `datadog_wrongStaticToken_rejected`,
+  `datadog_missingStaticToken_secretConfigured_rejected`
+- `newRelic_validStaticToken_accepted`, `newRelic_wrongStaticToken_rejected`
+- `opsgenie_validStaticToken_accepted`, `opsgenie_missingStaticToken_secretConfigured_rejected`
+- `rollbar_validStaticToken_inQueryParam_accepted`, `rollbar_wrongQueryToken_rejected`,
+  `rollbar_missingQueryToken_secretConfigured_rejected`
+- `alertmanager_validStaticToken_accepted`, `alertmanager_wrongStaticToken_rejected`
+- `datadogSecret_doesNotAuthenticateOnOpsgenieEndpoint_evenWithBothConfigured` — the explicit
+  cross-provider isolation test you required: both providers configured with *different*
+  secrets, Datadog's secret presented to Opsgenie's endpoint is rejected, Opsgenie's own secret
+  on its own endpoint is accepted as a control.
+- `datadogSecret_rejectedWhenUsedAsApiKeyOnSplunkEndpoint` — a Datadog static token presented as
+  the `X-Api-Key` itself against Splunk is rejected (not a valid key hash).
+- `datadog_replayedFingerprintWithinWindow_rejectedAndNotIngested` — an immediate identical
+  resend is 202-ack'd but verified via `IncidentRepository` to never have reached `ingest()`
+  (`eventCount` stays 1, not 2).
+- `datadog_legitimateRefireAfterWindow_accepted` — the same alert re-fired after the (test-
+  shortened, 1s) window IS ingested (`eventCount` becomes 2), proving the guard doesn't
+  permanently block a real re-fire.
+
+Narrow run at implementation time —
+`mvn test -Dtest=WebhookSignatureIntegrationTest,IntegrationsWebhookControllerTest,MonitoringWebhookControllerTest,SnsSignatureVerifierTest,AwsSnsHostValidatorTest`
+→ **Tests run: 83, Failures: 0, Errors: 0, Skipped: 0** (30 + 30 + 9 + 7 + 7). Full-suite result
+is below.
+
+### 4's tests, per your spec
+
+New, in `WebhookSignatureIntegrationTest`:
+- `datadog_migrationBackfilledSecret_withinGracePeriod_missingToken_fallsBackToApiKeyOnly_accepted`
+  — a migration-generated secret with a future grace period, no `X-Webhook-Secret` header sent at
+  all: accepted, same as the pre-existing "no secret configured" fallback.
+- `datadog_migrationBackfilledSecret_gracePeriodExpired_missingToken_rejected` — the same, but the
+  grace period is already in the past: rejected, same as any operator-configured secret.
+- `datadog_migrationBackfilledSecret_correctTokenPresented_acceptedRegardlessOfGracePeriod` — once
+  the correct backfilled value IS presented, it's accepted immediately; the grace period only
+  softens a failed check, never blocks a correct one.
+
+New file `WebhookSigningSecretServiceTest` (Mockito unit test, covers
+`backfillIfAbsent` — the one property this method must have, since it runs unattended from a
+startup runner):
+- `backfillIfAbsent_createsSecretWithGracePeriod_whenNoneExists`
+- `backfillIfAbsent_doesNotOverwriteAnAlreadyConfiguredSecret` — an operator's real secret is
+  never touched by a (re-)run of the migration.
+
+Narrow run at implementation time —
+`mvn test -Dtest=WebhookSignatureIntegrationTest,IntegrationsWebhookControllerTest,MonitoringWebhookControllerTest,SnsSignatureVerifierTest,AwsSnsHostValidatorTest,WebhookSigningSecretServiceTest`
+→ **Tests run: 88, Failures: 0, Errors: 0, Skipped: 0** (30 + 33 + 9 + 7 + 7 + 2). Full-suite
+result is below.
+
+**Update after the logging fix:** `LegacyWebhookSecretBackfillRunner` now has a dedicated test —
+once it had actual branching logic (refuse / write-file / print-stdout) worth covering directly,
+rather than being a thin pass-through loop. New file `LegacyWebhookSecretBackfillRunnerTest`
+(Mockito, constructs the runner directly with mocked `TenantRepository`/`WebhookSigningSecretService`,
+`ReflectionTestUtils.setField(...)` for the `@Value`-injected config fields — same pattern as
+`AlertSuppressionServiceTest` etc.):
+- `run_refusesAndTouchesNothing_whenNeitherOutputPathNorPrintSecretsFlagGiven` — asserts
+  `verifyNoInteractions` on both the tenant repository and the signing-secret service: the
+  refusal happens before any tenant/secret work starts, not after generating and then discarding.
+- `run_writesGeneratedSecretsToFile_withOwnerOnlyPermissions_whenOutputPathConfigured` — a real
+  `@TempDir` file, asserts the tenant id and all five provider names land in its content, and
+  (guarded by a POSIX-filesystem check, since this also runs on a Windows dev box) asserts the
+  file's actual permissions are exactly `rw-------`.
+- `run_doesNotOverwriteOrDuplicate_whenSecretAlreadyBackfilledForAllProviders` — every provider
+  already has a real secret (`backfillIfAbsent` stubbed to return false); asserts no output file
+  is created at all, since nothing was generated.
+- `run_printsToStdoutOnly_andNeverThroughTheLogger_whenPrintSecretsFlagGiven` — captures
+  `System.out` directly and asserts the secret value appears there under `--print-secrets`.
+
+Narrow run at implementation time —
+`mvn test -Dtest=LegacyWebhookSecretBackfillRunnerTest,WebhookSigningSecretServiceTest,WebhookSignatureIntegrationTest,IntegrationsWebhookControllerTest,MonitoringWebhookControllerTest,SnsSignatureVerifierTest,AwsSnsHostValidatorTest`
+→ **Tests run: 92, Failures: 0, Errors: 0, Skipped: 0** (30 + 7 + 4 + 7 + 33 + 2 + 9). Full-suite
+result is below.
+
+---
+
+## Full test run
+
+Docker Desktop was confirmed running before each run. Five full-suite runs happened across this
+step: after E1 (881), after E2's four-HMAC-provider implementation (910), after E2's
+static-token/replay-guard implementation (926), after item 4's grace-period migration (931), and
+after the credential-logging fix to `LegacyWebhookSecretBackfillRunner` (935, current/final).
 
 ```
-Tests run: 879, Failures: 0, Errors: 0, Skipped: 0
-BUILD SUCCESS
-```
-(866 prior + 13 new: 4 in `IncidentServiceTest` + 1 in `IncidentSoftDeleteTest` + 8 in `IncidentTenantIsolationIntegrationTest`. Docker Desktop was running throughout.)
-
-### New tests confirmed by name, from surefire XML (all `errors="0" failures="0"`)
-
-- `TEST-com.aetherops.incident.service.IncidentServiceTest.xml` (4/4): `findById_ownTenant_returnsIncident`, `findById_otherTenantsIncident_throwsNotFound_notForbidden`, `update_ownTenant_appliesChange`, `update_otherTenantsIncident_throwsNotFound_notForbidden`
-- `TEST-com.aetherops.incident.IncidentSoftDeleteTest.xml` (3/3, includes 1 new): `softDelete_setsDeletedAt`, `softDelete_throwsWhenNotFound`, `softDelete_otherTenantsIncident_throwsNotFound_notForbidden`
-- `TEST-com.aetherops.incident.IncidentTenantIsolationIntegrationTest.xml` (8/8): `getById_ownIncident_returns200`, `getById_otherTenantsIncident_returns404_notForbidden`, `update_ownIncident_returns200`, `update_otherTenantsIncident_returns404_notForbidden`, `delete_ownIncident_returns204`, `delete_otherTenantsIncident_returns404_notForbidden`, `resolveCommand_ownIncident_returns200`, `resolveCommand_otherTenantsIncident_returns404_notForbidden`
-- Also re-confirmed passing after the signature-change fixes: `TEST-com.aetherops.incident.service.IncidentCreationEnrichmentTest.xml` (20/20), `TEST-com.aetherops.incident.IdempotencyKeyTest.xml` (2/2), `TEST-com.aetherops.incident.IncidentUsageLimitTest.xml` (2/2), `TEST-com.aetherops.slack.SlackAlertIntegrationTest.xml` (9/9)
-
-### Note
-
-`IncidentController.getById`/`.update`/`.delete` now require a `tenantId` query param (previously absent). Checked `dashboard.html`/`index.html` — neither calls these three endpoints, so no frontend break. Flagging since it's a public API surface change, even though nothing in this codebase's frontend was affected.
-
-No test was skipped, disabled, or weakened. Nothing outside D1's stated scope was touched. Nothing committed.
-
----
-
-## D0(a) — Controller endpoints that load a resource by ID and rely solely on RLS
-
-Every controller in the codebase was checked (38 controllers). The overwhelming majority follow one of two safe patterns consistently:
-1. `TenantContext.requireOwn(tenantId)` at the top of the method, **and** the service/repository layer also cross-checks the loaded entity's own `tenantId` (e.g. `repository.findById(x).filter(e -> e.getTenantId().equals(tenantId))`, or a repository method like `findTopByIncidentIdAndTenantId...`).
-2. For user-owned (not tenant-owned) resources: a `requireSelf(userId)` check plus an entity-level ownership filter (e.g. `CalendarConnectionController.disconnect`).
-
-I verified this pattern holds for: `WarRoomController`/`WarRoomService`, `ProjectController`/`ApiKeyService` (`ApiKeyService.list`/`revoke` call `ProjectService.getForTenant`, which filters `p.getTenantId().equals(tenantId)`), `EvidencePackService`, `PostmortemService`, `RunbookService`, `AIAnalysisService` (all delegate to or replicate `EvidencePackService`'s tenant-filtered lookup), `StatusPageController`, `TicketController`, `AlertSuppressionController`, `EscalationPolicyController`, `SsoConfigController`, `BrandingController`, `TenantCostSettingsController`, `AuditLogController`/`AuditLogService`/`AuditLogExportService` (explicit `tenant_id` predicate via `Specification`), `TenantErasureService`/`TenantDataExportService` (explicit parameterized `WHERE tenant_id = ?` on every dynamic query, table list from `TenantScopedSchemaService`), and more.
-
-### Confirmed gaps — no application-layer check, relying entirely on RLS
-
-**`IncidentController`** (`src/main/java/com/aetherops/incident/controller/IncidentController.java`) — exactly the example you named:
-
-| Endpoint | Line | Check present? |
-|---|---|---|
-| `GET /api/v1/incidents/{id}` (`getById`) | 51-55 | **None.** No `tenantId` parameter exists at all. `return ApiResponse.success(incidentService.findById(id));` |
-| `PATCH /api/v1/incidents/{id}` (`update`) | 71-79 | **None.** No `tenantId` parameter. `@PreAuthorize("hasAnyRole('OWNER','ADMIN')")` gates *role*, not *tenant* — an OWNER/ADMIN of tenant A passes this check while acting on tenant B's incident. |
-| `DELETE /api/v1/incidents/{id}` (`delete`) | 151-156 | **None.** No `tenantId` parameter. Same role-vs-tenant gap as above. |
-
-The service layer doesn't help: `IncidentService.findById`, `.update`, `.softDelete` (`src/main/java/com/aetherops/incident/service/IncidentService.java:148-152, 170-172, 248-250`) all do a bare `incidentRepository.findById(id)` with **no tenant predicate whatsoever** — no `.filter(...)`, no `findByIdAndTenantId`. Tenant scoping for these three endpoints exists **only** in the Postgres RLS policy on `incidents` (confirmed `FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy, `V28__enable_row_level_security.sql:4,9,13`).
-
-**Downstream consequence — `IncidentCommandController.resolve`** (`POST /api/v1/commands/incidents/{id}/resolve`): this endpoint *does* call `TenantContext.requireOwn(tenantId)`, but that only proves the caller's JWT tenant matches the tenant they claim — it never checks that the **target incident** belongs to that tenant. It calls `IncidentCommandService.handle(ResolveIncidentCommand)`, which calls `incidentService.update(cmd.getIncidentId(), request)` — the same unguarded method above. `cmd.getTenantId()` is used only for event-sourcing/audit logging, never as a query filter. So a caller passing their own valid tenant (satisfies `requireOwn`) plus an arbitrary incident ID from another tenant reaches the identical unguarded `update`. This is arguably worse than the plain `IncidentController` case, since the `requireOwn` call gives a false impression that tenant scoping is handled.
-
-**Dead code, not reachable from any controller (flagging, not counting toward the list above):** `IncidentQueryService.findById` and `IncidentDomainService.{resolve,escalate,reopen}` (`src/main/java/com/aetherops/incident/service/`) have the exact same unguarded-`findById` pattern, but neither class has any caller anywhere in `src/main/java` — confirmed by grep. They appear to be an abandoned parallel CQRS/domain-service implementation. Not in scope for D1 since they're unreachable, but worth knowing they exist in case something gets wired to them later.
-
-**`PushTokenController.register`** (`POST /api/v1/users/{userId}/push-token`) — no `requireSelf`/`requireOwn` check at all; `userId` and `tenantId` are both taken directly from the path/body and written straight into `push_device_tokens` via `PushNotificationService.registerToken`. This was already identified in Step B/C's audit as **finding 7** and explicitly deferred, not this step's scope — repeating it here only because D0(a) asked me to list every ID-based endpoint's check status, and this one has none. Note: `push_device_tokens` **is** RLS-protected (`V60__enable_rls_on_remaining_tenant_tables.sql:42,74,126`) with a policy that has no explicit `WITH CHECK`, so Postgres uses the `USING` clause for both — meaning an INSERT with a forged `tenantId` different from the caller's real `app.tenant_id` should be **rejected by RLS** (raises a policy-violation error, surfaces as a 500 today, not a silent write) — but a forged `userId` **within the caller's own real tenant** is not caught by RLS at all (the policy only checks `tenant_id`), so a user could register a push token misattributed to a teammate's `userId`. Low practical impact today since `PushNotificationService.sendPageAlert` pages every device for the tenant regardless of `userId` (doesn't target by user), but it's a real data-integrity gap.
-
-### Not checked as thoroughly — external/non-JWT auth model
-
-`StripeWebhookController`, `IntegrationsWebhookController` (10 endpoints), `MonitoringWebhookController`, `LaunchDarklyController.webhook`, `SlackInteractivityController`, `SlackCommandController`, `SlackOAuthController`, `PublicStatusPageController` — these authenticate via signature/API-key/deliberately-public access, not a caller JWT, so `TenantContext.requireOwn` doesn't apply the same way (tenant is resolved *from* the credential itself, not asserted by the caller). I did not audit these line-by-line for this pass since the threat model is different (forging a Stripe/Slack signature, not reusing your own valid JWT against someone else's ID) — flagging as **not exhaustively covered**, tell me if you want them in scope too.
-
----
-
-## D0(b) — RLS session variable lifecycle
-
-**How `app.tenant_id` is set** — `TenantContextInterceptor` (`src/main/java/com/aetherops/tenant/TenantContextInterceptor.java`):
-```java
-@Aspect
-@Component
-@Order(Ordered.LOWEST_PRECEDENCE)
-public class TenantContextInterceptor {
-    @PersistenceContext
-    private EntityManager entityManager;
-
-    @Before("@annotation(org.springframework.transaction.annotation.Transactional)")
-    public void propagateTenantContext() {
-        UUID tenantId = TenantContext.get();
-        if (tenantId == null) return;
-        try {
-            entityManager.createNativeQuery(
-                "SELECT set_config('app.tenant_id', :tid, true)"
-            ).setParameter("tid", tenantId.toString()).getSingleResult();
-        } catch (Exception e) {
-            log.warn("Could not propagate tenant context to database session: {}", e.getMessage());
-        }
-    }
-}
+mvn test
+...
+[INFO] Tests run: 935, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
 ```
 
-**Is it reset on connection return, including on the exception path?** There is no explicit reset call anywhere in the codebase (confirmed by grep — no `RESET app.tenant_id`, no `reset_config` call). It doesn't need one: `set_config(..., true)` — the third argument `true` is Postgres's `is_local` flag, equivalent to `SET LOCAL`. A value set this way is **automatically discarded by Postgres itself at the end of the current transaction**, on **both** COMMIT and ROLLBACK — the exception path is covered by Postgres's own transaction semantics, not by any Java code needing to catch it. Since HikariCP (`maximum-pool-size: 10`, confirmed in `application.yml`) only returns a connection to the pool after Spring's transaction manager has fully committed or rolled back the transaction on it, a connection can never be handed to the next borrower mid-transaction with a leftover `app.tenant_id` still active — the GUC is already gone by the time that could happen. **I could not find a code path where this leaks a value across pooled connections.**
+**935 tests, 0 failures, 0 errors, 0 skipped.** (881 E1 + 29 E2 HMAC/SNS + 16 E2 static-token/
+replay-guard + 5 item-4 migration [3 grace-period + 2 `WebhookSigningSecretServiceTest`] + 4
+`LegacyWebhookSecretBackfillRunnerTest` from the logging fix, matching exactly — see below.)
 
-**Is it set via `SET` or `SET LOCAL`, and is it inside the transaction?** Via `set_config(..., is_local => true)`, which is `SET LOCAL`'s functional equivalent — transaction-scoped, not session-scoped. It's set inside the transaction: the aspect is `@Before` on any `@Transactional`-annotated method, so by the time it runs, Spring's own transactional advice should already have opened the transaction (see caveat below) — `set_config` with `is_local=true` **requires** an already-open transaction to have any effect (outside a transaction it behaves as a no-op / reverts immediately), so this design is only correct because it reliably runs after the transaction has started.
+### E1 tests, confirmed BY NAME from surefire XML
 
-**The real risk isn't a leak — it's a silent no-op, and it's already documented in the codebase.** `AbstractIntegrationTest.java:51-59`:
-> "A bare repository call from test code (e.g. `incidentRepository.findAll()`) does NOT reliably propagate `app.tenant_id` to Postgres on its own — Spring Data's own per-repository transactional advisor is a different object from the one `TenantContextInterceptor`'s aspect reliably wins the ordering tie against for user-defined `@Transactional` service methods — so under enforced RLS it can silently see zero rows even after `TenantContext.set(tenantId)`."
+`target/surefire-reports/TEST-com.aetherops.push.PushTokenControllerTest.xml`:
+- `register_ignoresWhicheverPrincipalIsCurrentlySet_neverAClientValue`
+- `register_delegatesToServiceWithAuthenticatedPrincipal`
 
-Concretely: `TenantContextInterceptor` is `@Order(Ordered.LOWEST_PRECEDENCE)`. Spring's own `@Transactional` advisor also defaults to `Ordered.LOWEST_PRECEDENCE` unless configured otherwise. Two Spring AOP advisors tied at the same order have **unspecified relative ordering** at a given join point. In practice (per the existing comment, which reads as hard-won operational knowledge, not speculation) it reliably wins the race for **user-defined `@Transactional` service methods** — i.e. every case I found in D0(a)/(c)/(d) — but does **not** reliably win against a **bare Spring Data repository call with no wrapping `@Transactional` service method** (the repository proxy's own internal transactional advisor). All the confirmed-safe patterns I found in this pass (`IncidentService`, `ApiKeyService`, `EvidencePackService`, etc.) are proper `@Transactional` service methods, so this should not affect them. I did not find any controller-reachable code path that calls a repository method with no wrapping `@Transactional` service method — but I did not exhaustively verify every single repository call site either (that's a much larger sweep). Flagging as **not fully verified across the whole codebase**, only confirmed absent in the specific services this pass examined.
+`target/surefire-reports/TEST-com.aetherops.push.PushTokenIntegrationTest.xml`:
+- `register_oldUserIdPathVariable_noLongerExists_returns404`
+- `register_persistsUnderTheCallersOwnIdentity`
+- `register_smuggledUserIdAndTenantIdInBody_areSilentlyIgnored_notHonored`
 
-**Net assessment:** the mechanism is sound (transaction-scoped `SET LOCAL`-equivalent, auto-resetting, no leak path found). The actual risk is the ordering-tie ambiguity causing a *false negative* (legitimate request silently sees no rows) rather than a cross-tenant *leak* — and that's already a known, documented issue in this codebase, worked around in tests via `TestTransactionHelper`, but with no equivalent production-code guard against a bare repository call being added later without a wrapping `@Transactional` method.
+### E2 tests, confirmed BY NAME from surefire XML
 
----
+`target/surefire-reports/TEST-com.aetherops.integrations.webhook.WebhookSignatureIntegrationTest.xml` (33):
+- `github_validSignature_accepted`
+- `github_invalidSignature_rejected`
+- `github_missingSignature_secretConfigured_rejected`
+- `github_noSecretConfigured_fallsBackToApiKeyOnly_accepted`
+- `pagerDuty_validSignature_accepted`
+- `pagerDuty_invalidSignature_rejected`
+- `pagerDuty_missingSignature_secretConfigured_rejected`
+- `pagerDuty_multiSignatureHeader_onlySecondValueMatches_accepted`
+- `grafana_validSignature_accepted`
+- `grafana_invalidSignature_rejected`
+- `grafana_missingSignature_secretConfigured_rejected`
+- `grafana_customHeaderName_validSignature_accepted`
+- `grafana_timestampMode_validSignatureWithinWindow_accepted`
+- `grafana_timestampMode_outsideReplayWindow_rejected`
+- `datadog_validStaticToken_accepted`
+- `datadog_wrongStaticToken_rejected`
+- `datadog_missingStaticToken_secretConfigured_rejected`
+- `newRelic_validStaticToken_accepted`
+- `newRelic_wrongStaticToken_rejected`
+- `opsgenie_validStaticToken_accepted`
+- `opsgenie_missingStaticToken_secretConfigured_rejected`
+- `rollbar_validStaticToken_inQueryParam_accepted`
+- `rollbar_wrongQueryToken_rejected`
+- `rollbar_missingQueryToken_secretConfigured_rejected`
+- `alertmanager_validStaticToken_accepted`
+- `alertmanager_wrongStaticToken_rejected`
+- `datadogSecret_doesNotAuthenticateOnOpsgenieEndpoint_evenWithBothConfigured`
+- `datadogSecret_rejectedWhenUsedAsApiKeyOnSplunkEndpoint`
+- `datadog_replayedFingerprintWithinWindow_rejectedAndNotIngested`
+- `datadog_legitimateRefireAfterWindow_accepted`
+- `datadog_migrationBackfilledSecret_withinGracePeriod_missingToken_fallsBackToApiKeyOnly_accepted`
+- `datadog_migrationBackfilledSecret_gracePeriodExpired_missingToken_rejected`
+- `datadog_migrationBackfilledSecret_correctTokenPresented_acceptedRegardlessOfGracePeriod`
 
-## D0(c) — Repository methods using native query / EntityManager / JdbcTemplate / Specification, reachable from a controller
+`target/surefire-reports/TEST-com.aetherops.integrations.webhook.WebhookSigningSecretServiceTest.xml` (2):
+- `backfillIfAbsent_createsSecretWithGracePeriod_whenNoneExists`
+- `backfillIfAbsent_doesNotOverwriteAnAlreadyConfiguredSecret`
 
-| Method | Explicit tenant predicate? |
-|---|---|
-| `TenantContextInterceptor.propagateTenantContext` (native query) | N/A — this *is* the tenant-scoping mechanism, not a data query |
-| `IncidentService.findAll` → `IncidentSpecification.hasTenant(tenantId)` | **Yes** — explicit `cb.equal(root.get("tenantId"), tenantId)` |
-| `AuditLogService.getAuditLogs` (inline `Specification`) | **Yes** — `predicates.add(cb.equal(root.get("tenantId"), tenantId))` |
-| `AuditLogExportService.fetchLogs` (inline `Specification`) | **Yes** — same pattern |
-| `TenantErasureService.erase` (`JdbcTemplate`, dynamic table list) | **Yes** — every `SELECT COUNT(*)`/`DELETE` is `... WHERE tenant_id = ?` parameterized |
-| `TenantDataExportService.export` (`JdbcTemplate`, dynamic table list) | **Yes** — every `SELECT * FROM <table> WHERE tenant_id = ?` parameterized |
-| `TenantScopedSchemaService.tenantScopedTables`/`foreignKeyEdges` (`JdbcTemplate`) | N/A — reads `information_schema`/`pg_constraint` metadata, not tenant data; table names are validated against `^[a-zA-Z_][a-zA-Z0-9_]*$` before being concatenated into a query string (belt-and-suspenders since they only ever come from catalog metadata, never request input) |
+`target/surefire-reports/TEST-com.aetherops.integrations.webhook.LegacyWebhookSecretBackfillRunnerTest.xml` (4):
+- `run_refusesAndTouchesNothing_whenNeitherOutputPathNorPrintSecretsFlagGiven`
+- `run_writesGeneratedSecretsToFile_withOwnerOnlyPermissions_whenOutputPathConfigured`
+- `run_doesNotOverwriteOrDuplicate_whenSecretAlreadyBackfilledForAllProviders`
+- `run_printsToStdoutOnly_andNeverThroughTheLogger_whenPrintSecretsFlagGiven`
 
-No native query, `EntityManager`, `JdbcTemplate`, or `Specification` usage reachable from a controller was found **without** an explicit tenant predicate. The `IncidentController` gap in (a) doesn't fall into this bucket — it's a plain `JpaRepository.findById()`, not a native/Specification query; it has no predicate of any kind (explicit or RLS-adjacent), it relies purely on the RLS policy at the database level.
+`target/surefire-reports/TEST-com.aetherops.integrations.webhook.SnsSignatureVerifierTest.xml` (7):
+- `validSignature_accepted`
+- `tamperedMessage_afterSigning_rejected`
+- `signatureFromDifferentKeyPair_rejected`
+- `nonAwsSigningCertUrl_rejected_withoutEverFetchingIt`
+- `httpNotHttpsSigningCertUrl_rejected_withoutEverFetchingIt`
+- `missingSignature_rejected`
+- `subscriptionConfirmation_validSignature_accepted`
 
----
+`target/surefire-reports/TEST-com.aetherops.integrations.webhook.AwsSnsHostValidatorTest.xml` (7):
+- `genuineSnsHost_valid`
+- `genuineChinaPartitionSnsHost_valid`
+- `lookalikeHost_invalid`
+- `httpNotHttps_invalid`
+- `attackerControlledArbitraryHost_invalid`
+- `nullOrBlank_invalid`
+- `malformedUrl_invalid`
 
-## D0(d) — The four non-RLS tables: every reachable query, and its predicate
-
-These four have **no database backstop** — confirmed via `V60__enable_rls_on_remaining_tenant_tables.sql`, which documents the exclusion inline for each:
-- `users` (line 7): "Login and registration must look up a row by email alone..."
-- `api_keys` (line 13): "ApiKeyAuthFilter resolves a caller's tenant..."
-- `refresh_tokens` (line 17): "POST /auth/refresh validates a..."
-- `slack_workspaces` (line 21): "Inbound Slack webhooks..."
-
-**`users`** (`UserRepository`):
-| Query | Predicate | Reachable from controller? |
-|---|---|---|
-| `findByEmail(email)` | none (by design — pre-tenant lookup) | Yes, `AuthController.login`/`register` — email is the caller's own claimed identity, not an ID they choose to target someone else |
-| `findByGoogleSub(sub)` | none | Yes, `GoogleAuthService` — `sub` comes from a Google-verified token, not attacker-controlled |
-| `findByEmailVerificationToken(token)` | none | Yes, `EmailVerificationService` — token is a high-entropy secret, not a guessable ID |
-| `findById(userId)` (inherited) | none | `TotpService.verifyAndIssueToken` — `userId` comes from `jwtService.extractUserId(partialToken)`, i.e. the JWT's own subject, not client input; `PasswordResetService.resetPassword` — `userId` comes from the validated reset-token row, not client input; `AuthService.generateTokenForUser` — called only internally after `RefreshTokenService.rotate` already validated the token belongs to that user |
-| **No query in `UserRepository` takes a client-supplied arbitrary user ID and returns a row without it being derived from an already-verified credential (JWT subject, Google-verified sub, reset token).** I did not find an IDOR path into `users` from any controller. |
-
-**`api_keys`** (`ApiKeyRepository`):
-| Query | Predicate | Reachable from controller? |
-|---|---|---|
-| `findByProjectIdOrderByCreatedAtDesc(projectId)` | none directly, **but** `ApiKeyService.list` calls `projectService.getForTenant(projectId, tenantId)` first, which throws unless `project.getTenantId().equals(tenantId)` — so by the time this query runs, `projectId` is already proven to belong to the caller's tenant | Yes, `ProjectController.listKeys` |
-| `findByKeyHashAndActiveTrue*` variants | by hash (128-bit-plus entropy), not by ID | Yes, `ApiKeyService.resolve` — this is the API-key *authentication* path itself, not a tenant-scoped lookup |
-| `findById(keyId)` (inherited, in `revoke`) | `ApiKeyService.revoke` calls `getForTenant` first, then `.filter(k -> projectId.equals(k.getProjectId()))` on the result | Yes, `ProjectController.revokeKey` — **protected** |
-| `findById(keyId)` (inherited, in `recordLastUsed`) | none | Not controller-reachable — called internally by `ApiKeyAuthFilter` after `resolve()` already authenticated the key by hash |
-
-**`api_keys` is fully covered** — every controller-reachable path either goes through hash-based lookup or the `getForTenant`+`filter` ownership chain.
-
-**`refresh_tokens`** (`RefreshTokenRepository`, rewritten in Step C):
-| Query | Predicate | Reachable from controller? |
-|---|---|---|
-| `findByTokenHash(hash)` | by SHA-256 hash of the raw token (122 bits of entropy) | Yes, `AuthController.refresh`/`logout` — this is the authentication credential itself, not an ID |
-| `deleteAllByUserId(userId)` | by `userId` | `RefreshTokenService.revokeAllUserTokens` — not called from any controller currently (dead per Step C recon: nothing issues refresh tokens end-to-end today) |
-| `revokeFamily(familyId)` | by `familyId` | Only called internally from `RefreshTokenService.rotate` after the presented token was already resolved by hash |
-
-**`refresh_tokens` is fully covered** — no query takes an attacker-choosable ID; the token hash itself is the credential.
-
-**`slack_workspaces`** (`SlackWorkspaceRepository`):
-| Query | Predicate | Reachable from controller? |
-|---|---|---|
-| `findByTenantId(tenantId)` | explicit `tenant_id` predicate | Need to confirm every call site checks `requireOwn` first — **not fully traced in this pass**, flagging as unverified |
-| `findByTeamId(teamId)` | by Slack's own team ID | Used in Slack OAuth callback / signature-verified webhook flows — different auth model (Slack-signed), not a JWT-bearing controller call an attacker could redirect at another tenant's `teamId` by guessing it (Slack team IDs aren't secrets, but the callback flow is bound to Slack's own OAuth state/signature, not to a value the caller supplies directly) |
-
-**`slack_workspaces`'s `findByTenantId` call sites were not individually traced for a `requireOwn` guard in this pass** — this is the one item in (d) I'd call genuinely incomplete rather than confirmed either way.
-
----
-
-## Summary of what D1 needs to fix, pending your go-ahead
-
-1. `IncidentController.getById` (GET `/{id}`), `.update` (PATCH `/{id}`), `.delete` (DELETE `/{id}`) — no tenant parameter exists at all today, so fixing this means **adding a `tenantId` parameter** (query param, matching the pattern every other incident endpoint already uses) plus `TenantContext.requireOwn(tenantId)`, **and** changing `IncidentService.findById`/`update`/`softDelete` to filter by tenant (either `findByIdAndTenantId` or a `.filter(...)` check), not just the controller.
-2. `IncidentCommandController.resolve` — already calls `requireOwn`, but needs the same service-layer fix as above, since `IncidentService.update` is the shared unguarded method.
-3. `SlackWorkspaceRepository.findByTenantId` call sites — need tracing before I can say whether this needs a fix or is already safe.
-
-**`PushTokenController.register` (finding 7) is explicitly OUT of scope for Step D** — confirmed by instruction, belongs to Step E. Not carried into the D1 list above.
-
-## Things I'm unsure about, flagged rather than assumed
-
-- **Resolved by test, see Addendum below**: whether `TenantContextInterceptor` reliably wins its AOP ordering tie against Spring's transactional advisor. Confirmed empirically for `IncidentService.findById` — not re-tested against every `@Transactional` service method in the codebase, so the general claim ("always, everywhere") is narrowed but not eliminated as a residual unknown.
-- Whether there's any controller-reachable code path calling a repository method **without** a wrapping `@Transactional` service method (which per (b) would silently get zero rows, not a leak, but I did not do an exhaustive sweep for this pattern).
-- The external/signature-authenticated controllers (Slack, Stripe, monitoring webhooks) — not audited to the same depth as JWT-authenticated ones, different threat model.
-- `SlackWorkspaceRepository.findByTenantId` call sites, as noted above.
+`target/surefire-reports/TEST-com.aetherops.integrations.IntegrationsWebhookControllerTest.xml` (1 new):
+- `cloudWatch_invalidSnsSignature_rejectedAndNeverIngestedOrConfirmed`
 
 ---
 
-## Addendum — D0(b) ordering verification (this message's work)
+## Files changed this step (complete list)
 
-**Test added:** `src/test/java/com/aetherops/tenant/TenantContextOrderingTest.java` — 2 methods, directly targeting `IncidentService.findById`, which (per (a) above) has **zero application-layer tenant filtering** — RLS via `app.tenant_id` is its only protection, making it the most direct possible probe of the exact property in question.
+E1:
+- `src/main/java/com/aetherops/push/RegisterPushTokenRequest.java` — modified
+- `src/main/java/com/aetherops/push/PushTokenController.java` — modified
+- `src/test/java/com/aetherops/push/PushTokenControllerTest.java` — modified
+- `src/test/java/com/aetherops/push/PushTokenIntegrationTest.java` — new
 
-- `tenantContextInterceptor_setsAppTenantIdBeforeQuery_ownIncidentIsFound` — seeds an incident for tenant A, sets `TenantContext` to tenant A, calls `incidentService.findById(...)` directly (not through MockMvc — this isolates the service-method/AOP/RLS mechanism itself), asserts it's found. If the interceptor lost the ordering race, `app.tenant_id` would be NULL at query time and RLS would filter out even the caller's own incident, turning this into a false 404.
-- `tenantContextInterceptor_setsAppTenantIdBeforeQuery_otherTenantIncidentIsNotFound` — same setup but tenant A queries tenant B's incident, asserts `ResourceNotFoundException`. Combined with the first test, this proves `app.tenant_id` is set to *exactly* the calling tenant (not merely "some value" or "everything visible") — RLS is demonstrably active and correctly scoped.
+E2, pass 1 (GitHub/SNS/PagerDuty/Grafana — HMAC/certificate):
+- `src/main/resources/db/migration/V65__create_inbound_webhook_signing_secrets.sql` — new
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningProvider.java` — new (extended further in pass 2, see below)
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningSecret.java` — new
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningSecretRepository.java` — new
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningSecretService.java` — new
+- `src/main/java/com/aetherops/integrations/webhook/CachedBodyHttpServletRequest.java` — new
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSignatureFilter.java` — new (extended further in pass 2)
+- `src/main/java/com/aetherops/integrations/webhook/AwsSnsHostValidator.java` — new
+- `src/main/java/com/aetherops/integrations/webhook/SnsSignatureVerifier.java` — new
+- `src/main/java/com/aetherops/integrations/controller/IntegrationsWebhookController.java` — modified (further modified in pass 2)
+- `src/main/java/com/aetherops/integrations/model/CloudWatchSnsRequest.java` — modified
+- `src/test/java/com/aetherops/integrations/webhook/WebhookSignatureIntegrationTest.java` — new (extended further in pass 2)
+- `src/test/java/com/aetherops/integrations/webhook/SnsSignatureVerifierTest.java` — new
+- `src/test/java/com/aetherops/integrations/webhook/AwsSnsHostValidatorTest.java` — new
+- `src/test/java/com/aetherops/integrations/IntegrationsWebhookControllerTest.java` — modified (further modified in pass 2)
 
-**Result: both PASS.** `Tests run: 2, Failures: 0, Errors: 0, Skipped: 0` (confirmed by name from `TEST-com.aetherops.tenant.TenantContextOrderingTest.xml`, `errors="0" failures="0"`). This empirically confirms the documented ordering behavior holds for a real user-defined `@Transactional` service method — per your conditional instruction, since the test did not reveal non-determinism, **no `@Order` change or interceptor rewiring was made.** Making a defensive change to a mechanism a passing test just confirmed works would be a change without a justifying finding.
+E2, pass 2 (Datadog/New Relic/Opsgenie/Rollbar/Alertmanager — static-token, Splunk risk
+acceptance, replay guard). Sentry/VictorOps/Sumo Logic remain untouched (unconfirmed schemes):
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningProvider.java` — modified (5 new enum constants + javadoc)
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSignatureFilter.java` — modified (5 new protected paths, `verifyStaticToken`, HMAC-vs-static-token branching)
+- `src/main/java/com/aetherops/integrations/controller/IntegrationsWebhookController.java` — modified (Splunk risk-acceptance comment; replay-guard calls in newRelic/opsgenie/rollbar; new `MonitoringAlertReplayGuard` constructor dependency)
+- `src/main/java/com/aetherops/monitoring/controller/MonitoringWebhookController.java` — modified (replay-guard calls in datadog/prometheusAlertmanager; new constructor dependency)
+- `src/main/java/com/aetherops/monitoring/service/MonitoringAlertIngestionService.java` — modified (new public `computeFingerprint(...)`; `buildFingerprint` now delegates to it)
+- `src/main/java/com/aetherops/monitoring/service/MonitoringAlertReplayGuard.java` — new
+- `src/test/java/com/aetherops/integrations/webhook/WebhookSignatureIntegrationTest.java` — modified (16 new tests: 5 providers × accept/reject, cross-provider isolation, Splunk-as-apikey, replay-window pair)
+- `src/test/java/com/aetherops/integrations/IntegrationsWebhookControllerTest.java` — modified (new `MonitoringAlertReplayGuard` mock/constructor arg)
+- `src/test/java/com/aetherops/monitoring/controller/MonitoringWebhookControllerTest.java` — modified (new `MonitoringAlertReplayGuard` mock)
+- `src/test/java/com/aetherops/AbstractIntegrationTest.java` — modified (`app.webhooks.replay-window-seconds` test property, 1s instead of the 30s production default)
 
-**Scope of what this proves, stated precisely so it isn't overclaimed:** this confirms the ordering tie resolves correctly for this specific service/method/JVM run, exercised within the same shared Spring test context that the rest of the 866-test suite also runs under (Spring Test caches and reuses application contexts across test classes by default, so this isn't an isolated cold-start result — the same context configuration is exercised repeatedly across the whole suite). It does not re-verify every `@Transactional` service method individually — that residual uncertainty from the original D0(b) list is narrowed, not eliminated.
+E2, pass 3 (item 4 — existing-tenant migration, grace period, backfill runner):
+- `src/main/resources/db/migration/V66__add_webhook_signing_secret_grace_period.sql` — new
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningSecret.java` — modified (`gracePeriodEndsAt` field)
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSigningSecretService.java` — modified (new `backfillIfAbsent(...)`)
+- `src/main/java/com/aetherops/integrations/webhook/WebhookSignatureFilter.java` — modified (grace-period fallback branch in the failed-verification path)
+- `src/main/java/com/aetherops/integrations/webhook/LegacyWebhookSecretBackfillRunner.java` — new
+  (rewritten once in-place after the logging fix below, still one file/one commit-worth of state)
+- `src/main/resources/application.yml` — modified (`app.webhooks.replay-window-seconds` given an
+  explicit entry; new `app.webhooks.migration.*` properties, including `secrets-output-path`)
+- `src/test/java/com/aetherops/integrations/webhook/WebhookSignatureIntegrationTest.java` — modified (3 new grace-period tests + `backfillSecret` helper)
+- `src/test/java/com/aetherops/integrations/webhook/WebhookSigningSecretServiceTest.java` — new
+- `src/test/java/com/aetherops/integrations/webhook/LegacyWebhookSecretBackfillRunnerTest.java` — new (added with the logging fix below)
 
-### Full `mvn test`
-
-```
-Tests run: 866, Failures: 0, Errors: 0, Skipped: 0
-BUILD SUCCESS
-```
-
-(864 prior + 2 new `TenantContextOrderingTest` methods = 866. Docker Desktop was running throughout.)
-
-### New test confirmed by name, from surefire XML
-
-`TEST-com.aetherops.tenant.TenantContextOrderingTest.xml` — `tests="2" errors="0" skipped="0" failures="0"`:
-- `tenantContextInterceptor_setsAppTenantIdBeforeQuery_ownIncidentIsFound`
-- `tenantContextInterceptor_setsAppTenantIdBeforeQuery_otherTenantIncidentIsNotFound`
-
-Nothing else changed. Nothing committed. Still waiting for your go-ahead on D1.
+E2, pass 3 fix (you caught this before I called it done — secrets were being logged):
+- `src/main/java/com/aetherops/integrations/webhook/LegacyWebhookSecretBackfillRunner.java` —
+  modified: removed the `log.info(...)` line that included the plaintext secret value entirely;
+  replaced with the refuse-unless-configured / owner-only-permissions-file / `--print-secrets`-
+  to-stdout design described above. No other file needed to change for this fix.

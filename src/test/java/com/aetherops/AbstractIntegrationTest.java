@@ -141,5 +141,8 @@ public abstract class AbstractIntegrationTest {
         registry.add("app.calendar.token-encryption-key", () -> "aetherops-calendar-token-key-012");
         registry.add("app.integrations.token-encryption-key", () -> "aetherops-integr-token-enc-key01");
         registry.add("app.calendar.oauth-state-secret", () -> "aetherops-test-calendar-oauth-state-secret");
+        // 1s instead of the 30s production default so replay-window tests don't need a real
+        // 30s sleep to prove "accepted again after the window" — see MonitoringAlertReplayGuard.
+        registry.add("app.webhooks.replay-window-seconds", () -> "1");
     }
 }

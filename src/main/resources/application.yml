@@ -102,6 +102,19 @@ app:
   # app.calendar.oauth-state-secret is the HMAC signing secret CalendarOAuthStateService
   # uses for the calendar-connect OAuth "state" param (same role as app.slack.signing-secret
   # for SlackOAuthStateService) — required via env var only, never defaulted here.
+  webhooks:
+    # See MonitoringAlertReplayGuard's javadoc.
+    replay-window-seconds: ${APP_WEBHOOKS_REPLAY_WINDOW_SECONDS:30}
+    migration:
+      # See LegacyWebhookSecretBackfillRunner's javadoc: a one-time backfill for tenants that
+      # existed before per-provider static-token secrets did. Off by default — turn on for one
+      # deploy to run it, then back off. Never intended to run on every startup.
+      backfill-legacy-secrets: ${APP_WEBHOOKS_MIGRATION_BACKFILL_LEGACY_SECRETS:false}
+      grace-period-days: ${APP_WEBHOOKS_MIGRATION_GRACE_PERIOD_DAYS:30}
+      # Blank (the default) means "not configured." The runner REFUSES to generate any secrets
+      # unless this is set or the --print-secrets CLI flag is passed — never logged either way.
+      # See LegacyWebhookSecretBackfillRunner's javadoc.
+      secrets-output-path: ${APP_WEBHOOKS_MIGRATION_SECRETS_OUTPUT_PATH:}
 
 resilience4j:
   circuitbreaker:

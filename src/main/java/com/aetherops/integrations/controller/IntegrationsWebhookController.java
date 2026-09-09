@@ -7,6 +7,7 @@ import com.aetherops.integrations.model.*;
 import com.aetherops.integrations.webhook.AwsSnsHostValidator;
 import com.aetherops.integrations.webhook.SnsSignatureVerifier;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
+import com.aetherops.monitoring.service.MonitoringAlertReplayGuard;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -41,6 +42,7 @@ public class IntegrationsWebhookController {
     private final MonitoringAlertIngestionService ingestionService;
     private final RestClient.Builder restClientBuilder;
     private final SnsSignatureVerifier snsSignatureVerifier;
+    private final MonitoringAlertReplayGuard replayGuard;
 
     @PostMapping("/grafana")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -89,6 +91,11 @@ public class IntegrationsWebhookController {
         }
         boolean firing = "ACTIVATED".equalsIgnoreCase(request.getState());
 
+        if (replayGuard.isReplay(apiKey.getTenantId(), "newrelic",
+                ingestionService.computeFingerprint(apiKey.getTenantId(), serviceId, request.getIssueId()))) {
+            return ResponseEntity.accepted().build();
+        }
+
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), serviceId, request.getIssueId(),
             request.getTitle(), request.getTitle(), newRelicSeverity(request.getPriority()), firing,
@@ -96,6 +103,18 @@ public class IntegrationsWebhookController {
         return ResponseEntity.accepted().build();
     }
 
+    /**
+     * KNOWN, ACCEPTED GAP (Phase 1 Step E, finding 5): Splunk's built-in webhook alert action
+     * supports no custom headers, request signing, or any authentication mechanism beyond the
+     * target URL itself — there is nothing this endpoint could check beyond the shared
+     * X-Api-Key already required. Every other no-signature provider (Datadog, New Relic,
+     * Opsgenie, Rollbar, Alertmanager) got a second, provider-scoped static-token secret via
+     * WebhookSignatureFilter specifically because each of THEM supports carrying one (a custom
+     * header, or for Rollbar a URL query param); Splunk's built-in action has no such capability
+     * to build on. Closing this would require either a third-party Splunkbase app (e.g. "Better
+     * Webhooks") or dropping support for Splunk's built-in action entirely — both out of scope.
+     * This is a deliberate, documented risk acceptance, not an oversight — see STEP_REPORT.md.
+     */
     @PostMapping("/splunk")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Splunk alert action webhook")
@@ -140,6 +159,11 @@ public class IntegrationsWebhookController {
             ? item.getProject().getName() : "unknown-service";
         boolean firing = request.getEvent_name() == null || !request.getEvent_name().toLowerCase(Locale.ROOT).contains("resolved");
 
+        if (replayGuard.isReplay(apiKey.getTenantId(), "rollbar",
+                ingestionService.computeFingerprint(apiKey.getTenantId(), serviceId, title))) {
+            return ResponseEntity.accepted().build();
+        }
+
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), serviceId, title,
             title, title, rollbarSeverity(item != null ? item.getLevel() : null), firing, null, Instant.now()));
@@ -170,6 +194,11 @@ public class IntegrationsWebhookController {
         String message = alert != null && alert.getMessage() != null ? alert.getMessage() : "Opsgenie alert";
         String serviceId = alert != null && alert.getSource() != null ? alert.getSource() : "unknown-service";
         boolean firing = !"Close".equalsIgnoreCase(request.getAction());
+
+        if (replayGuard.isReplay(apiKey.getTenantId(), "opsgenie",
+                ingestionService.computeFingerprint(apiKey.getTenantId(), serviceId, message))) {
+            return ResponseEntity.accepted().build();
+        }
 
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), serviceId, message,

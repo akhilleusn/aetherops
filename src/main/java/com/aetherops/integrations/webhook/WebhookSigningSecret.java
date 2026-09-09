@@ -47,6 +47,12 @@ public class WebhookSigningSecret {
     @Column(nullable = false)
     private boolean enabled;
 
+    /** Non-null only for a secret {@code LegacyWebhookSecretBackfillRunner} generated on a
+     *  tenant's behalf during the existing-tenant migration — see V66's javadoc. Null for
+     *  every secret a tenant/operator configures directly via {@link WebhookSigningSecretService#configure}. */
+    @Column(name = "grace_period_ends_at")
+    private Instant gracePeriodEndsAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
