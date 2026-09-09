@@ -27,4 +27,35 @@ public class CloudWatchSnsRequest {
     /** For a SubscriptionConfirmation: the URL to GET to confirm the subscription. */
     @JsonProperty("SubscribeURL")
     private String subscribeURL;
+
+    /** Present on every message type; part of the signed "string to sign". */
+    @JsonProperty("MessageId")
+    private String messageId;
+
+    @JsonProperty("TopicArn")
+    private String topicArn;
+
+    @JsonProperty("Timestamp")
+    private String timestamp;
+
+    /** Notification only, and only if the SNS publish included one. */
+    @JsonProperty("Subject")
+    private String subject;
+
+    /** SubscriptionConfirmation/UnsubscribeConfirmation only. */
+    @JsonProperty("Token")
+    private String token;
+
+    /** Base64-encoded signature over the canonical "string to sign". */
+    @JsonProperty("Signature")
+    private String signature;
+
+    /** URL of the X.509 certificate to verify Signature with — must be validated as a
+     *  genuine AWS SNS host (see AwsSnsHostValidator) before ever being fetched. */
+    @JsonProperty("SigningCertURL")
+    private String signingCertURL;
+
+    /** "1" (SHA1) or "2" (SHA256) — selects the signature algorithm. */
+    @JsonProperty("SignatureVersion")
+    private String signatureVersion;
 }

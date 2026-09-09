@@ -5,6 +5,7 @@ import com.aetherops.apikey.service.ApiKeyService;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.integrations.controller.IntegrationsWebhookController;
 import com.aetherops.integrations.model.*;
+import com.aetherops.integrations.webhook.SnsSignatureVerifier;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ class IntegrationsWebhookControllerTest {
     @Mock private ApiKeyService apiKeyService;
     @Mock private MonitoringAlertIngestionService ingestionService;
     @Mock private RestClient.Builder restClientBuilder;
+    @Mock private SnsSignatureVerifier snsSignatureVerifier;
 
     private IntegrationsWebhookController controller;
 
@@ -37,9 +39,14 @@ class IntegrationsWebhookControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new IntegrationsWebhookController(apiKeyService, ingestionService, restClientBuilder);
+        controller = new IntegrationsWebhookController(apiKeyService, ingestionService, restClientBuilder, snsSignatureVerifier);
         lenient().when(apiKeyService.resolve(API_KEY)).thenReturn(
             ApiKey.builder().id(UUID.randomUUID()).tenantId(tenantId).projectId(projectId).active(true).build());
+        // Existing CloudWatch tests below predate signature verification and exercise the
+        // alarm-mapping/subscription-confirmation logic only — default to "signature valid"
+        // so they keep testing that, not this. SnsSignatureVerifier's own accept/reject
+        // behavior is covered by dedicated tests further down.
+        lenient().when(snsSignatureVerifier.verify(any())).thenReturn(true);
     }
 
     private MonitoringAlertIngestionService.AlertSignal captureSignal() {
@@ -457,6 +464,20 @@ class IntegrationsWebhookControllerTest {
 
         controller.cloudWatch(request, API_KEY);
 
+        verifyNoInteractions(restClientBuilder);
+    }
+
+    @Test
+    void cloudWatch_invalidSnsSignature_rejectedAndNeverIngestedOrConfirmed() {
+        when(snsSignatureVerifier.verify(any())).thenReturn(false);
+        CloudWatchSnsRequest request = new CloudWatchSnsRequest();
+        request.setType("Notification");
+        request.setMessage("{\"AlarmName\":\"HighLatency\",\"NewStateValue\":\"ALARM\"}");
+
+        var response = controller.cloudWatch(request, API_KEY);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(401);
+        verifyNoInteractions(ingestionService);
         verifyNoInteractions(restClientBuilder);
     }
 

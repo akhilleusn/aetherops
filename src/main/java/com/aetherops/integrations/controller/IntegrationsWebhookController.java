@@ -4,6 +4,8 @@ import com.aetherops.apikey.model.ApiKey;
 import com.aetherops.apikey.service.ApiKeyService;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.integrations.model.*;
+import com.aetherops.integrations.webhook.AwsSnsHostValidator;
+import com.aetherops.integrations.webhook.SnsSignatureVerifier;
 import com.aetherops.monitoring.service.MonitoringAlertIngestionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +40,7 @@ public class IntegrationsWebhookController {
     private final ApiKeyService apiKeyService;
     private final MonitoringAlertIngestionService ingestionService;
     private final RestClient.Builder restClientBuilder;
+    private final SnsSignatureVerifier snsSignatureVerifier;
 
     @PostMapping("/grafana")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -221,6 +224,16 @@ public class IntegrationsWebhookController {
                                             @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
 
+        // AWS signs every SNS message unconditionally (unlike GitHub/PagerDuty/Grafana this
+        // isn't a per-tenant opt-in secret), so verification here is mandatory, not
+        // conditional. See SnsSignatureVerifier's javadoc for the SigningCertURL-spoofing
+        // mistake this specifically closes.
+        if (!snsSignatureVerifier.verify(request)) {
+            log.warn("Rejected CloudWatch/SNS webhook with invalid or missing signature tenantId={}",
+                apiKey.getTenantId());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if ("SubscriptionConfirmation".equals(request.getType())) {
             confirmSnsSubscription(request.getSubscribeURL());
             return ResponseEntity.ok().build();
@@ -288,15 +301,13 @@ public class IntegrationsWebhookController {
 
     /** Real AWS SNS confirmation URLs are always https://sns.{region}.amazonaws.com/... (or the .amazonaws.com.cn
      *  China partition) — anything else is rejected before it's fetched, since this is a server-side request to a
-     *  caller-supplied URL and only an X-Api-Key (not a privileged credential) gates who can trigger it. */
-    private static final java.util.regex.Pattern SNS_HOST_PATTERN =
-        java.util.regex.Pattern.compile("^sns\\.[a-z0-9-]+\\.amazonaws\\.com(\\.cn)?$");
-
+     *  caller-supplied URL and only an X-Api-Key (not a privileged credential) gates who can trigger it.
+     *  Shared with SnsSignatureVerifier's identical SigningCertURL check via AwsSnsHostValidator. */
     private void confirmSnsSubscription(String subscribeUrl) {
         if (subscribeUrl == null || subscribeUrl.isBlank()) {
             return;
         }
-        if (!isValidSnsSubscribeUrl(subscribeUrl)) {
+        if (!AwsSnsHostValidator.isValidSnsHost(subscribeUrl)) {
             log.warn("Refusing to confirm SNS subscription — URL does not match an AWS SNS endpoint: {}", subscribeUrl);
             return;
         }
@@ -305,17 +316,6 @@ public class IntegrationsWebhookController {
             log.info("Confirmed SNS subscription");
         } catch (Exception e) {
             log.warn("Failed to confirm SNS subscription at {}", subscribeUrl, e);
-        }
-    }
-
-    private boolean isValidSnsSubscribeUrl(String subscribeUrl) {
-        try {
-            java.net.URI uri = java.net.URI.create(subscribeUrl);
-            return "https".equalsIgnoreCase(uri.getScheme())
-                && uri.getHost() != null
-                && SNS_HOST_PATTERN.matcher(uri.getHost().toLowerCase(Locale.ROOT)).matches();
-        } catch (Exception e) {
-            return false;
         }
     }
 
