@@ -44,10 +44,29 @@ public class IntegrationsWebhookController {
     private final SnsSignatureVerifier snsSignatureVerifier;
     private final MonitoringAlertReplayGuard replayGuard;
 
+    /** Incident.title VARCHAR(500) — see IncidentSchema V1. */
+    private static final int TITLE_MAX = 500;
+    /** Incident.service_id VARCHAR(100) — see IncidentSchema V1. */
+    private static final int SERVICE_ID_MAX = 100;
+    /** Incident.environment VARCHAR(50) — see IncidentSchema V1. */
+    private static final int ENVIRONMENT_MAX = 50;
+
+    /**
+     * Phase 2 remediation, finding 3 (see STEP_REPORT.md): title-role text is truncated rather
+     * than rejected — silently dropping a third-party alert because its title is too long is
+     * worse than storing a truncated one. Identifier-role fields (serviceId) are rejected via
+     * {@code @Size} on the DTO instead, wherever the DTO is reachable; this helper only covers
+     * the map-derived (Grafana/Alertmanager labels/annotations) and manually-parsed (CloudWatch)
+     * fields that Bean Validation cannot reach.
+     */
+    private String truncate(String value, int maxLen) {
+        return value != null && value.length() > maxLen ? value.substring(0, maxLen) : value;
+    }
+
     @PostMapping("/grafana")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Grafana unified alerting webhook (Alertmanager-compatible)")
-    public ResponseEntity<Void> grafana(@RequestBody GrafanaWebhookRequest request,
+    public ResponseEntity<Void> grafana(@Valid @RequestBody GrafanaWebhookRequest request,
                                          @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         List<GrafanaWebhookRequest.Alert> alerts = request.getAlerts() != null ? request.getAlerts() : List.of();
@@ -62,15 +81,18 @@ public class IntegrationsWebhookController {
             Map<String, String> annotations = alert.getAnnotations() != null ? alert.getAnnotations() : Map.of();
 
             String alertName = labels.getOrDefault("alertname", "unknown_alert");
-            String serviceId = labels.getOrDefault("service", labels.getOrDefault("job", "unknown-service"));
-            String summary = annotations.getOrDefault("summary", alertName);
+            // labels/annotations are Map<String,String> — Bean Validation cannot constrain map
+            // values, so serviceId/summary/environment are truncated here instead of rejected.
+            String serviceId = truncate(labels.getOrDefault("service", labels.getOrDefault("job", "unknown-service")), SERVICE_ID_MAX);
+            String summary = truncate(annotations.getOrDefault("summary", alertName), TITLE_MAX);
             String description = annotations.getOrDefault("description", summary);
+            String environment = truncate(labels.get("environment"), ENVIRONMENT_MAX);
             boolean firing = "firing".equalsIgnoreCase(alert.getStatus() != null ? alert.getStatus() : request.getStatus());
 
             ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
                 apiKey.getTenantId(), apiKey.getProjectId(), serviceId, alertName,
                 summary, description, alertmanagerStyleSeverity(labels.get("severity")), firing,
-                labels.get("environment"), alert.getStartsAt() != null ? alert.getStartsAt() : Instant.now()));
+                environment, alert.getStartsAt() != null ? alert.getStartsAt() : Instant.now()));
         }
         return ResponseEntity.accepted().build();
     }
@@ -78,7 +100,7 @@ public class IntegrationsWebhookController {
     @PostMapping("/new-relic")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "New Relic alerts/applied-intelligence workflow webhook")
-    public ResponseEntity<Void> newRelic(@RequestBody NewRelicWebhookRequest request,
+    public ResponseEntity<Void> newRelic(@Valid @RequestBody NewRelicWebhookRequest request,
                                           @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         String serviceId = "unknown-service";
@@ -89,6 +111,7 @@ public class IntegrationsWebhookController {
                 serviceId = name;
             }
         }
+        String title = truncate(request.getTitle(), TITLE_MAX);
         boolean firing = "ACTIVATED".equalsIgnoreCase(request.getState());
 
         if (replayGuard.isReplay(apiKey.getTenantId(), "newrelic",
@@ -98,7 +121,7 @@ public class IntegrationsWebhookController {
 
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), serviceId, request.getIssueId(),
-            request.getTitle(), request.getTitle(), newRelicSeverity(request.getPriority()), firing,
+            title, title, newRelicSeverity(request.getPriority()), firing,
             null, Instant.now()));
         return ResponseEntity.accepted().build();
     }
@@ -132,11 +155,11 @@ public class IntegrationsWebhookController {
     @PostMapping("/sentry")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Sentry issue-alert webhook")
-    public ResponseEntity<Void> sentry(@RequestBody SentryWebhookRequest request,
+    public ResponseEntity<Void> sentry(@Valid @RequestBody SentryWebhookRequest request,
                                         @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         SentryWebhookRequest.Issue issue = request.getData() != null ? request.getData().getIssue() : null;
-        String title = issue != null && issue.getTitle() != null ? issue.getTitle() : "Sentry issue";
+        String title = truncate(issue != null && issue.getTitle() != null ? issue.getTitle() : "Sentry issue", TITLE_MAX);
         String serviceId = issue != null && issue.getProject() != null ? issue.getProject() : "unknown-service";
         boolean firing = !"resolved".equalsIgnoreCase(request.getAction());
 
@@ -150,11 +173,11 @@ public class IntegrationsWebhookController {
     @PostMapping("/rollbar")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Rollbar notification webhook")
-    public ResponseEntity<Void> rollbar(@RequestBody RollbarWebhookRequest request,
+    public ResponseEntity<Void> rollbar(@Valid @RequestBody RollbarWebhookRequest request,
                                          @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         RollbarWebhookRequest.Item item = request.getData() != null ? request.getData().getItem() : null;
-        String title = item != null && item.getTitle() != null ? item.getTitle() : "Rollbar item";
+        String title = truncate(item != null && item.getTitle() != null ? item.getTitle() : "Rollbar item", TITLE_MAX);
         String serviceId = item != null && item.getProject() != null && item.getProject().getName() != null
             ? item.getProject().getName() : "unknown-service";
         boolean firing = request.getEvent_name() == null || !request.getEvent_name().toLowerCase(Locale.ROOT).contains("resolved");
@@ -187,11 +210,11 @@ public class IntegrationsWebhookController {
     @PostMapping("/opsgenie")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Opsgenie outgoing webhook integration")
-    public ResponseEntity<Void> opsgenie(@RequestBody OpsgenieWebhookRequest request,
+    public ResponseEntity<Void> opsgenie(@Valid @RequestBody OpsgenieWebhookRequest request,
                                           @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         OpsgenieWebhookRequest.Alert alert = request.getAlert();
-        String message = alert != null && alert.getMessage() != null ? alert.getMessage() : "Opsgenie alert";
+        String message = truncate(alert != null && alert.getMessage() != null ? alert.getMessage() : "Opsgenie alert", TITLE_MAX);
         String serviceId = alert != null && alert.getSource() != null ? alert.getSource() : "unknown-service";
         boolean firing = !"Close".equalsIgnoreCase(request.getAction());
 
@@ -210,7 +233,7 @@ public class IntegrationsWebhookController {
     @PostMapping("/victorops")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "VictorOps (Splunk On-Call) outbound webhook")
-    public ResponseEntity<Void> victorOps(@RequestBody VictorOpsWebhookRequest request,
+    public ResponseEntity<Void> victorOps(@Valid @RequestBody VictorOpsWebhookRequest request,
                                            @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         String serviceId = request.getEntity_display_name() != null ? request.getEntity_display_name()
@@ -218,23 +241,23 @@ public class IntegrationsWebhookController {
         String alertName = request.getEntity_id() != null ? request.getEntity_id() : serviceId;
         String messageType = request.getMessage_type() != null ? request.getMessage_type().toUpperCase(Locale.ROOT) : "";
         boolean firing = !"RECOVERY".equals(messageType);
+        String title = request.getState_message() != null ? truncate(request.getState_message(), TITLE_MAX) : alertName;
 
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
             apiKey.getTenantId(), apiKey.getProjectId(), serviceId, alertName,
-            request.getState_message() != null ? request.getState_message() : alertName,
-            request.getState_message(), victorOpsSeverity(messageType), firing, null, Instant.now()));
+            title, request.getState_message(), victorOpsSeverity(messageType), firing, null, Instant.now()));
         return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/pagerduty")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "PagerDuty webhook subscriptions v3")
-    public ResponseEntity<Void> pagerDuty(@RequestBody PagerDutyWebhookRequest request,
+    public ResponseEntity<Void> pagerDuty(@Valid @RequestBody PagerDutyWebhookRequest request,
                                            @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         PagerDutyWebhookRequest.Event event = request.getEvent();
         PagerDutyWebhookRequest.EventData data = event != null ? event.getData() : null;
-        String title = data != null && data.getTitle() != null ? data.getTitle() : "PagerDuty incident";
+        String title = truncate(data != null && data.getTitle() != null ? data.getTitle() : "PagerDuty incident", TITLE_MAX);
         String serviceId = data != null && data.getService() != null && data.getService().getSummary() != null
             ? data.getService().getSummary() : "unknown-service";
         String eventType = event != null ? event.getEvent_type() : "";
@@ -249,7 +272,7 @@ public class IntegrationsWebhookController {
 
     @PostMapping("/cloudwatch")
     @Operation(summary = "AWS CloudWatch Alarms via an SNS HTTP(S) subscription")
-    public ResponseEntity<Void> cloudWatch(@RequestBody CloudWatchSnsRequest request,
+    public ResponseEntity<Void> cloudWatch(@Valid @RequestBody CloudWatchSnsRequest request,
                                             @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
 
@@ -279,19 +302,24 @@ public class IntegrationsWebhookController {
         }
 
         boolean firing = "ALARM".equalsIgnoreCase(alarm.getNewStateValue());
+        // CloudWatchAlarmMessage is parsed manually (see parseAlarmMessage) rather than bound by
+        // Spring, so @Valid/@Size cannot reach it. alarmName is used as both serviceId
+        // (VARCHAR(100)) and title (VARCHAR(500)) below — truncating once to the tighter
+        // (serviceId) limit satisfies both, since it's the same underlying value either way.
+        String alarmName = truncate(alarm.getAlarmName(), SERVICE_ID_MAX);
         // CloudWatch alarms don't carry a severity field; tenants needing finer control should
         // route through SNS -> Lambda -> a severity-aware source instead. HIGH is a deliberately
         // simple, conservative default so an unclassified alarm still pages rather than being ignored.
         ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
-            apiKey.getTenantId(), apiKey.getProjectId(), alarm.getAlarmName(), alarm.getAlarmName(),
-            alarm.getAlarmName(), alarm.getNewStateReason(), IncidentSeverity.HIGH, firing, null, Instant.now()));
+            apiKey.getTenantId(), apiKey.getProjectId(), alarmName, alarmName,
+            alarmName, alarm.getNewStateReason(), IncidentSeverity.HIGH, firing, null, Instant.now()));
         return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/github")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "GitHub deployment_status webhook event — alerts on deploy failures")
-    public ResponseEntity<Void> gitHub(@RequestBody GitHubDeploymentStatusRequest request,
+    public ResponseEntity<Void> gitHub(@Valid @RequestBody GitHubDeploymentStatusRequest request,
                                         @RequestHeader("X-Api-Key") String apiKeyHeader,
                                         @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);

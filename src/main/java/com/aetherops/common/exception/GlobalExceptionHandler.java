@@ -29,6 +29,7 @@ import com.aetherops.common.exception.TwoFaSessionLockedException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -314,6 +316,55 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse.of(HttpStatus.NOT_FOUND, "Not found", request.getRequestURI()));
+    }
+
+    /**
+     * Systemic fix (see STEP_REPORT.md): closes the whole class of "unvalidated input hits a
+     * DB constraint the caller never saw coming" bugs, including every site nobody has found
+     * yet — not a replacement for per-site validation (which stays, and is strictly better
+     * where it exists: it names the offending field, this can't). This is the backstop for
+     * everything per-site validation doesn't cover.
+     *
+     * <p><b>Ordering, confirmed rather than assumed:</b> Spring's {@code @ExceptionHandler}
+     * dispatch is resolved by the thrown exception's actual runtime type against the most
+     * specific declared handler type ({@code ExceptionHandlerMethodResolver} /
+     * {@code ExceptionDepthComparator}) — it does not depend on method declaration order in
+     * this class. {@link SlugAlreadyTakenException} is a direct {@code RuntimeException}
+     * subtype, not a {@code DataIntegrityViolationException} subtype — the two are siblings,
+     * not ancestor/descendant, so there is no type-specificity ambiguity between them at all.
+     * More concretely: {@code StatusPageService.configure(...)} already catches the raw
+     * {@code DataIntegrityViolationException} itself and throws {@code SlugAlreadyTakenException}
+     * in its place <em>before</em> anything propagates out of the service layer — the exception
+     * instance that reaches this advice for that path is already a {@code SlugAlreadyTakenException},
+     * never a {@code DataIntegrityViolationException}. This handler only ever sees a raw,
+     * un-translated violation from a call site that does NOT already catch-and-convert it
+     * itself (push_device_tokens, the webhook DTOs, MuteAlertRequest, and any future site).
+     *
+     * <p><b>400 vs 409:</b> distinguished by the underlying JDBC SQLState where available —
+     * Postgres {@code 23505} (unique_violation) gets 409, since that's a genuine conflict with
+     * existing data; everything else (NOT NULL, CHECK, oversized-value/data-exception codes
+     * like {@code 22001}) gets 400, since those are malformed-input problems, not conflicts.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+        DataIntegrityViolationException ex,
+        HttpServletRequest request
+    ) {
+        HttpStatus status = isUniqueConstraintViolation(ex) ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST;
+        log.warn("Data integrity violation at {} -> {}: {}",
+            request.getRequestURI(), status, rootCauseMessage(ex));
+        return ResponseEntity.status(status)
+            .body(ErrorResponse.of(status,
+                "The request could not be processed: invalid or conflicting data", request.getRequestURI()));
+    }
+
+    private boolean isUniqueConstraintViolation(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getMostSpecificCause();
+        return cause instanceof SQLException sqlEx && "23505".equals(sqlEx.getSQLState());
+    }
+
+    private String rootCauseMessage(DataIntegrityViolationException ex) {
+        return ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

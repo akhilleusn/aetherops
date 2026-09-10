@@ -32,6 +32,23 @@ public class MonitoringWebhookController {
     private final MonitoringAlertIngestionService ingestionService;
     private final MonitoringAlertReplayGuard replayGuard;
 
+    /** Incident.title VARCHAR(500) — see V1__create_initial_schema.sql. */
+    private static final int TITLE_MAX = 500;
+    /** Incident.service_id VARCHAR(100) — see V1__create_initial_schema.sql. */
+    private static final int SERVICE_ID_MAX = 100;
+    /** Incident.environment VARCHAR(50) — see V1__create_initial_schema.sql. */
+    private static final int ENVIRONMENT_MAX = 50;
+
+    /**
+     * Phase 2 remediation, finding 3 (see STEP_REPORT.md): Alertmanager's labels/annotations are
+     * Map&lt;String,String&gt; — Bean Validation cannot constrain map values — so this truncates
+     * rather than rejects, matching IntegrationsWebhookController#truncate's Grafana handling of
+     * the identical payload shape.
+     */
+    private String truncate(String value, int maxLen) {
+        return value != null && value.length() > maxLen ? value.substring(0, maxLen) : value;
+    }
+
     @PostMapping("/datadog")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Datadog monitor webhook — configure the monitor's webhook payload to match this shape")
@@ -59,7 +76,7 @@ public class MonitoringWebhookController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "Prometheus Alertmanager webhook_config receiver")
     public ResponseEntity<Void> prometheusAlertmanager(
-        @RequestBody AlertmanagerWebhookRequest request,
+        @Valid @RequestBody AlertmanagerWebhookRequest request,
         @RequestHeader("X-Api-Key") String apiKeyHeader
     ) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
@@ -70,9 +87,10 @@ public class MonitoringWebhookController {
             Map<String, String> annotations = alert.getAnnotations() != null ? alert.getAnnotations() : Map.of();
 
             String alertName = labels.getOrDefault("alertname", "unknown_alert");
-            String serviceId = labels.getOrDefault("service", labels.getOrDefault("job", "unknown-service"));
-            String summary = annotations.getOrDefault("summary", alertName);
+            String serviceId = truncate(labels.getOrDefault("service", labels.getOrDefault("job", "unknown-service")), SERVICE_ID_MAX);
+            String summary = truncate(annotations.getOrDefault("summary", alertName), TITLE_MAX);
             String description = annotations.getOrDefault("description", summary);
+            String environment = truncate(labels.get("environment"), ENVIRONMENT_MAX);
             boolean firing = "firing".equalsIgnoreCase(alert.getStatus());
 
             if (replayGuard.isReplay(apiKey.getTenantId(), "alertmanager",
@@ -83,7 +101,7 @@ public class MonitoringWebhookController {
             ingestionService.ingest(new MonitoringAlertIngestionService.AlertSignal(
                 apiKey.getTenantId(), apiKey.getProjectId(), serviceId, alertName,
                 summary, description, alertmanagerSeverity(labels.get("severity")), firing,
-                labels.get("environment"), alert.getStartsAt() != null ? alert.getStartsAt() : Instant.now()));
+                environment, alert.getStartsAt() != null ? alert.getStartsAt() : Instant.now()));
         }
 
         return ResponseEntity.accepted().build();

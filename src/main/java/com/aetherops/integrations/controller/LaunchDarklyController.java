@@ -9,6 +9,7 @@ import com.aetherops.integrations.service.LaunchDarklyFlagEventService;
 import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +30,7 @@ public class LaunchDarklyController {
     @PostMapping("/api/v1/integrations/launchdarkly")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "LaunchDarkly audit-log webhook — records flag changes for incident correlation")
-    public void webhook(@RequestBody LaunchDarklyWebhookRequest request,
+    public void webhook(@Valid @RequestBody LaunchDarklyWebhookRequest request,
                          @RequestHeader("X-Api-Key") String apiKeyHeader) {
         ApiKey apiKey = apiKeyService.resolve(apiKeyHeader);
         flagEventService.record(apiKey.getTenantId(), request);

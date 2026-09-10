@@ -4,6 +4,7 @@ import com.aetherops.common.response.ApiResponse;
 import com.aetherops.tenant.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,7 @@ public class AlertSuppressionController {
     @Operation(summary = "Mute alerts matching a service and/or alert name, optionally until a given time")
     public ApiResponse<AlertSuppressionRuleResponse> mute(
         @PathVariable UUID tenantId,
-        @RequestBody MuteAlertRequest request
+        @Valid @RequestBody MuteAlertRequest request
     ) {
         TenantContext.requireOwn(tenantId);
         return ApiResponse.success(suppressionService.mute(tenantId, request));

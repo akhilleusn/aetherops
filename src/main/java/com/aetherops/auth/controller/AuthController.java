@@ -4,8 +4,11 @@ import com.aetherops.auth.model.AuthResponse;
 import com.aetherops.auth.model.ForgotPasswordRequest;
 import com.aetherops.auth.model.GoogleAuthRequest;
 import com.aetherops.auth.model.LoginRequest;
+import com.aetherops.auth.model.LogoutRequest;
+import com.aetherops.auth.model.RefreshTokenRequest;
 import com.aetherops.auth.model.RegisterRequest;
 import com.aetherops.auth.model.RegistrationResult;
+import com.aetherops.auth.model.ResendVerificationRequest;
 import com.aetherops.auth.model.ResetPasswordRequest;
 import com.aetherops.auth.service.AuthService;
 import com.aetherops.auth.service.EmailVerificationService;
@@ -59,8 +62,8 @@ public class AuthController {
 
     @PostMapping("/resend-verification")
     @Operation(summary = "Re-send the email verification link")
-    public ApiResponse<Map<String, String>> resendVerification(@RequestBody Map<String, String> body) {
-        emailVerificationService.resendVerificationEmail(body.get("email"));
+    public ApiResponse<Map<String, String>> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        emailVerificationService.resendVerificationEmail(request.email());
         return ApiResponse.success(Map.of("message", "If that account exists and is unverified, a new verification email has been sent."));
     }
 
@@ -93,9 +96,8 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @Operation(summary = "Refresh JWT using a valid refresh token. Rotates the refresh token on every use — the response carries the new one.")
-    public ApiResponse<AuthResponse> refresh(@RequestBody Map<String, String> request) {
-        String token = request.get("refreshToken");
-        RefreshTokenService.RotationResult rotation = refreshTokenService.rotate(token);
+    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        RefreshTokenService.RotationResult rotation = refreshTokenService.rotate(request.refreshToken());
         String newJwt = authService.generateTokenForUser(rotation.userId());
         return ApiResponse.success(AuthResponse.builder()
                 .token(newJwt)
@@ -105,8 +107,8 @@ public class AuthController {
 
     @PostMapping("/logout")
     @Operation(summary = "Logout and revoke refresh token")
-    public ApiResponse<Void> logout(@RequestBody Map<String, String> request) {
-        refreshTokenService.revokeRefreshToken(request.get("refreshToken"));
+    public ApiResponse<Void> logout(@Valid @RequestBody LogoutRequest request) {
+        refreshTokenService.revokeRefreshToken(request.refreshToken());
         return ApiResponse.success(null);
     }
 
