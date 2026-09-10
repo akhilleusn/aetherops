@@ -77,6 +77,41 @@ class AuditLogExportServiceTest {
         assertThat(csv).contains("\"message, with, commas\"");
     }
 
+    // Phase 2 remediation, finding 10 (see STEP_REPORT.md): csvEscape must neutralize a
+    // leading =, +, - or @ (CSV/formula injection), not just guard comma/quote/newline.
+
+    @Test
+    void exportAsCsv_neutralizesLeadingEqualsInMessage() {
+        UUID tenantId = UUID.randomUUID();
+        AuditLog log = AuditLog.builder()
+                .id(UUID.randomUUID())
+                .tenantId(tenantId)
+                .action(AuditAction.ANALYSIS_GENERATED)
+                .message("=cmd|' /C calc'!A1")
+                .createdAt(Instant.now())
+                .build();
+        when(auditLogRepository.findAll(any(Specification.class))).thenReturn(List.of(log));
+
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "objectMapper", objectMapper);
+        String csv = service.exportAsCsv(tenantId, null, null, null);
+
+        assertThat(csv).contains("'=cmd|' /C calc'!A1");
+        assertThat(csv).doesNotContain(",=cmd");
+    }
+
+    // resourceId is a UUID on the domain model, so a live end-to-end "=-leading resourceId"
+    // cannot actually be constructed (part of why finding 10 calls this "not exploitable
+    // today") — but the CSV column for resourceId is written through this exact same private
+    // csvEscape function as message, so this proves that shared function neutralizes a
+    // leading special character regardless of which column calls it.
+    @Test
+    void csvEscape_neutralizesLeadingSpecialCharacters_sharedByResourceIdColumn() {
+        for (String trigger : List.of("=1+1", "+1+1", "-1+1", "@SUM(1)")) {
+            String escaped = org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "csvEscape", trigger);
+            assertThat(escaped).as("escaping of " + trigger).startsWith("'" + trigger.charAt(0));
+        }
+    }
+
     @Test
     void exportAsJson_returnsValidJsonArray() throws Exception {
         UUID tenantId = UUID.randomUUID();

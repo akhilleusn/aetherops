@@ -37,7 +37,7 @@ public class AuditLogExportService {
                .append(entry.getAction()).append(',')
                .append(entry.getStatus()).append(',')
                .append(nvl(entry.getResourceType())).append(',')
-               .append(nvl(entry.getResourceId())).append(',')
+               .append(csvEscape(entry.getResourceId() == null ? null : entry.getResourceId().toString())).append(',')
                .append(csvEscape(entry.getMessage())).append(',')
                .append(entry.getCreatedAt()).append('\n');
         }
@@ -72,11 +72,28 @@ public class AuditLogExportService {
         return value == null ? "" : value.toString();
     }
 
+    /**
+     * Phase 2 remediation, finding 10 (see STEP_REPORT.md): this previously only guarded
+     * against breaking the CSV's own structure (comma/quote/newline) and did nothing about
+     * CSV/formula injection — a value starting with {@code =}, {@code +}, {@code -} or
+     * {@code @} is interpreted as a formula by Excel/Sheets/LibreOffice when the exported file
+     * is opened, not literal text. Not exploitable today (every call site here is
+     * server-authored: {@code AuditAction} enum names, {@code AuditStatus} enum names, and a
+     * {@code UUID} — none can start with one of those characters), but the escaping function
+     * itself was incomplete, and {@code message}/{@code resourceId} both hold values that could
+     * change that in the future. Prefixing a leading apostrophe is the standard mitigation
+     * (Excel/Sheets/LibreOffice all treat a leading {@code '} as "force text", so the cell
+     * still displays the original value, just never evaluated as a formula).
+     */
     private String csvEscape(String value) {
         if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
+        String escaped = value;
+        if (!escaped.isEmpty() && "=+-@".indexOf(escaped.charAt(0)) >= 0) {
+            escaped = "'" + escaped;
         }
-        return value;
+        if (escaped.contains(",") || escaped.contains("\"") || escaped.contains("\n")) {
+            escaped = "\"" + escaped.replace("\"", "\"\"") + "\"";
+        }
+        return escaped;
     }
 }

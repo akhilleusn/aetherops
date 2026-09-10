@@ -25,7 +25,7 @@ public class TenantService {
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
 
     private final TenantRepository tenantRepository;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, TenantResponse> tenantCacheRedisTemplate;
 
     @Transactional
     public TenantResponse create(CreateTenantRequest request) {
@@ -48,7 +48,7 @@ public class TenantService {
     public TenantResponse findById(UUID id) {
         String cacheKey = CACHE_PREFIX + id;
 
-        TenantResponse cached = (TenantResponse) redisTemplate.opsForValue().get(cacheKey);
+        TenantResponse cached = getCached(cacheKey, id);
         if (cached != null) {
             log.debug("Cache hit for tenant id={}", id);
             return cached;
@@ -59,8 +59,32 @@ public class TenantService {
                 .map(this::toResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + id));
 
-        redisTemplate.opsForValue().set(cacheKey, response, CACHE_TTL);
+        tenantCacheRedisTemplate.opsForValue().set(cacheKey, response, CACHE_TTL);
         return response;
+    }
+
+    /**
+     * Phase 2 remediation, finding 9 (see STEP_REPORT.md): a cache entry written under the
+     * old, pre-this-change {@code GenericJackson2JsonRedisSerializer} format (which embedded a
+     * {@code @class} discriminator) will not deserialize against the new
+     * {@code Jackson2JsonRedisSerializer<TenantResponse>}, which expects the JSON to already
+     * match {@link TenantResponse} directly. That's expected on the deploy that ships this
+     * change -- {@code SerializationException} would otherwise propagate uncaught out of
+     * {@code opsForValue().get(...)} and turn an ordinary cache read into a 500. Caught here and
+     * treated as a cache miss instead, exactly like a key that was never cached: falls through
+     * to the DB read below, which then overwrites the stale entry with the new format on the
+     * next {@code set}. Self-healing within one TTL window (30 minutes) with no ops action
+     * needed, and no request-facing failure at any point during the transition.
+     */
+    private TenantResponse getCached(String cacheKey, UUID id) {
+        try {
+            return tenantCacheRedisTemplate.opsForValue().get(cacheKey);
+        } catch (Exception e) {
+            log.warn("Failed to deserialize cached tenant response for id={} (stale cache " +
+                "format from before the Jackson2JsonRedisSerializer<TenantResponse> migration " +
+                "-- see STEP_REPORT.md) -- treating as a cache miss", id, e);
+            return null;
+        }
     }
 
     /**
