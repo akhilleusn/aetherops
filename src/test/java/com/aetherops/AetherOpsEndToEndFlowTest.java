@@ -9,7 +9,6 @@ import com.aetherops.ingestion.repository.LogEventRepository;
 import com.aetherops.postmortem.repository.PostmortemDraftRepository;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
 import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,9 +80,7 @@ class AetherOpsEndToEndFlowTest extends AbstractIntegrationTest {
     void fullIncidentLifecycle_endToEnd() throws Exception {
 
         // ── Step 1: Register a tenant ──────────────────────────────────────────
-        CreateTenantRequest tenantRequest = new CreateTenantRequest(
-            "AcmeCorp Demo", Plan.TEAM, 0, 30
-        );
+        CreateTenantRequest tenantRequest = new CreateTenantRequest("AcmeCorp Demo", 30);
         String tenantBody = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(tenantRequest))

@@ -32,8 +32,11 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void createTenant_validRequest_returns201WithBody() throws Exception {
-        var request = new CreateTenantRequest("Acme Corp", Plan.STARTER, 5000, 30);
+    void createTenant_noPlanOrBudgetSupplied_landsOnDefaultFreePlanWithZeroBudget() throws Exception {
+        // Phase 2 remediation, finding 7 (see STEP_REPORT.md): plan/aiMonthlyBudgetCents are no
+        // longer part of CreateTenantRequest at all -- every new tenant starts on FREE with a
+        // zero AI budget, full stop.
+        var request = new CreateTenantRequest("Acme Corp", 30);
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -43,14 +46,35 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.id").isNotEmpty())
             .andExpect(jsonPath("$.data.name").value("Acme Corp"))
-            .andExpect(jsonPath("$.data.plan").value("STARTER"))
-            .andExpect(jsonPath("$.data.aiMonthlyBudgetCents").value(5000))
+            .andExpect(jsonPath("$.data.plan").value("FREE"))
+            .andExpect(jsonPath("$.data.aiMonthlyBudgetCents").value(0))
             .andExpect(jsonPath("$.data.retentionDays").value(30));
     }
 
     @Test
+    void createTenant_forgedPlanAndBudgetInRawJsonBody_ignored_stillLandsOnFree() throws Exception {
+        // The DTO no longer HAS a plan/aiMonthlyBudgetCents field, so a typed CreateTenantRequest
+        // can't even express this attack anymore -- this sends raw JSON with those fields
+        // smuggled in alongside the real ones, proving Jackson's default "silently drop unknown
+        // properties" behavior (relied on deliberately, see CreateTenantRequest's own comment)
+        // actually holds, not just that the Java type system happens to prevent it.
+        String maliciousBody = """
+            {"name":"Attacker Corp","retentionDays":30,"plan":"GROWTH","aiMonthlyBudgetCents":2000000000}
+            """;
+
+        mockMvc.perform(post("/api/v1/tenants")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(maliciousBody)
+                .with(asTenant(UUID.randomUUID())))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.name").value("Attacker Corp"))
+            .andExpect(jsonPath("$.data.plan").value("FREE"))
+            .andExpect(jsonPath("$.data.aiMonthlyBudgetCents").value(0));
+    }
+
+    @Test
     void createTenant_nameTooShort_returns422WithFieldError() throws Exception {
-        var request = new CreateTenantRequest("A", Plan.FREE, 0, 7);
+        var request = new CreateTenantRequest("A", 7);
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -63,20 +87,8 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void createTenant_negativeBudget_returns422() throws Exception {
-        var request = new CreateTenantRequest("Valid Name", Plan.FREE, -1, 7);
-
-        mockMvc.perform(post("/api/v1/tenants")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request))
-                .with(asTenant(UUID.randomUUID())))
-            .andExpect(status().isUnprocessableEntity())
-            .andExpect(jsonPath("$.details.aiMonthlyBudgetCents").isNotEmpty());
-    }
-
-    @Test
     void createTenant_retentionDaysOutOfRange_returns422() throws Exception {
-        var request = new CreateTenantRequest("Valid Name", Plan.FREE, 0, 366);
+        var request = new CreateTenantRequest("Valid Name", 366);
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -92,7 +104,7 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
         // system — only the ones the authenticated caller belongs to, derived from the JWT.
         String alphaBody = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Alpha", Plan.STARTER, 0, 30)))
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Alpha", 30)))
                 .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
@@ -100,7 +112,7 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Beta", Plan.TEAM, 10000, 90)))
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Beta", 90)))
                 .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated());
 
@@ -118,7 +130,7 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
     void getTenantById_existingTenant_returnsCorrectData() throws Exception {
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Gamma Inc", Plan.GROWTH, 20000, 180)))
+                .content(objectMapper.writeValueAsString(new CreateTenantRequest("Gamma Inc", 180)))
                 .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
@@ -128,7 +140,7 @@ class TenantIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/tenants/" + id).with(asTenant(java.util.UUID.fromString(id))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name").value("Gamma Inc"))
-            .andExpect(jsonPath("$.data.plan").value("GROWTH"))
+            .andExpect(jsonPath("$.data.plan").value(Plan.FREE.name()))
             .andExpect(jsonPath("$.data.retentionDays").value(180));
     }
 

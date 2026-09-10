@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -140,6 +141,56 @@ class IncidentTenantIsolationIntegrationTest extends AbstractIntegrationTest {
                 .param("tenantId", tenantB.toString())
                 .with(asTenant(tenantB)))
             .andExpect(status().isOk());
+    }
+
+    // ── POST /api/v1/incidents — finding 5 (see STEP_REPORT.md): IncidentController.create()
+    // was missing the TenantContext.requireOwn() its CQRS sibling already had ──────────────
+
+    @Test
+    void create_forgedOtherTenantsTenantId_returns403_notServerError() throws Exception {
+        UUID callerTenantId = UUID.randomUUID();
+        UUID victimTenantId = UUID.randomUUID();
+        var request = new CreateIncidentRequest(
+            victimTenantId, null, "Forged incident", null, IncidentSeverity.LOW, "svc", "test", null, null);
+
+        mockMvc.perform(post("/api/v1/incidents")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+                .with(asTenant(callerTenantId)))
+            .andExpect(status().isForbidden());
+
+        // And prove nothing was created under either tenant despite the RLS-driven collision
+        // this used to 500 on (see STEP_REPORT.md's trace of the old failure mode).
+        assertThat(incidentRepository.findAll()).isEmpty();
+    }
+
+    // ── GET /api/v2/incidents — finding 5 sweep (see STEP_REPORT.md): found during the
+    // controller-wide sweep, not previously known — IncidentControllerV2.list() had the same
+    // gap as v1's create() ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void v2List_ownTenantId_returns200() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        createIncident(tenantId);
+
+        mockMvc.perform(get("/api/v2/incidents")
+                .param("tenantId", tenantId.toString())
+                .with(asTenant(tenantId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content").isArray())
+            .andExpect(jsonPath("$.data.content", org.hamcrest.Matchers.hasSize(1)));
+    }
+
+    @Test
+    void v2List_forgedOtherTenantsTenantId_returns403_notServerError() throws Exception {
+        UUID callerTenantId = UUID.randomUUID();
+        UUID victimTenantId = UUID.randomUUID();
+        createIncident(victimTenantId);
+
+        mockMvc.perform(get("/api/v2/incidents")
+                .param("tenantId", victimTenantId.toString())
+                .with(asTenant(callerTenantId)))
+            .andExpect(status().isForbidden());
     }
 
     // ── POST /api/v1/commands/incidents/{id}/resolve — shared IncidentService.update ──

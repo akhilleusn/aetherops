@@ -9,7 +9,6 @@ import com.aetherops.project.model.CreateProjectRequest;
 import com.aetherops.project.repository.ProjectRepository;
 import com.aetherops.tenant.TenantContext;
 import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -189,7 +188,7 @@ class ProjectApiKeyIntegrationTest extends AbstractIntegrationTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private UUID createTenant() throws Exception {
-        var request = new CreateTenantRequest("Test Tenant", Plan.STARTER, 0, 30);
+        var request = new CreateTenantRequest("Test Tenant", 30);
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))

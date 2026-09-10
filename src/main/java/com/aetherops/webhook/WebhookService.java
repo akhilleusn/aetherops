@@ -1,10 +1,12 @@
 package com.aetherops.webhook;
 
+import com.aetherops.common.security.SsrfGuard;
 import com.aetherops.config.FeatureFlag;
 import com.aetherops.config.FeatureFlagService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -67,10 +69,15 @@ public class WebhookService {
         delivery.setLastAttemptAt(Instant.now());
 
         try {
+            // Re-validate at delivery time, not just at registration time -- DNS for an
+            // already-accepted url can be repointed after it was registered. See
+            // SsrfGuard's javadoc.
+            SsrfGuard.validate(endpoint.getUrl());
+
             String signature = signatureVerifier.computeHmacSha256(endpoint.getSecret(), delivery.getPayload());
 
-            RestClient client = restClientBuilder.build();
-            var response = client.post()
+            RestClient client = SsrfGuard.disableRedirects(restClientBuilder).build();
+            ResponseEntity<Void> response = client.post()
                     .uri(endpoint.getUrl())
                     .header("Content-Type", "application/json")
                     .header("X-AetherOps-Event", delivery.getEventType())
@@ -78,6 +85,10 @@ public class WebhookService {
                     .body(delivery.getPayload())
                     .retrieve()
                     .toBodilessEntity();
+
+            if (response.getStatusCode().is3xxRedirection()) {
+                throw new IllegalStateException("Webhook endpoint returned a redirect — redirects are not followed");
+            }
 
             delivery.setStatus("SUCCESS");
             delivery.setResponseStatus(response.getStatusCode().value());
@@ -96,6 +107,11 @@ public class WebhookService {
     }
 
     public WebhookEndpoint register(UUID tenantId, String url, String secret) {
+        // Unreachable via any controller today (see STEP_REPORT.md) -- validating here, not
+        // only at delivery time, means the moment a controller does call this, it's already
+        // safe with no further change needed.
+        SsrfGuard.validate(url);
+
         if (secret == null || secret.isBlank()) {
             byte[] bytes = new byte[32];
             new SecureRandom().nextBytes(bytes);

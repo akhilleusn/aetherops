@@ -45,6 +45,10 @@ public class IncidentController {
             @Valid @RequestBody CreateIncidentRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
+        // Phase 2 remediation, finding 5 (see STEP_REPORT.md) -- CreateIncidentRequest.tenantId
+        // is client-settable; IncidentCommandController's parallel CQRS endpoint already does
+        // this same check for the identical kind of resource. Was missing here.
+        TenantContext.requireOwn(request.getTenantId());
         return ApiResponse.success(incidentService.create(request, idempotencyKey));
     }
 

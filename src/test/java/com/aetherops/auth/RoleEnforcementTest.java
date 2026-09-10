@@ -7,7 +7,6 @@ import com.aetherops.incident.model.CreateIncidentRequest;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.project.model.CreateProjectRequest;
 import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.Plan;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -110,7 +109,7 @@ class RoleEnforcementTest extends AbstractIntegrationTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private UUID createTenant() throws Exception {
-        var request = new CreateTenantRequest("Test Tenant", Plan.STARTER, 0, 30);
+        var request = new CreateTenantRequest("Test Tenant", 30);
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))

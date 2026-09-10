@@ -12,6 +12,7 @@ import com.aetherops.postmortem.repository.PostmortemDraftRepository;
 import com.aetherops.runbook.repository.RunbookSuggestionRepository;
 import com.aetherops.tenant.model.CreateTenantRequest;
 import com.aetherops.tenant.model.Plan;
+import com.aetherops.tenant.model.Tenant;
 import com.aetherops.tenant.repository.TenantRepository;
 import com.aetherops.usage.repository.TenantMonthlyUsageRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -240,14 +241,25 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private UUID createTenant(Plan plan) throws Exception {
-        var request = new CreateTenantRequest("Test Tenant", plan, 0, 30);
+        // Phase 2 remediation, finding 7 (see STEP_REPORT.md): the API always creates a FREE
+        // tenant now -- plan is no longer client-settable. This test needs a specific plan to
+        // exercise plan-dependent behavior, so it's set directly via the repository, bypassing
+        // the API for test setup (the same principle as the fix itself: plan changes happen
+        // through a trusted path, never client-declared self-service).
+        var request = new CreateTenantRequest("Test Tenant", 30);
         String body = mockMvc.perform(post("/api/v1/tenants")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
                 .with(asTenant(UUID.randomUUID())))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
-        return UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());
+        UUID tenantId = UUID.fromString(objectMapper.readTree(body).at("/data/id").asText());
+
+        Tenant tenant = tenantRepository.findById(tenantId).orElseThrow();
+        tenant.setPlan(plan);
+        tenantRepository.save(tenant);
+
+        return tenantId;
     }
 
     private UUID createIncidentForTenant(UUID tenantId, String message) throws Exception {

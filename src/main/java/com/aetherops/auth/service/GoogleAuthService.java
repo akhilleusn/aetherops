@@ -8,7 +8,6 @@ import com.aetherops.auth.model.Role;
 import com.aetherops.auth.model.User;
 import com.aetherops.auth.repository.UserRepository;
 import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.model.TenantResponse;
 import com.aetherops.tenant.service.TenantService;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +58,7 @@ public class GoogleAuthService {
             role = invitation.getRole();
         } else {
             TenantResponse tenant = tenantService.create(
-                new CreateTenantRequest(defaultTenantName(userInfo.email()), Plan.FREE, 0, 30));
+                new CreateTenantRequest(defaultTenantName(userInfo.email()), 30));
             tenantId = tenant.getId();
             role = Role.OWNER;
         }

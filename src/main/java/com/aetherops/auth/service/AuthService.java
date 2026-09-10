@@ -14,7 +14,6 @@ import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.ResourceNotFoundException;
 import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.model.TenantResponse;
 import com.aetherops.tenant.service.TenantService;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +50,7 @@ public class AuthService {
             role = invitation.getRole();
         } else {
             TenantResponse tenant = tenantService.create(
-                new CreateTenantRequest(defaultTenantName(req.email()), Plan.FREE, 0, 30));
+                new CreateTenantRequest(defaultTenantName(req.email()), 30));
             tenantId = tenant.getId();
             role = Role.OWNER;
         }

@@ -1,6 +1,7 @@
 package com.aetherops.integrations.service;
 
 import com.aetherops.common.exception.ResourceNotFoundException;
+import com.aetherops.common.security.SsrfGuard;
 import com.aetherops.integrations.model.ConfigureTicketIntegrationRequest;
 import com.aetherops.integrations.model.TenantTicketIntegration;
 import com.aetherops.integrations.model.TicketIntegrationResponse;
@@ -23,6 +24,11 @@ public class TicketIntegrationConfigService {
 
     @Transactional
     public TicketIntegrationResponse configure(UUID tenantId, ConfigureTicketIntegrationRequest request) {
+        // Configuration-time validation only narrows the window -- DNS for an already-accepted
+        // host can be repointed later, which is exactly why JiraTicketService/ServiceNowTicketService
+        // validate again at request time too. See SsrfGuard's javadoc.
+        SsrfGuard.validate(request.getBaseUrl());
+
         TenantTicketIntegration integration = repository.findByTenantIdAndProvider(tenantId, request.getProvider())
             .orElseGet(() -> TenantTicketIntegration.builder()
                 .tenantId(tenantId).provider(request.getProvider()).build());

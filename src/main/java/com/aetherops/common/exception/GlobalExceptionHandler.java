@@ -19,6 +19,7 @@ import com.aetherops.common.exception.InvalidInvitationException;
 import com.aetherops.common.exception.InvalidTotpCodeException;
 import com.aetherops.common.exception.MissingTenantIdException;
 import com.aetherops.common.exception.SlugAlreadyTakenException;
+import com.aetherops.common.exception.SsrfBlockedException;
 import com.aetherops.common.exception.InvalidRefreshTokenException;
 import com.aetherops.common.exception.RefreshTokenReuseException;
 import com.aetherops.common.exception.RateLimitExceededException;
@@ -200,6 +201,15 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(SsrfBlockedException.class)
+    public ResponseEntity<ErrorResponse> handleSsrfBlocked(
+        SsrfBlockedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler(InvalidGoogleTokenException.class)

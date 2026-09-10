@@ -1,5 +1,6 @@
 package com.aetherops.integrations.service;
 
+import com.aetherops.common.security.SsrfGuard;
 import com.aetherops.integrations.model.TenantTicketIntegration;
 import com.aetherops.integrations.model.TicketProvider;
 import com.aetherops.integrations.repository.TenantTicketIntegrationRepository;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -43,6 +45,11 @@ public class JiraTicketService {
         TenantTicketIntegration config = configOpt.get();
 
         try {
+            // Re-validate at request time, not just at configuration time -- DNS for an
+            // already-accepted baseUrl can be repointed after it was configured. See
+            // SsrfGuard's javadoc.
+            SsrfGuard.validate(config.getBaseUrl());
+
             String token = tokenEncryptor.decrypt(config.getEncryptedApiToken());
             Map<String, Object> descriptionAdf = Map.of(
                 "type", "doc", "version", 1,
@@ -58,15 +65,20 @@ public class JiraTicketService {
                 "issuetype", Map.of("name", "Bug")
             ));
 
-            String responseBody = restClientBuilder.build().post()
+            ResponseEntity<String> response = SsrfGuard.disableRedirects(restClientBuilder).build().post()
                 .uri(config.getBaseUrl() + "/rest/api/3/issue")
                 .headers(h -> h.setBasicAuth(config.getUsername(), token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(String.class);
+                .toEntity(String.class);
 
-            JsonNode json = objectMapper.readTree(responseBody);
+            if (response.getStatusCode().is3xxRedirection()) {
+                log.warn("Jira integration for tenantId={} returned a redirect — redirects are not followed, rejecting", tenantId);
+                return Optional.empty();
+            }
+
+            JsonNode json = objectMapper.readTree(response.getBody());
             String key = json.path("key").asText(null);
             if (key == null) {
                 log.warn("Jira issue creation for incidentId={} returned no key", incidentId);

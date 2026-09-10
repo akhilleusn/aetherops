@@ -29,10 +29,14 @@ public class TenantService {
 
     @Transactional
     public TenantResponse create(CreateTenantRequest request) {
+        // Phase 2 remediation, finding 7 (see STEP_REPORT.md): plan and aiMonthlyBudgetCents
+        // are no longer client-settable -- every new tenant starts on FREE with a zero AI
+        // budget; upgrades happen exclusively through SubscriptionService's Stripe checkout
+        // flow (webhook-driven, on confirmed payment), never through this endpoint.
         Tenant tenant = Tenant.builder()
                 .name(request.getName())
-                .plan(request.getPlan())
-                .aiMonthlyBudgetCents(request.getAiMonthlyBudgetCents())
+                .plan(Plan.FREE)
+                .aiMonthlyBudgetCents(0)
                 .retentionDays(request.getRetentionDays())
                 .build();
         Tenant saved = tenantRepository.save(tenant);

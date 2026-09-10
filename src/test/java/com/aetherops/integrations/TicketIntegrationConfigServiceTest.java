@@ -6,6 +6,7 @@ import com.aetherops.integrations.model.TenantTicketIntegration;
 import com.aetherops.integrations.model.TicketIntegrationResponse;
 import com.aetherops.integrations.model.TicketProvider;
 import com.aetherops.integrations.repository.TenantTicketIntegrationRepository;
+import com.aetherops.common.exception.SsrfBlockedException;
 import com.aetherops.integrations.service.TicketIntegrationConfigService;
 import com.aetherops.integrations.service.TicketIntegrationTokenEncryptor;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class TicketIntegrationConfigServiceTest {
 
     private final UUID tenantId = UUID.randomUUID();
 
+    // 8.8.8.8 (Google public DNS) is used as a stable, always-public IP literal rather than a
+    // hostname like "atlassian.net" specifically so these tests never depend on real DNS
+    // resolution -- SsrfGuard.validate() now genuinely resolves whatever host is given it.
     @Test
     void configure_newIntegration_encryptsTokenAndNeverReturnsIt() {
         when(repository.findByTenantIdAndProvider(tenantId, TicketProvider.JIRA)).thenReturn(Optional.empty());
@@ -42,11 +46,11 @@ class TicketIntegrationConfigServiceTest {
         when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
-            TicketProvider.JIRA, "https://acme.atlassian.net", "OPS", "bot@acme.com", "plain-token");
+            TicketProvider.JIRA, "https://8.8.8.8", "OPS", "bot@acme.com", "plain-token");
 
         TicketIntegrationResponse response = configService.configure(tenantId, request);
 
-        assertThat(response.getBaseUrl()).isEqualTo("https://acme.atlassian.net");
+        assertThat(response.getBaseUrl()).isEqualTo("https://8.8.8.8");
         assertThat(response.isEnabled()).isTrue();
         // TicketIntegrationResponse has no token field at all — the type itself guarantees non-leakage,
         // but assert the persisted entity used the encrypted value, not the plaintext.
@@ -59,20 +63,66 @@ class TicketIntegrationConfigServiceTest {
     void configure_existingIntegration_updatesInPlace() {
         TenantTicketIntegration existing = TenantTicketIntegration.builder()
             .id(UUID.randomUUID()).tenantId(tenantId).provider(TicketProvider.JIRA)
-            .baseUrl("https://old.atlassian.net").enabled(true).build();
+            .baseUrl("https://8.8.8.8").enabled(true).build();
         when(repository.findByTenantIdAndProvider(tenantId, TicketProvider.JIRA)).thenReturn(Optional.of(existing));
         when(encryptor.encrypt(any())).thenReturn("encrypted-token");
         when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
-            TicketProvider.JIRA, "https://new.atlassian.net", "OPS", "bot@acme.com", "new-token");
+            TicketProvider.JIRA, "https://1.1.1.1", "OPS", "bot@acme.com", "new-token");
 
         TicketIntegrationResponse response = configService.configure(tenantId, request);
 
-        assertThat(response.getBaseUrl()).isEqualTo("https://new.atlassian.net");
+        assertThat(response.getBaseUrl()).isEqualTo("https://1.1.1.1");
         ArgumentCaptor<TenantTicketIntegration> captor = ArgumentCaptor.forClass(TenantTicketIntegration.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getId()).isEqualTo(existing.getId());
+    }
+
+    // --- SSRF guard (Phase 2 remediation, finding 4 — see STEP_REPORT.md) ---
+
+    @Test
+    void configure_privateRangeBaseUrl_rejectedWithoutSaving() {
+        ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
+            TicketProvider.JIRA, "https://10.0.0.5", "OPS", "bot@acme.com", "plain-token");
+
+        assertThatThrownBy(() -> configService.configure(tenantId, request))
+            .isInstanceOf(SsrfBlockedException.class);
+        verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void configure_linkLocalMetadataBaseUrl_rejected() {
+        ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
+            TicketProvider.JIRA, "https://169.254.169.254", "OPS", "bot@acme.com", "plain-token");
+
+        assertThatThrownBy(() -> configService.configure(tenantId, request))
+            .isInstanceOf(SsrfBlockedException.class);
+        verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void configure_httpBaseUrl_rejected() {
+        ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
+            TicketProvider.JIRA, "http://8.8.8.8", "OPS", "bot@acme.com", "plain-token");
+
+        assertThatThrownBy(() -> configService.configure(tenantId, request))
+            .isInstanceOf(SsrfBlockedException.class);
+        verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void configure_validPublicHttpsBaseUrl_accepted() {
+        when(repository.findByTenantIdAndProvider(tenantId, TicketProvider.SERVICENOW)).thenReturn(Optional.empty());
+        when(encryptor.encrypt(any())).thenReturn("encrypted-token");
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ConfigureTicketIntegrationRequest request = new ConfigureTicketIntegrationRequest(
+            TicketProvider.SERVICENOW, "https://8.8.8.8", null, "bot", "plain-token");
+
+        TicketIntegrationResponse response = configService.configure(tenantId, request);
+
+        assertThat(response.getBaseUrl()).isEqualTo("https://8.8.8.8");
     }
 
     @Test

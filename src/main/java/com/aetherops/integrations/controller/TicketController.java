@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -25,6 +26,7 @@ public class TicketController {
     private final ServiceNowTicketService serviceNowTicketService;
 
     @PostMapping("/jira")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','MEMBER')")
     @Operation(summary = "Create a Jira issue for this incident")
     public ApiResponse<Map<String, String>> createJiraTicket(
         @PathVariable UUID tenantId, @PathVariable UUID incidentId,
@@ -37,6 +39,7 @@ public class TicketController {
     }
 
     @PostMapping("/servicenow")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN','MEMBER')")
     @Operation(summary = "Create a ServiceNow incident ticket for this incident")
     public ApiResponse<Map<String, String>> createServiceNowTicket(
         @PathVariable UUID tenantId, @PathVariable UUID incidentId,

@@ -10,6 +10,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
@@ -61,7 +63,30 @@ public class SlackApiClient {
                 channelId);
     }
 
+    /**
+     * Phase 2 remediation, finding 11 (see STEP_REPORT.md): {@code SlackSignatureFilter}
+     * already verifies this payload came from Slack before this method is ever called, so
+     * {@code responseUrl} should always genuinely be Slack's own. This check is defense in
+     * depth, not the primary control — the same reasoning {@link
+     * com.aetherops.integrations.webhook.AwsSnsHostValidator} exists for SNS: a second,
+     * independent check means a future weakening of the signature check doesn't turn this
+     * into an open SSRF sink with nothing else standing in the way.
+     */
+    private static boolean isHooksSlackComUrl(String url) {
+        try {
+            URI uri = URI.create(url);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                && "hooks.slack.com".equalsIgnoreCase(uri.getHost() != null ? uri.getHost().toLowerCase(Locale.ROOT) : null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public void respondToInteraction(String responseUrl, String text) {
+        if (!isHooksSlackComUrl(responseUrl)) {
+            log.warn("Refusing to post Slack interaction response — response_url is not a genuine hooks.slack.com URL");
+            return;
+        }
         try {
             restClientBuilder.build().post()
                     .uri(responseUrl)

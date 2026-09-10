@@ -51,7 +51,7 @@ class TenantOnboardingServiceTest {
         when(tenantProvisioningService.registerIntoTenant(any(), any(), any(), any())).thenReturn(authResponse);
 
         TenantOnboardingService.OnboardingResult result =
-                onboardingService.onboard("Test Corp", Plan.STARTER, "admin@test.com", "password123");
+                onboardingService.onboard("Test Corp", "admin@test.com", "password123");
 
         assertThat(result.tenantId()).isEqualTo(tenantId);
         assertThat(result.adminUserId()).isEqualTo(userId);
@@ -70,7 +70,7 @@ class TenantOnboardingServiceTest {
         when(tenantService.create(any())).thenReturn(tenantResponse);
         when(tenantProvisioningService.registerIntoTenant(any(), any(), any(), any())).thenReturn(authResponse);
 
-        onboardingService.onboard("Corp", Plan.STARTER, "a@b.com", "pass");
+        onboardingService.onboard("Corp", "a@b.com", "pass");
 
         var order = inOrder(tenantService, tenantProvisioningService);
         order.verify(tenantService).create(any());
