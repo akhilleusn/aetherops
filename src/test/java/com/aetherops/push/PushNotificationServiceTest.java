@@ -96,8 +96,9 @@ class PushNotificationServiceTest {
     void sendPageAlert_noRegisteredDevices_doesNotCallExpo() {
         when(tokenRepository.findByTenantId(tenantId)).thenReturn(List.of());
 
-        service.sendPageAlert(tenantId, "title", "body");
+        boolean result = service.sendPageAlert(tenantId, "title", "body");
 
+        assertThat(result).isFalse();
         verifyNoInteractions(mockRestClient);
     }
 
@@ -108,8 +109,9 @@ class PushNotificationServiceTest {
         when(tokenRepository.findByTenantId(tenantId)).thenReturn(List.of(t1, t2));
         RestClient.RequestBodyUriSpec bodySpec = stubPostChain();
 
-        service.sendPageAlert(tenantId, "🚨 CRITICAL incident on db-svc", "DB down");
+        boolean result = service.sendPageAlert(tenantId, "🚨 CRITICAL incident on db-svc", "DB down");
 
+        assertThat(result).isTrue();
         ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
         verify(bodySpec).body(captor.capture());
         assertThat(captor.getValue()).hasSize(2);
@@ -117,14 +119,19 @@ class PushNotificationServiceTest {
         assertThat(captor.getValue().get(0)).containsEntry("body", "DB down");
     }
 
+    // Step G1 (see STEP_REPORT.md): sendPageAlert used to be void and swallow this exception
+    // with no signal to the caller at all -- same shape of problem as the Twilio bug this batch
+    // fixes. Now returns false so a caller (e.g. EscalationService's SMS->push->Slack fallback)
+    // can tell push didn't deliver either.
     @Test
-    void sendPageAlert_expoUnreachable_doesNotThrow() {
+    void sendPageAlert_expoUnreachable_returnsFalseNotThrow() {
         when(tokenRepository.findByTenantId(tenantId)).thenReturn(
             List.of(PushDeviceToken.builder().expoPushToken("token-1").build()));
         when(mockRestClient.post()).thenThrow(new RuntimeException("network error"));
 
-        service.sendPageAlert(tenantId, "title", "body");
-        // no exception propagated — best-effort semantics
+        boolean result = service.sendPageAlert(tenantId, "title", "body");
+
+        assertThat(result).isFalse();
     }
 
     @Test

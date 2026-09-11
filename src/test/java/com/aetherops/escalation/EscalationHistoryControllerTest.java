@@ -54,6 +54,30 @@ class EscalationHistoryControllerTest {
         assertThat(response.getData().get(1).getEscalationLevel()).isEqualTo(2);
     }
 
+    // Step G1 (see STEP_REPORT.md): per-channel delivery status must actually reach the API,
+    // not just sit in the database -- otherwise "SMS failed, push delivered" is still invisible
+    // to whoever is looking at this history at 3am.
+    @Test
+    void history_includesPerChannelDeliveryStatus() {
+        EscalationExecution execution = EscalationExecution.builder()
+            .id(UUID.randomUUID()).tenantId(tenantId).incidentId(incidentId).escalationLevel(1)
+            .escalatedAt(Instant.now())
+            .smsStatus(EscalationExecution.ChannelStatus.FAILED).smsDetail("PROVIDER_ERROR: boom")
+            .pushStatus(EscalationExecution.ChannelStatus.ACCEPTED)
+            .slackStatus(EscalationExecution.ChannelStatus.NOT_ATTEMPTED)
+            .build();
+        when(executionRepository.findByTenantIdAndIncidentIdOrderByEscalationLevelAsc(tenantId, incidentId))
+            .thenReturn(List.of(execution));
+
+        ApiResponse<List<EscalationExecutionResponse>> response = controller.history(tenantId, incidentId);
+
+        EscalationExecutionResponse mapped = response.getData().get(0);
+        assertThat(mapped.getSmsStatus()).isEqualTo(EscalationExecution.ChannelStatus.FAILED);
+        assertThat(mapped.getSmsDetail()).isEqualTo("PROVIDER_ERROR: boom");
+        assertThat(mapped.getPushStatus()).isEqualTo(EscalationExecution.ChannelStatus.ACCEPTED);
+        assertThat(mapped.getSlackStatus()).isEqualTo(EscalationExecution.ChannelStatus.NOT_ATTEMPTED);
+    }
+
     @Test
     void history_noExecutions_returnsEmptyList() {
         when(executionRepository.findByTenantIdAndIncidentIdOrderByEscalationLevelAsc(tenantId, incidentId))

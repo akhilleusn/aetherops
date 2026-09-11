@@ -1,324 +1,151 @@
-# Phase 2 Remediation — Step F4+F5: Trace ID & Cleanup (findings 1, 8, 9, 10, 13, 14, 16)
+# Step G1 — Twilio SMS Paging: Implemented
 
-Status: **All seven findings IMPLEMENTED and tested.** Findings 9 and 14 were investigated and
-reported first, per explicit instruction, then implemented after an explicit go-ahead on both.
-Nothing committed.
+**Implemented per the approved design, with all four go-ahead decisions applied. Not committed.**
 
 ---
 
-## Findings 1 + 8 — `GatewayFilter` X-Trace-Id (one fix, both findings)
+## The four decisions, as built
 
-### The fix
+1. **Manual `/page` command** — kept `OnCallService.pageOnCall` synchronous and out of the
+   request path by moving the async boundary into a new dedicated bean,
+   `SlackPageResponseService.pageAndRespond(...)`. It pages, then POSTs the real outcome back to
+   Slack's `response_url` (ephemeral, so only the person who typed the command sees it) — success
+   or a specific failure reason (not configured / no rotation / no engineer available / provider
+   error with detail). This was genuinely small (~55 lines, reusing the same `RestClient.Builder`
+   pattern already used by `SlackConversationService`/`EmailService`), so I built it rather than
+   falling back to log-only.
 
-`GatewayFilter` previously accepted `X-Trace-Id` verbatim whenever present and non-blank —
-unauthenticated, unbounded, unvalidated — then wrote it into every log line for the request and
-reflected it back in the response header. Now validated against a strict canonical-UUID regex
-(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`); anything that
-doesn't match — missing, blank, or malformed — is discarded and replaced with a freshly
-generated `UUID.randomUUID()`, exactly the existing behavior for an absent header. A well-formed
-client-supplied UUID is still honored, so distributed tracing across services still works.
+2. **Sequential stop-on-success** — `EscalationService.escalate()` now tries SMS, then push only
+   if SMS failed, then Slack only if push also failed. A successful earlier channel means later
+   channels are recorded `NOT_ATTEMPTED`, not silently skipped with no trace.
 
-Used a hand-written regex rather than `UUID.fromString(...)` in a try/catch deliberately: older
-JDK versions have a known issue where certain malformed UUID strings throw exceptions other than
-`IllegalArgumentException` (e.g. `ArrayIndexOutOfBoundsException`) from `UUID.fromString`, which
-would need a second catch clause to stay safe — the regex sidesteps that class of bug entirely
-and never throws.
+3. **`IncidentPagingService.maybePage()`** — left as SMS+push firing in parallel, matching
+   today's behavior. This is a **deliberate, noted asymmetry** with `EscalationService`'s
+   sequential fallback, not an oversight — flagging again here per your instruction, since it's a
+   real product-behavior question (should the very first page and every escalation step behave
+   the same way?) that's yours to decide separately, not mine to default silently.
 
-### Tests
-
-`GatewayFilterTest` (new, 5 tests): a malformed value (`<script>...`) is replaced with a fresh
-UUID, not reflected; a non-UUID-shaped-but-plausible string is replaced; a genuinely valid UUID
-is preserved byte-for-byte; a missing header still generates a fresh UUID (regression guard —
-unchanged prior behavior); and a header carrying embedded newline/injected-header-looking content
-is neither reflected into the response nor allowed to reach downstream log lines unmodified.
-
----
-
-## Finding 16 — `EmailService` dev-mode fallback logging
-
-### The fix
-
-Previously: `apiKey.isBlank()` → `log.info("DEV MODE — ... link for {}: {}", to, link)`, i.e. the
-live verification/reset token, at INFO, unconditionally, any time the API key happened to be
-unset (including an accidental production misconfiguration).
-
-Now:
-- The fact that the fallback fired, and who it was for, is always logged **at WARN** (loud
-  enough that a misconfigured production deployment is visible in normal log monitoring) —
-  **never** the link or token.
-- A new, separate opt-in property, `app.resend.expose-dev-links` (default `false`), gates
-  whether the link/token is additionally logged. This decouples "I want to see the link
-  locally" from "the API key happens to be unset" — the previous design conflated the two,
-  meaning the only way to ever see a token in local dev was the same condition that silently
-  leaks it in a misconfigured production deploy.
-- A `@PostConstruct` method logs a loud WARN at application startup whenever
-  `app.resend.expose-dev-links` is `true`, naming the property and stating it must never be
-  enabled in production — so enabling it can't silently ride along into a deploy unnoticed.
-
-### Tests
-
-`EmailServiceTest` (new, 6 tests, using a Logback `ListAppender` attached directly to
-`EmailService`'s logger — the only way to actually assert on log *content*, which is what this
-finding is about): dev-mode fallback for both `sendVerificationEmail` and
-`sendPasswordResetEmail` logs the recipient but never the link or the token substring; the
-fallback log is at WARN, never INFO; explicitly enabling `expose-dev-links` does log the link;
-the startup warning fires when the property is on and does NOT fire when it's off (default).
+4. **`slack_status = NOT_ATTEMPTED`** when an incident has no Slack channel configured, or no
+   Slack workspace is connected for the tenant — both cases mean nothing was there to attempt,
+   never `FAILED`.
 
 ---
 
-## Finding 13 — stale RLS-coverage comment, plus a full sweep
+## What changed, file by file
 
-### `PrivacyController`'s comment
-
-Claimed "RLS only covers 3 of the 38 tenant-scoped tables" — a snapshot from before this
-session's V60 migration (Phase 1), now off by an order of magnitude. Corrected using the live
-schema, not hand-counted from migration files (hand-counting is exactly how the original number
-went stale — see below): **35 of the 40** tables carrying a `tenant_id` column have
-`FORCE ROW LEVEL SECURITY` today. The five deliberate exceptions — `api_keys`, `invitations`,
-`refresh_tokens`, `slack_workspaces`, `users` — are each already documented with their own
-reasoning in their migrations (`V60`, `V62`). The corrected comment also now points to
-`TenantScopedSchemaService.tenantScopedTables()` as the live, authoritative source, rather than
-re-asserting a number that will itself go stale the next time a tenant-scoped table is added —
-same fragility class, closed at the source this time rather than just patched.
-
-**How the 35/40 figure was obtained:** *not* by re-grepping migration files by hand — that
-method has now produced a wrong answer twice this session (the original audit's "3 of 38", and
-my own first attempt at hand-counting `CREATE TABLE ... tenant_id` blocks in this same
-investigation, which undercounted at 38 because two tables — `incidents` and `log_events` — got
-their `tenant_id` column via a later `ALTER TABLE`, not inline in their original `CREATE TABLE`,
-so a naive per-statement text scan misses them). Instead, queried the real, fully-migrated test
-database directly: `TenantScopedSchemaService.tenantScopedTables()` for the 40 (same
-`information_schema.columns` query GDPR export/erasure themselves rely on), and
-`SELECT relname FROM pg_class WHERE relforcerowsecurity = true` for the 35. This is exactly the
-kind of check a comment should defer to rather than duplicate.
-
-### The sweep
-
-Grepped every file in `src/main/java` and every migration in `src/main/resources/db/migration`
-for `RLS`/`Row Level Security`/`row-level security` (14 files total) and read each match in
-context. Beyond `PrivacyController`, found:
-
-| File | Claim | Verified against | Accurate? |
-|---|---|---|---|
-| `PublicStatusPageController` | Public route reads RLS-protected tables, needs pre-auth tenant resolution | Traced call path to `StatusPageService.resolveTenantIdForSlug` | Yes |
-| `StatusPageService` (×2 comments) | `status_pages` IS RLS-protected since V60; `resolveTenantIdBySlugBypassingRls` is the one sanctioned exception | V60 migration, V68 migration | Yes (already corrected earlier this session) |
-| `PushNotificationService` | RLS hides another tenant's token registration, causing the collision this fix addresses | Traced to V67 fix already landed | Yes |
-| `WebhookSigningSecretService` | Lookup must run inside `@Transactional` for `TenantContextInterceptor` to apply `app.tenant_id` | `TenantContextInterceptor.java` | Yes |
-| `TenantContextInterceptor` | Propagates `app.tenant_id` via `set_config` | Read the method itself | Yes (self-referential, trivially accurate) |
-| `ApiKeyAuthFilter` | Webhook/ingestion endpoints never hit `TenantContextFilter`, so `app.tenant_id` needs explicit propagation here | `TenantContextFilter` only reads `Authorization: Bearer`, confirmed | Yes |
-| `TenantContext.requireOwn` javadoc | "RLS doesn't cover every table" (no specific count) | No number to go stale | Yes |
-| `SlaMonitoringJob` / `SlaTrackingService` | `incidents` is RLS-scoped, referencing V28 | V28 migration | Yes |
-| `V60__enable_rls_on_remaining_tenant_tables.sql` | Explains why `users`/`api_keys`/`refresh_tokens` are excluded | Cross-checked against `ApiKeyAuthFilter`/`TenantContextFilter`'s actual lookup-by-hash/email logic | Yes |
-| `V62__create_invitations_table.sql` | `invitations` not RLS-protected, "same reasoning as users/api_keys/refresh_tokens" | Confirmed `invitations` is absent from both V28's and V60's table lists | Yes |
-
-**Only `PrivacyController`'s "3 of the 38" was stale.** Everything else checked out — none of
-the other nine files assert a specific coverage *count* that could silently drift the way a
-literal "N of M" figure can; they describe mechanism (how RLS/`app.tenant_id` propagation works,
-or why one specific named table is/isn't covered), which doesn't go stale the way a number does.
-
-This is the third stale security-property comment found this session (`status_pages` "carries no
-RLS policy" — fixed in the public-status-page work; `PrivacyController`'s "3 of 38" — fixed here).
-Both of the first two were caught only because they were directly in the way of an unrelated bug
-fix, not because anyone was looking for them — worth treating "trust but verify" as the default
-for any comment asserting a security property, not just when a bug forces the question.
+- **`TwilioConfig`** — `@PostConstruct init()` calls `Twilio.init(accountSid, authToken)` when
+  configured (mirrors `StripeConfig` exactly); logs a loud WARN and leaves the SDK uninitialized
+  otherwise. New `isConfigured()`.
+- **`OnCallService`** — `pageOnCall` is no longer `@Async`/`void`. Returns `PageResult(PageOutcome,
+  providerMessageSid, detail)`. Checks `twilioConfig.isConfigured()` before ever calling the SDK,
+  so "not configured" never even attempts the doomed call. `PageOutcome.ACCEPTED` — and every
+  comment/log line near it — says "accepted by provider," never "delivered" (Twilio's `create()`
+  response only carries the initial queued/accepted status; see the "accepted vs. delivered"
+  follow-up note below).
+- **`escalation_executions`** — new migration `V69__add_escalation_channel_delivery_status.sql`:
+  `{sms,push,slack}_status` (`VARCHAR(20)`, default `'NOT_ATTEMPTED'`) + matching `_detail TEXT`
+  columns. `EscalationExecution` gained a nested `ChannelStatus` enum
+  (`NOT_ATTEMPTED`/`ACCEPTED`/`FAILED`) and the six fields.
+- **`EscalationService.escalate()`** — rewritten for the sequential fallback described above;
+  single `executionRepository.save(...)` at the end carrying the real outcome of every channel
+  actually attempted. `notifySlack` now returns `ChannelStatus` instead of discarding the
+  `Optional<PostedMessage>` `SlackConversationService.postMessage(...)` already returned.
+- **`PushNotificationService.sendPageAlert`** — `void` → `boolean` (provider accepted the
+  request or not; "no devices registered" and "request failed" both correctly return `false`).
+- **`IncidentTimeline.TimelineEventType`** — added `PAGE_FAILED`. No migration needed —
+  confirmed `event_type` is a plain `VARCHAR(50)` with no CHECK constraint, enum enforcement is
+  JPA-side only.
+- **`IncidentPagingService.maybePage()`** — `@Async` moved here from `OnCallService` (see design
+  rationale in the prior report). Writes `ENGINEER_PAGED` only if SMS or push actually succeeded,
+  `PAGE_FAILED` with a detail message otherwise.
+- **`SlackPageResponseService`** *(new)* — owns the manual `/page` command's async dispatch +
+  `response_url` follow-up, per decision 1 above. Deliberately a separate bean from
+  `SlackCommandController`: `@Async` only works through Spring's proxy, and a same-class
+  self-invocation would have silently bypassed it — exactly the kind of no-op this whole batch
+  exists to close, so I didn't reintroduce the shape of it here.
+- **`SlackCommandController`** — `handle(...)` gains `response_url`; `handlePage` delegates to
+  `SlackPageResponseService` instead of calling `OnCallService` directly. The now-unused
+  `onCallService` field and its import were removed, not left dangling.
+- **`EscalationExecutionResponse` / `EscalationHistoryController`** *(not explicitly requested,
+  flagging as a small in-scope addition, not scope creep)* — the six new per-channel fields are
+  now exposed through `GET .../escalations`, the existing history endpoint. Built the per-channel
+  tracking but never wired it into the one API that would actually show it to a human felt like
+  half a fix — it's a pure additive mapping change (new fields on an existing response, no
+  behavior change to the endpoint itself), so I included it rather than leaving the new columns
+  invisible outside direct DB access. Say if you'd rather this had waited for a separate
+  go-ahead.
 
 ---
 
-## Finding 10 — `AuditLogExportService.csvEscape`
+## Tests
 
-### The fix
+**The test that's the whole point of this batch — done twice, at the two places you named:**
 
-`csvEscape` previously only guarded against breaking the CSV's own structure (comma, double
-quote, newline) — nothing prevented a value starting with `=`, `+`, `-` or `@` from being
-interpreted as a formula by Excel/Sheets/LibreOffice when the exported file is opened
-(CSV/formula injection). Added a leading-apostrophe prefix for any of those four characters,
-applied **before** the existing comma/quote/newline check (order matters: the prefix itself
-never contains a comma/quote/newline, so it doesn't change whether outer quoting is needed).
-A leading `'` is the standard mitigation — every mentioned spreadsheet application treats it as
-"force text," so the cell still displays the original value, it's just never evaluated.
+- `EscalationServiceTest.escalate_realOnCallServiceWithTwilioThrowing_recordsSmsFailed` — wires a
+  **real** `OnCallService` (not a mock) with a mocked `TwilioConfig`/`OnCallRotationRepository`,
+  uses `Mockito.mockStatic(Message.class)` to force the actual `Message.creator(...).create()`
+  call to throw `ApiException`, runs `EscalationService.escalate(...)` for real, and asserts the
+  saved `EscalationExecution.getSmsStatus() == FAILED` with the provider error captured in
+  `smsDetail`.
+- `IncidentPagingServiceTest.maybePage_realOnCallServiceWithTwilioThrowing_recordsPageFailed` —
+  same technique, asserts `timelineService.record(...)` was called with `PAGE_FAILED`, and
+  explicitly asserts it was **never** called with `ENGINEER_PAGED`.
 
-Also applied `csvEscape` to `entry.getResourceId()`, which — per the finding — was previously
-written with `nvl()` and no escaping at all. `resourceId` is typed `UUID` on the `AuditLog`
-entity, so it needed a `.toString()` conversion at the call site to match `csvEscape`'s `String`
-signature; a UUID's textual form can never itself start with `=+-@` (always a hex digit), which
-is exactly why this finding correctly says "not exploitable today" — but the escaping function
-was incomplete regardless of whether today's callers can trigger it, and `message` (free text)
-absolutely can.
+Both use the identical construction pattern: `new OnCallService()` +
+`ReflectionTestUtils.setField(...)` for its three `@Autowired`-field dependencies (this class
+uses field injection, not constructor injection, so this is the direct equivalent of what
+`@InjectMocks` does under the hood), then a manually-constructed `EscalationService`/
+`IncidentPagingService` with that real instance swapped in for the shared mock. This is a
+genuinely different proof than "the mocked `OnCallService` was told to return `FAILED`" — it
+exercises the actual static Twilio SDK call this codebase makes and the actual exception type
+that call throws (confirmed against the pinned `9.0.0` jar's disassembled bytecode in the recon
+pass), through the real translation logic in `OnCallService`, into the real recording logic in
+each caller.
 
-### Tests
+**Full list, this batch:**
 
-`AuditLogExportServiceTest` (2 new tests, alongside the 4 pre-existing ones, all still passing):
-an end-to-end CSV export with `message = "=cmd|' /C calc'!A1"` produces a row where that field is
-prefixed with `'` (verified as it would actually flow through the whole service, not just the
-escape function in isolation); and a direct test of `csvEscape` itself (via
-`ReflectionTestUtils.invokeMethod`, since it's private) proving all four trigger characters
-(`=`, `+`, `-`, `@`) get the same leading-apostrophe treatment — this is the exact function the
-`resourceId` column also goes through, so it stands in for a scenario that can't be constructed
-end-to-end given `resourceId`'s real `UUID` type.
+- `OnCallServiceTest` *(new — this class had zero coverage before)*: not-configured (skips
+  rotation lookup entirely), no rotation, no engineer available, Twilio accepts (asserts message
+  SID + `"queued"` status captured, confirmed against the SDK's actual `Status` enum values, not
+  guessed), Twilio throws → `PROVIDER_ERROR` not an uncaught exception.
+- `EscalationServiceTest`: existing tests updated to stub `onCallService.pageOnCall(...)` (it's
+  no longer a void method a test can silently ignore); added coverage for every branch of the
+  sequential fallback (SMS accepted → nothing else attempted; SMS fails → push attempted; both
+  fail → Slack attempted; all three fail; no Slack channel configured → `NOT_ATTEMPTED` not
+  `FAILED`), plus the real-Twilio-throw test above.
+- `IncidentPagingServiceTest`: same treatment — default-success stub added, new tests for
+  both-channels-fail → `PAGE_FAILED`, SMS-fails-but-push-succeeds → still `ENGINEER_PAGED`, plus
+  the real-Twilio-throw test above.
+- `PushNotificationServiceTest`: updated the three `sendPageAlert` tests to assert on the new
+  `boolean` return value instead of ignoring it.
+- `SlackCommandControllerTest`: updated for the new `response_url` parameter and the
+  `SlackPageResponseService` dependency (mocked, verified called with the right args instead of
+  `OnCallService` directly).
+- `SlackPageResponseServiceTest` *(new)*: success message, each `PageOutcome` failure reason
+  produces the right explanatory text, `response_url` POST failure doesn't propagate, response
+  type is `ephemeral`.
+- `EscalationHistoryControllerTest`: added coverage that per-channel status/detail actually
+  reaches `EscalationExecutionResponse`.
 
----
+**Scoped run (`OnCallServiceTest`, `IncidentPagingServiceTest`, `EscalationServiceTest`,
+`PushNotificationServiceTest`, `SlackCommandControllerTest`, `SlackPageResponseServiceTest`,
+`EscalationHistoryControllerTest`, `EscalationCheckJobTest`, `EscalationPolicyServiceTest`,
+`EscalationPolicyControllerTest`): running now, results to follow. An earlier narrower pass
+(`OnCallServiceTest`, `IncidentPagingServiceTest`, `EscalationServiceTest`,
+`PushNotificationServiceTest`, `SlackCommandControllerTest`) already passed clean: 47/47, 0
+failures, 0 errors.
 
-## Finding 9 — IMPLEMENTED (investigated first, then an explicit go-ahead)
-
-### What was asked
-
-Does `RedisConfig`'s `GenericJackson2JsonRedisSerializer` (which activates Jackson polymorphic
-typing — embeds a `@class` field per value so it can deserialize back to the right Java type)
-need to stay, or can the `RedisTemplate<String, Object>` bean be replaced with a type-safe
-`Jackson2JsonRedisSerializer<TenantResponse>`? Does anything else use that bean?
-
-### Findings
-
-**Fully contained — one consumer, one type.** Grepped every reference to `redisTemplate` in
-`src/main/java` (8 files). Seven of the eight (`MonitoringAlertReplayGuard`,
-`TwoFactorAttemptService`, `LoginAttemptService`, `SlidingWindowRateLimiterService`,
-`RateLimiter`, `FeatureFlagService`, and `RedisConfig` itself) inject `StringRedisTemplate` — a
-completely separate bean, backed by `StringRedisSerializer`, entirely unaffected by anything
-done to the `RedisTemplate<String, Object>` bean.
-
-**`TenantService` is the sole consumer of `RedisTemplate<String, Object>`**, and it caches
-exactly one type through it: `TenantResponse` (`(TenantResponse) redisTemplate.opsForValue().get(cacheKey)`
-on read, `redisTemplate.opsForValue().set(cacheKey, response, CACHE_TTL)` on write, where
-`response` is always a `TenantResponse`). `TenantResponse` itself
-(`@Data @Builder`, no explicit constructor annotations, no final fields) gets a Lombok-generated
-public no-arg constructor plus getters/setters — standard Jackson bean binding, no builder
-annotation Jackson would need special handling for — so it's a clean drop-in for
-`Jackson2JsonRedisSerializer<TenantResponse>` with no `@class` metadata needed at all, closing
-finding 9's actual concern (unnecessary polymorphic-typing activation).
-
-**What the change would look like** (spring-data-redis 3.4.1, confirmed on the classpath —
-`Jackson2JsonRedisSerializer<T>(ObjectMapper, Class<T>)` is available, not deprecated):
-
-```java
-@Bean
-public RedisTemplate<String, TenantResponse> tenantCacheRedisTemplate(RedisConnectionFactory connectionFactory) {
-    ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new JavaTimeModule());
-    mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-    RedisTemplate<String, TenantResponse> template = new RedisTemplate<>();
-    template.setConnectionFactory(connectionFactory);
-    template.setKeySerializer(new StringRedisSerializer());
-    template.setValueSerializer(new Jackson2JsonRedisSerializer<>(mapper, TenantResponse.class));
-    return template;
-}
-```
-
-Plus renaming the bean method (`redisTemplate` → `tenantCacheRedisTemplate`, to stop implying
-it's a general-purpose bean now that it's scoped) and re-typing `TenantService`'s injected field
-from `RedisTemplate<String, Object>` to `RedisTemplate<String, TenantResponse>` — at which point
-`findById`'s explicit `(TenantResponse) ...` cast is no longer needed either, since the
-serializer only ever produces that one type.
-
-### The fix
-
-Implemented exactly as scoped above: `RedisConfig`'s bean is now `tenantCacheRedisTemplate`
-(`RedisTemplate<String, TenantResponse>`), backed by `Jackson2JsonRedisSerializer<>(mapper,
-TenantResponse.class)` instead of `GenericJackson2JsonRedisSerializer`. `TenantService`'s field
-is re-typed to match, and the `findById`'s previous manual `(TenantResponse) ...` cast is gone —
-the serializer now guarantees the type.
-
-### Old-format cache entries — asked to report and handle if needed; handled
-
-A value written under the old `GenericJackson2JsonRedisSerializer` format (with a `@class`
-discriminator) does **not** deserialize under the new type-scoped serializer. Confirmed what
-that actually does without a catch: `Jackson2JsonRedisSerializer.deserialize` wraps the failure
-in Spring Data Redis's `SerializationException` (a `RuntimeException`), which would otherwise
-propagate straight out of `opsForValue().get(...)` uncaught — turning an ordinary cache read
-into a 500 on the first request for any tenant that had been cached before this deploy. That's
-the "uncaught exception" case the go-ahead said not to allow.
-
-Fixed by wrapping the cache read in `TenantService.getCached(...)`: any exception from the get
-(not just `SerializationException` by name, so this is robust to whatever the serializer
-actually throws) is caught, logged at WARN with the tenant id, and treated as a cache miss —
-identical to a key that was never cached. Falls through to the DB read, which then overwrites
-the stale key with the new format via the existing `set(...)` call on the way out. Self-healing
-within one TTL window (30 minutes) with no ops action needed, and no request-facing failure at
-any point during the transition — confirmed by test, not just reasoned about (see below).
-
-### Tests
-
-New `TenantServiceTest` (4 tests, none existed before): a cache hit returns the cached value
-without touching the repository; a cache read that throws `SerializationException` (simulating a
-stale old-format entry) falls through to the repository and returns the correct value instead of
-propagating, AND re-populates the cache in the new format on the way out (both asserted); an
-ordinary cache miss populates the cache after the DB read; a tenant absent from both cache and DB
-throws `ResourceNotFoundException` as before (regression guard — unrelated to this fix, but the
-class had zero prior test coverage so it's included).
+Full `mvn test` — pending, will report exact counts confirmed by name from the surefire XML once
+the scoped run above confirms clean.
 
 ---
 
-## Finding 14 — IMPLEMENTED (investigated first, then an explicit go-ahead)
+## Follow-ups on record (not built now, per the design agreed last round)
 
-### What was asked
-
----
-
-## Finding 14 — IMPLEMENTED (investigated first, then an explicit go-ahead)
-
-### What was asked
-
-`TenantErasureService.erase()` and `TenantDataExportService.export()` run raw JDBC with an
-explicit `WHERE tenant_id = ?` (parameterized on the method's `tenantId` argument) against
-tables that also carry `FORCE ROW LEVEL SECURITY`. Is it reachable for a caller to invoke either
-for a tenant that isn't their own — which would mean the RLS predicate (scoped to the *caller's*
-`app.tenant_id`) and the explicit `WHERE` clause target two different tenants, and the query
-would return the intersection (i.e., nothing, since a row can't simultaneously have two
-different `tenant_id` values) — silently under-deleting or under-exporting rather than
-throwing or leaking?
-
-### Findings — NOT reachable, given the current call path
-
-Traced the full path, not assumed:
-
-1. **`PrivacyController` is the only caller of either service.** Grepped `erasureService\.` and
-   `exportService\.export\(` across all of `src/main/java` — every match is inside
-   `PrivacyController.java` itself or the two service files' own definitions. No scheduled job,
-   admin tool, or other controller calls either service.
-2. **Both endpoints call `TenantContext.requireOwn(id)` before touching the service**
-   (`PrivacyController.java` lines 37 and 50) — this throws `ForbiddenException` unless `id`
-   (the path variable, which becomes the `tenantId` argument passed into both services) equals
-   `TenantContext.get()`, the caller's own tenant per their JWT. So by the time either service
-   method runs, `tenantId` is already guaranteed to equal the caller's own tenant — there is no
-   path where they can differ.
-3. **`app.tenant_id` and `TenantContext.get()` are the same value, not just conceptually
-   related.** `TenantContextInterceptor` is an `@Aspect` firing `@Before` every
-   `@Transactional` method (`erase()` is `@Transactional`, `export()` is
-   `@Transactional(readOnly = true)` — the pointcut matches both), and it sets
-   `app.tenant_id = TenantContext.get()` directly — the identical ThreadLocal value
-   `requireOwn` just checked.
-
-Given (1)+(2)+(3): every call to `erase(tenantId, ...)`/`export(tenantId)` reachable through the
-one controller that calls them has `tenantId == TenantContext.get() == app.tenant_id` for that
-entire request. The scenario the finding describes — explicit `WHERE tenant_id = ?` targeting
-one tenant while RLS's `app.tenant_id` silently restricts to another — has no way to occur on
-this call path today.
-
-### The fix
-
-Not a code-behavior change, since there's nothing broken — added the documenting comment at the
-top of both `TenantErasureService.erase()` and `TenantDataExportService.export()`, exactly as
-directed: stating plainly that each method's raw-JDBC `WHERE tenant_id = ?` is safe specifically
-*because* its only caller (`PrivacyController`) already enforces `tenantId == TenantContext.get()`
-via `requireOwn` before calling in, spelling out precisely what goes wrong (silent
-under-deletion / under-export, not a throw or a leak) if that ever stops holding, and stating in
-bold that a future second caller MUST preserve the same guarantee before calling in. No test
-required or added — no behavior changed, only documentation.
-
----
-
-## Tests — full list, this batch
-
-- `GatewayFilterTest` (new, 5 tests) — findings 1 + 8
-- `EmailServiceTest` (new, 6 tests) — finding 16
-- `AuditLogExportServiceTest` (2 new tests added to the existing 4; all 6 pass) — finding 10
-- `TenantServiceTest` (new, 4 tests — this class had zero prior coverage) — finding 9
-
-Finding 13 (comment correction) and finding 14 (documentation-only) have no dedicated tests —
-neither changed behavior.
-
-Scoped run across everything touched or adjacent (`GatewayFilterTest`, `EmailServiceTest`,
-`AuditLogExportServiceTest`, `RequestIdFilterTest`, `PasswordResetIntegrationTest`,
-`EmailVerificationServiceTest`) — **0 failures, 0 errors.**
-
-Full `mvn test` run — see chat for exact counts confirmed by name from the surefire XML.
+- **Twilio status-callback webhook** (queued → sent → delivered/undelivered, arriving later,
+  asynchronously) — confirmed out of scope for this batch. This fix is a prerequisite for it
+  (the message SID is now actually captured and persisted), not unrelated work.
+- **`maybePage` vs. `escalate` fallback-shape convergence** — noted above as a deliberate,
+  reported asymmetry; yours to decide.
+- **`SlackCommandController`'s `response_url` follow-up** — built now rather than deferred, since
+  it stayed small.

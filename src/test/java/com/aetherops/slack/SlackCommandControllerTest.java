@@ -2,7 +2,6 @@ package com.aetherops.slack;
 
 import com.aetherops.oncall.OnCallRotation;
 import com.aetherops.oncall.OnCallRotationRepository;
-import com.aetherops.oncall.OnCallService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,26 +12,26 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class SlackCommandControllerTest {
 
     private static final String TEAM_ID = "T12345";
+    private static final String RESPONSE_URL = "https://hooks.slack.com/commands/T12345/999/abc";
     private final UUID tenantId = UUID.randomUUID();
 
     private SlackWorkspaceRepository workspaceRepository;
     private OnCallRotationRepository rotationRepository;
-    private OnCallService onCallService;
+    private SlackPageResponseService pageResponseService;
     private SlackCommandController controller;
 
     @BeforeEach
     void setUp() {
         workspaceRepository = mock(SlackWorkspaceRepository.class);
         rotationRepository = mock(OnCallRotationRepository.class);
-        onCallService = mock(OnCallService.class);
-        controller = new SlackCommandController(workspaceRepository, rotationRepository, onCallService);
+        pageResponseService = mock(SlackPageResponseService.class);
+        controller = new SlackCommandController(workspaceRepository, rotationRepository, pageResponseService);
 
         SlackWorkspace workspace = SlackWorkspace.builder().tenantId(tenantId).teamId(TEAM_ID).build();
         when(workspaceRepository.findByTeamId(TEAM_ID)).thenReturn(Optional.of(workspace));
@@ -53,15 +52,15 @@ class SlackCommandControllerTest {
     void handle_unknownWorkspace_returnsNotConnectedMessage() {
         when(workspaceRepository.findByTeamId("T-UNKNOWN")).thenReturn(Optional.empty());
 
-        Map<String, String> response = controller.handle("T-UNKNOWN", "/oncall", "payment-svc");
+        Map<String, String> response = controller.handle("T-UNKNOWN", "/oncall", "payment-svc", RESPONSE_URL);
 
         assertThat(response.get("text")).contains("isn't connected");
-        verifyNoInteractions(rotationRepository, onCallService);
+        verifyNoInteractions(rotationRepository, pageResponseService);
     }
 
     @Test
     void handle_blankText_returnsUsageMessage() {
-        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "");
+        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "", RESPONSE_URL);
         assertThat(response.get("text")).contains("Usage:");
     }
 
@@ -70,7 +69,7 @@ class SlackCommandControllerTest {
         when(rotationRepository.findByTenantIdAndServiceId(tenantId, "payment-svc"))
             .thenReturn(rotationWithParticipant("+15551234567"));
 
-        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc");
+        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc", RESPONSE_URL);
 
         assertThat(response.get("text")).contains("4567");
         assertThat(response.get("text")).doesNotContain("+15551234567");
@@ -81,7 +80,7 @@ class SlackCommandControllerTest {
     void oncall_noRotationFound_returnsNotFoundMessage() {
         when(rotationRepository.findByTenantIdAndServiceId(tenantId, "payment-svc")).thenReturn(null);
 
-        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc");
+        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc", RESPONSE_URL);
 
         assertThat(response.get("text")).contains("No on-call rotation found");
     }
@@ -95,31 +94,32 @@ class SlackCommandControllerTest {
             .build();
         when(rotationRepository.findByTenantIdAndServiceId(tenantId, "payment-svc")).thenReturn(rotation);
 
-        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc");
+        Map<String, String> response = controller.handle(TEAM_ID, "/oncall", "payment-svc", RESPONSE_URL);
 
         assertThat(response.get("text")).contains("No on-call engineer currently scheduled");
     }
 
     @Test
-    void page_delegatesToOnCallServiceWithMessage() {
-        Map<String, String> response = controller.handle(TEAM_ID, "/page", "payment-svc database is on fire");
+    void page_delegatesToPageResponseServiceWithMessageAndResponseUrl() {
+        Map<String, String> response = controller.handle(TEAM_ID, "/page", "payment-svc database is on fire", RESPONSE_URL);
 
-        verify(onCallService).pageOnCall(eq(tenantId), eq("payment-svc"), eq("database is on fire"));
+        verify(pageResponseService).pageAndRespond(eq(tenantId), eq("payment-svc"),
+            eq("database is on fire"), eq(RESPONSE_URL));
         assertThat(response.get("text")).contains("Paging on-call engineer");
     }
 
     @Test
     void page_withNoMessage_usesDefaultMessage() {
-        controller.handle(TEAM_ID, "/page", "payment-svc");
+        controller.handle(TEAM_ID, "/page", "payment-svc", RESPONSE_URL);
 
-        verify(onCallService).pageOnCall(eq(tenantId), eq("payment-svc"), eq("Paged from Slack"));
+        verify(pageResponseService).pageAndRespond(eq(tenantId), eq("payment-svc"), eq("Paged from Slack"), eq(RESPONSE_URL));
     }
 
     @Test
     void unrecognizedCommand_returnsErrorMessage() {
-        Map<String, String> response = controller.handle(TEAM_ID, "/unknown", "payment-svc");
+        Map<String, String> response = controller.handle(TEAM_ID, "/unknown", "payment-svc", RESPONSE_URL);
 
         assertThat(response.get("text")).contains("Unrecognized command");
-        verifyNoInteractions(rotationRepository, onCallService);
+        verifyNoInteractions(rotationRepository, pageResponseService);
     }
 }

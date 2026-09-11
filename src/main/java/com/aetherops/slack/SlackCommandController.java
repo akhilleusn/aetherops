@@ -2,7 +2,6 @@ package com.aetherops.slack;
 
 import com.aetherops.oncall.OnCallRotation;
 import com.aetherops.oncall.OnCallRotationRepository;
-import com.aetherops.oncall.OnCallService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -20,13 +19,14 @@ public class SlackCommandController {
 
     private final SlackWorkspaceRepository workspaceRepository;
     private final OnCallRotationRepository rotationRepository;
-    private final OnCallService onCallService;
+    private final SlackPageResponseService pageResponseService;
 
     @PostMapping(value = "/slack/commands", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, String> handle(
             @RequestParam("team_id") String teamId,
             @RequestParam("command") String command,
-            @RequestParam(value = "text", required = false, defaultValue = "") String text) {
+            @RequestParam(value = "text", required = false, defaultValue = "") String text,
+            @RequestParam(value = "response_url", required = false) String responseUrl) {
 
         SlackWorkspace workspace = workspaceRepository.findByTeamId(teamId).orElse(null);
         if (workspace == null) {
@@ -41,7 +41,7 @@ public class SlackCommandController {
         UUID tenantId = workspace.getTenantId();
         return switch (command) {
             case "/oncall" -> handleOnCall(tenantId, serviceId);
-            case "/page" -> handlePage(tenantId, serviceId, text);
+            case "/page" -> handlePage(tenantId, serviceId, text, responseUrl);
             default -> ephemeral("Unrecognized command: " + command);
         };
     }
@@ -58,9 +58,9 @@ public class SlackCommandController {
         return ephemeral("On-call for `" + serviceId + "`: " + mask(phone));
     }
 
-    private Map<String, String> handlePage(UUID tenantId, String serviceId, String text) {
+    private Map<String, String> handlePage(UUID tenantId, String serviceId, String text, String responseUrl) {
         String message = text.trim().replaceFirst("^\\S+\\s*", "");
-        onCallService.pageOnCall(tenantId, serviceId, message.isBlank() ? "Paged from Slack" : message);
+        pageResponseService.pageAndRespond(tenantId, serviceId, message.isBlank() ? "Paged from Slack" : message, responseUrl);
         return ephemeral("Paging on-call engineer for `" + serviceId + "`...");
     }
 

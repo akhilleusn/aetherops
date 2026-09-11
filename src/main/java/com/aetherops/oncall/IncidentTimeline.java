@@ -48,6 +48,9 @@ public class IncidentTimeline {
         CREATED,
         SEVERITY_CHANGED,
         ENGINEER_PAGED,
+        /** Step G1 (see STEP_REPORT.md): every paging channel failed. ENGINEER_PAGED means the
+         *  provider actually accepted a send; this is what gets recorded instead when none did. */
+        PAGE_FAILED,
         RESOLVED
     }
 }

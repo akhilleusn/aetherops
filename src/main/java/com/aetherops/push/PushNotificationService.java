@@ -38,12 +38,19 @@ public class PushNotificationService {
         return saved;
     }
 
-    /** Best-effort — a failed/unreachable Expo push service must never block incident paging. */
+    /**
+     * Best-effort — a failed/unreachable Expo push service must never block incident paging.
+     * Returns whether the provider accepted the send (Step G1, see STEP_REPORT.md — this used
+     * to be {@code void}, so callers had no way to know push failed either, same shape of
+     * problem as the Twilio SMS bug this batch fixes, just lower stakes since it's explicitly
+     * best-effort). {@code false} covers both "no devices registered" and a failed/unreachable
+     * request — either way, nothing was delivered via push.
+     */
     @Transactional(readOnly = true)
-    public void sendPageAlert(UUID tenantId, String title, String body) {
+    public boolean sendPageAlert(UUID tenantId, String title, String body) {
         List<PushDeviceToken> tokens = tokenRepository.findByTenantId(tenantId);
         if (tokens.isEmpty()) {
-            return;
+            return false;
         }
 
         List<Map<String, Object>> messages = tokens.stream()
@@ -63,8 +70,10 @@ public class PushNotificationService {
                 .retrieve()
                 .toBodilessEntity();
             log.info("Sent push page alert tenantId={} deviceCount={}", tenantId, tokens.size());
+            return true;
         } catch (Exception e) {
             log.warn("Failed to send push page alert tenantId={}", tenantId, e);
+            return false;
         }
     }
 }

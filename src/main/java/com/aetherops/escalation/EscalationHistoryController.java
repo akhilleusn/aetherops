@@ -32,6 +32,12 @@ public class EscalationHistoryController {
                 .incidentId(e.getIncidentId())
                 .escalationLevel(e.getEscalationLevel())
                 .escalatedAt(e.getEscalatedAt())
+                .smsStatus(e.getSmsStatus())
+                .smsDetail(e.getSmsDetail())
+                .pushStatus(e.getPushStatus())
+                .pushDetail(e.getPushDetail())
+                .slackStatus(e.getSlackStatus())
+                .slackDetail(e.getSlackDetail())
                 .build())
             .toList();
         return ApiResponse.success(executions);
