@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -56,7 +57,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     void fatalLog_createsIncident_notifiesSlack() throws Exception {
         ingestLog(UUID.randomUUID(), "payment-svc", LogLevel.FATAL, "Out of memory");
 
-        verify(slackNotifier).notify(argThat(i ->
+        verify(slackNotifier, timeout(5000)).notify(argThat(i ->
             i.getSeverity() == IncidentSeverity.CRITICAL));
     }
 
@@ -74,7 +75,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
         ingestLog(tenantId, "order-svc", LogLevel.ERROR, "DB timeout");
         ingestLog(tenantId, "order-svc", LogLevel.ERROR, "DB timeout");
 
-        verify(slackNotifier, times(1)).notify(argThat(i ->
+        verify(slackNotifier, timeout(5000).times(1)).notify(argThat(i ->
             i.getSeverity() == IncidentSeverity.HIGH));
     }
 
@@ -85,7 +86,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
             ingestLog(tenantId, "auth-svc", LogLevel.ERROR, "Token expired");
         }
         // escalation to HIGH happens on the 3rd event; 4th keeps it at HIGH — only one notification
-        verify(slackNotifier, times(1)).notify(any());
+        verify(slackNotifier, timeout(5000).times(1)).notify(any());
     }
 
     // ── manual incident creation ──────────────────────────────────────────
@@ -94,7 +95,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     void manualCreate_criticalSeverity_notifiesSlack() throws Exception {
         createIncident(IncidentSeverity.CRITICAL);
 
-        verify(slackNotifier).notify(argThat(i ->
+        verify(slackNotifier, timeout(5000)).notify(argThat(i ->
             i.getSeverity() == IncidentSeverity.CRITICAL));
     }
 
@@ -102,7 +103,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
     void manualCreate_highSeverity_notifiesSlack() throws Exception {
         createIncident(IncidentSeverity.HIGH);
 
-        verify(slackNotifier).notify(argThat(i ->
+        verify(slackNotifier, timeout(5000)).notify(argThat(i ->
             i.getSeverity() == IncidentSeverity.HIGH));
     }
 
@@ -131,7 +132,7 @@ class SlackAlertIntegrationTest extends AbstractIntegrationTest {
                 .with(asTenant(tenantId)))
             .andExpect(status().isOk());
 
-        verify(slackNotifier).notify(argThat(i ->
+        verify(slackNotifier, timeout(5000)).notify(argThat(i ->
             i.getSeverity() == IncidentSeverity.HIGH));
     }
 
