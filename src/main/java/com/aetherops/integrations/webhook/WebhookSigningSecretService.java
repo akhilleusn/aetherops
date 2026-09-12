@@ -16,9 +16,18 @@ import java.util.UUID;
  * TenantContextInterceptor reliably applies {@code app.tenant_id} for this RLS-protected
  * table — see AbstractIntegrationTest's withTenant() javadoc for the same caveat.
  *
- * Reuses TicketIntegrationTokenEncryptor (AES/GCM, app.integrations.token-encryption-key)
- * rather than adding a new encryptor/env-var — this table lives in the same
- * com.aetherops.integrations domain that encryptor already exists to protect secrets for.
+ * Reuses TicketIntegrationTokenEncryptor (versioned AES/GCM,
+ * app.integrations.token-encryption) rather than adding a new encryptor/env-var — this table
+ * lives in the same com.aetherops.integrations domain that encryptor already exists to protect
+ * secrets for.
+ *
+ * <p><b>Trust-domain coupling this creates:</b> inbound webhook signing secrets (GitHub/
+ * PagerDuty/Grafana) and outbound Jira/ServiceNow API tokens are two independent trust domains
+ * sharing one key/version space purely as an implementation convenience. Rotating
+ * app.integrations.token-encryption rotates both simultaneously — there is no way to give
+ * webhook signing secrets their own key version numbering without giving them independent key
+ * material (i.e. splitting this into its own encryptor), which is a separate change, not part
+ * of Phase 3 finding 1. See STEP_REPORT.md.
  */
 @Service
 @RequiredArgsConstructor

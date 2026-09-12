@@ -11,12 +11,24 @@ app:
     requests-per-window: 10000
     window-seconds: 60
   totp:
-    encryption-key: aetherops-totp-encryption-key-01
+    encryption:
+      current: 1
+      keys:
+        1: aetherops-totp-encryption-key-01
   slack:
     signing-secret: aetherops-test-slack-signing-secret
-    token-encryption-key: aetherops-slack-token-enc-key-01
+    token-encryption:
+      current: 1
+      keys:
+        1: aetherops-slack-token-enc-key-01
   calendar:
-    token-encryption-key: aetherops-calendar-token-key-012
+    token-encryption:
+      current: 1
+      keys:
+        1: aetherops-calendar-token-key-012
     oauth-state-secret: aetherops-test-calendar-oauth-state-secret
   integrations:
-    token-encryption-key: aetherops-integr-token-enc-key01
+    token-encryption:
+      current: 1
+      keys:
+        1: aetherops-integr-token-enc-key01

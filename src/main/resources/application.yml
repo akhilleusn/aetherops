@@ -92,13 +92,18 @@ app:
     client-secret: ${SLACK_CLIENT_SECRET:}
     signing-secret: ${SLACK_SIGNING_SECRET:}
     redirect-uri: ${SLACK_REDIRECT_URI:http://localhost:8080/slack/oauth/callback}
-    # app.slack.token-encryption-key intentionally has no entry here (like
-    # app.totp.encryption-key) — it's a secret master key, required via env var
-    # only, never defaulted in a committed file.
-  # app.calendar.token-encryption-key and app.integrations.token-encryption-key are the
-  # same kind of secret master key (AES-256, for calendar OAuth refresh tokens and
-  # Jira/ServiceNow API tokens respectively) — also required via env var only, never
-  # defaulted here.
+    # app.slack.token-encryption.keys / .current intentionally have no entry here (like
+    # app.totp.encryption), same as app.calendar.token-encryption and
+    # app.integrations.token-encryption below — versioned secret master key material
+    # (AES-256 per version, see VersionedAesGcmEncryptor / Phase 3 finding 1 in
+    # STEP_REPORT.md), required via env var only, never defaulted in a committed file:
+    #   APP_SLACK_TOKEN_ENCRYPTION_CURRENT=1
+    #   APP_SLACK_TOKEN_ENCRYPTION_KEYS_1=<32-byte secret>
+  # app.calendar.token-encryption and app.integrations.token-encryption are the same kind of
+  # versioned secret master key material (for calendar OAuth refresh tokens and Jira/
+  # ServiceNow API tokens / inbound webhook signing secrets respectively) — also required via
+  # env var only (APP_CALENDAR_TOKEN_ENCRYPTION_CURRENT/_KEYS_n,
+  # APP_INTEGRATIONS_TOKEN_ENCRYPTION_CURRENT/_KEYS_n), never defaulted here.
   # app.calendar.oauth-state-secret is the HMAC signing secret CalendarOAuthStateService
   # uses for the calendar-connect OAuth "state" param (same role as app.slack.signing-secret
   # for SlackOAuthStateService) — required via env var only, never defaulted here.

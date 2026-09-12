@@ -2,12 +2,21 @@ package com.aetherops.slack;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SlackTokenEncryptorTest {
 
     private final SlackTokenEncryptor encryptor =
-        new SlackTokenEncryptor("01234567890123456789012345678901");
+        new SlackTokenEncryptor(props("01234567890123456789012345678901"));
+
+    private static SlackTokenEncryptionProperties props(String currentKey) {
+        SlackTokenEncryptionProperties properties = new SlackTokenEncryptionProperties();
+        properties.setCurrent(1);
+        properties.setKeys(Map.of(1, currentKey));
+        return properties;
+    }
 
     @Test
     void encryptDecrypt_roundTrip_returnsOriginal() {
@@ -27,6 +36,6 @@ class SlackTokenEncryptorTest {
     void constructor_rejectsKeyOfWrongLength() {
         org.junit.jupiter.api.Assertions.assertThrows(
             IllegalArgumentException.class,
-            () -> new SlackTokenEncryptor("too-short"));
+            () -> new SlackTokenEncryptor(props("too-short")));
     }
 }

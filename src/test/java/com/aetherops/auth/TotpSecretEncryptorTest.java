@@ -1,14 +1,23 @@
 package com.aetherops.auth;
 
+import com.aetherops.auth.service.TotpEncryptionProperties;
 import com.aetherops.auth.service.TotpSecretEncryptor;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TotpSecretEncryptorTest {
 
-    private final TotpSecretEncryptor encryptor =
-        new TotpSecretEncryptor("01234567890123456789012345678901");
+    private final TotpSecretEncryptor encryptor = new TotpSecretEncryptor(props("01234567890123456789012345678901"));
+
+    private static TotpEncryptionProperties props(String currentKey) {
+        TotpEncryptionProperties properties = new TotpEncryptionProperties();
+        properties.setCurrent(1);
+        properties.setKeys(Map.of(1, currentKey));
+        return properties;
+    }
 
     @Test
     void encryptDecrypt_roundTrip_returnsOriginal() {
