@@ -11,7 +11,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByGoogleSub(String googleSub);
 
-    Optional<User> findByEmailVerificationToken(String token);
+    Optional<User> findByEmailVerificationTokenHash(String tokenHash);
 
     boolean existsByTenantId(UUID tenantId);
 }

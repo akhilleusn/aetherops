@@ -20,13 +20,14 @@ import java.util.Map;
 public class CalendarTokenEncryptor {
 
     private static final String PURPOSE = "calendar refresh token";
+    private static final String ENV_VAR_PREFIX = "APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_";
 
     private final VersionedAesGcmEncryptor core;
 
     public CalendarTokenEncryptor(CalendarTokenEncryptionProperties properties) {
         Map<Integer, SecretKeySpec> keys = new HashMap<>();
         properties.getKeys().forEach((version, key) ->
-            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, version, PURPOSE)));
+            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, ENV_VAR_PREFIX + version)));
         keys.putIfAbsent(VersionedAesGcmEncryptor.LEGACY_VERSION, keys.get(properties.getCurrent()));
 
         this.core = new VersionedAesGcmEncryptor(keys, properties.getCurrent(), PURPOSE);

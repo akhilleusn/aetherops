@@ -30,7 +30,7 @@ public class CalendarOAuthStateService {
 
     public CalendarOAuthStateService(@Value("${app.calendar.oauth-state-secret}") String secret) {
         if (secret == null || secret.isBlank()) {
-            throw new IllegalArgumentException("app.calendar.oauth-state-secret must not be blank");
+            throw new IllegalArgumentException("APP_CALENDAR_OAUTH_STATE_SECRET is required (must not be blank)");
         }
         this.keySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM);
     }

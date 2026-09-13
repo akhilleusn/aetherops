@@ -1,6 +1,7 @@
 package com.aetherops.slack;
 
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -16,15 +17,31 @@ import java.util.UUID;
  * Signs the OAuth "state" param so the /slack/oauth/callback redirect (a plain
  * browser GET, not something Slack HMAC-signs) can't be forged to link a
  * workspace to an attacker-chosen tenant.
+ *
+ * <p>Phase 3 finding 4 (see STEP_REPORT.md): uses its own dedicated key
+ * (app.slack.oauth-state-secret) rather than reusing app.slack.signing-secret.
+ * That value is Slack-provided and used by {@link SlackRequestVerifier} to
+ * authenticate INBOUND requests FROM Slack; this service signs this app's own
+ * OUTBOUND OAuth CSRF state tokens. Two independent trust domains sharing one
+ * key means rotating either breaks the other and compromising either
+ * compromises both. Same separation {@code CalendarOAuthStateService} already
+ * has from calendar's own inbound-facing secrets — matches that pattern.
  */
 @Component
-@RequiredArgsConstructor
+@Slf4j
 public class SlackOAuthStateService {
 
     private static final String ALGORITHM = "HmacSHA256";
     private static final long TTL_SECONDS = 600;
 
-    private final SlackAppConfig config;
+    private final SecretKeySpec keySpec;
+
+    public SlackOAuthStateService(@Value("${app.slack.oauth-state-secret}") String secret) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalArgumentException("APP_SLACK_OAUTH_STATE_SECRET is required (must not be blank)");
+        }
+        this.keySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALGORITHM);
+    }
 
     public String issue(UUID tenantId) {
         long expiresAt = Instant.now().getEpochSecond() + TTL_SECONDS;
@@ -51,7 +68,7 @@ public class SlackOAuthStateService {
         try {
             expiresAt = Long.parseLong(parts[1]);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Malformed Slack OAuth state", e);
+            throw new IllegalArgumentException("Malformed Slack OAuth state");
         }
         String signature = parts[2];
 
@@ -74,7 +91,7 @@ public class SlackOAuthStateService {
     private String hmacHex(String payload) {
         try {
             Mac mac = Mac.getInstance(ALGORITHM);
-            mac.init(new SecretKeySpec(config.getSigningSecret().getBytes(StandardCharsets.UTF_8), ALGORITHM));
+            mac.init(keySpec);
             return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to sign Slack OAuth state", e);

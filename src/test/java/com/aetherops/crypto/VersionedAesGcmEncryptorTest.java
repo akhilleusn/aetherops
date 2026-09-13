@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class VersionedAesGcmEncryptorTest {
@@ -20,7 +21,7 @@ class VersionedAesGcmEncryptorTest {
     private static final int GCM_TAG_LENGTH = 128;
 
     private static SecretKeySpec key(String raw) {
-        return VersionedAesGcmEncryptor.buildKeySpec(raw, 1, PURPOSE);
+        return VersionedAesGcmEncryptor.buildKeySpec(raw, "TEST_KEY_1");
     }
 
     private static int versionByteOf(String encoded) {
@@ -112,6 +113,17 @@ class VersionedAesGcmEncryptorTest {
 
     @Test
     void buildKeySpec_rejectsKeyOfWrongLength() {
-        assertThrows(IllegalArgumentException.class, () -> VersionedAesGcmEncryptor.buildKeySpec("too-short", 1, PURPOSE));
+        assertThrows(IllegalArgumentException.class, () -> VersionedAesGcmEncryptor.buildKeySpec("too-short", "TEST_KEY_1"));
+    }
+
+    /**
+     * Phase 3 finding 3 (see STEP_REPORT.md): the error must name the exact env var and
+     * constraint so a failed startup is self-explanatory without reading the source.
+     */
+    @Test
+    void buildKeySpec_errorMessage_namesExactEnvVarAndConstraint() {
+        assertThatThrownBy(() -> VersionedAesGcmEncryptor.buildKeySpec("too-short", "APP_TOTP_ENCRYPTION_KEYS_1"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("APP_TOTP_ENCRYPTION_KEYS_1 is required (exactly 32 characters)");
     }
 }

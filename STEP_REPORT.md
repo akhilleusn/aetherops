@@ -1,359 +1,237 @@
-# STEP G2 — Key Versioning for Rotation — Recon + Design (Phase 3, finding 1)
+# STEP G3 — Token Hashing, Config, and Key Separation (Phase 3 findings 2, 3, 4)
 
-Status: **recon complete, design proposed, nothing implemented yet.**
-
-## 1. Are the four encryptors structurally identical?
-
-Yes — byte-for-byte identical logic, only the `@Value` property name, the
-exception message strings, and (in `TotpSecretEncryptor`) an extra insecure-default
-warning differ.
-
-| Class | File | Key property |
-|---|---|---|
-| `SlackTokenEncryptor` | `src/main/java/com/aetherops/slack/SlackTokenEncryptor.java` | `app.slack.token-encryption-key` |
-| `CalendarTokenEncryptor` | `src/main/java/com/aetherops/calendar/CalendarTokenEncryptor.java` | `app.calendar.token-encryption-key` |
-| `TicketIntegrationTokenEncryptor` | `src/main/java/com/aetherops/integrations/service/TicketIntegrationTokenEncryptor.java` | `app.integrations.token-encryption-key` |
-| `TotpSecretEncryptor` | `src/main/java/com/aetherops/auth/service/TotpSecretEncryptor.java` | `app.totp.encryption-key` |
-
-Each independently declares:
-
-```java
-private static final String ALGORITHM = "AES/GCM/NoPadding";
-private static final int GCM_IV_LENGTH = 12;
-private static final int GCM_TAG_LENGTH = 128;
-private final SecretKeySpec keySpec;   // built from a 32-byte @Value string, AES-256
-
-public String encrypt(String plaintext) {
-    byte[] iv = new byte[GCM_IV_LENGTH];
-    new SecureRandom().nextBytes(iv);
-    Cipher cipher = Cipher.getInstance(ALGORITHM);
-    cipher.init(Cipher.ENCRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
-    byte[] ciphertext = cipher.doFinal(plaintext.getBytes(UTF_8));
-    byte[] combined = new byte[GCM_IV_LENGTH + ciphertext.length];
-    System.arraycopy(iv, 0, combined, 0, GCM_IV_LENGTH);
-    System.arraycopy(ciphertext, 0, combined, GCM_IV_LENGTH, ciphertext.length);
-    return Base64.getEncoder().encodeToString(combined);
-}
-
-public String decrypt(String encoded) {
-    byte[] combined = Base64.getDecoder().decode(encoded);
-    byte[] iv = Arrays.copyOfRange(combined, 0, GCM_IV_LENGTH);
-    byte[] ciphertext = Arrays.copyOfRange(combined, GCM_IV_LENGTH, combined.length);
-    Cipher cipher = Cipher.getInstance(ALGORITHM);
-    cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
-    return new String(cipher.doFinal(ciphertext), UTF_8);
-}
-```
-
-They share **no common base class or utility** — each file has its own copy of
-`ALGORITHM`/`GCM_IV_LENGTH`/`GCM_TAG_LENGTH` and its own encrypt/decrypt bodies.
-That's real duplication: today it means four places to patch for any bug (e.g.
-the IV must never repeat under a key — `SecureRandom` per-call is fine, but it's
-duplicated fine, not shared-and-verified-once), and it's exactly why the missing
-key-id was allowed to happen four times over instead of once.
-
-## 2. Exact stored format today
-
-Confirmed: `Base64Encode(IV || GCM-output)`.
-
-Precise byte layout of the decoded blob:
-
-```
-byte[0..11]   IV                  (12 bytes, random per encryption)
-byte[12..N]   GCM-output          (ciphertext_len bytes of actual ciphertext,
-                                    followed by a 16-byte GCM authentication tag —
-                                    Cipher.doFinal() with GCMParameterSpec(128, iv)
-                                    appends the tag to the ciphertext automatically)
-```
-
-So total length = 12 (IV) + plaintext_len + 16 (tag). There is no length prefix,
-no version byte, no algorithm identifier — just IV immediately followed by
-tagged ciphertext, then the whole thing Base64-encoded. Nothing in the blob
-says which key produced it.
-
-## 3. Database columns holding these values
-
-| Table | Column | Type | Encryptor | Written from |
-|---|---|---|---|---|
-| `slack_workspaces` | `encrypted_bot_token` | `TEXT NOT NULL` | `SlackTokenEncryptor` | `SlackOAuthController` |
-| `user_calendar_connections` | `encrypted_refresh_token` | `TEXT NOT NULL` | `CalendarTokenEncryptor` | `CalendarOAuthService` |
-| `tenant_ticket_integrations` | `encrypted_api_token` | `TEXT NOT NULL` | `TicketIntegrationTokenEncryptor` | `TicketIntegrationConfigService` |
-| `inbound_webhook_signing_secrets` | `encrypted_secret` | `TEXT NOT NULL` | `TicketIntegrationTokenEncryptor` (reused — see below) | `WebhookSigningSecretService` |
-| `users` | `totp_secret` | `VARCHAR(512)` (nullable) | `TotpSecretEncryptor` | `TotpService` |
-
-One thing worth flagging that the Phase 3 audit's "four encryptors" framing
-undersells: `WebhookSigningSecretService` (inbound alert-source webhook signing
-secrets — GitHub/PagerDuty/Grafana) doesn't have its own encryptor, it **reuses**
-`TicketIntegrationTokenEncryptor` directly (see its class comment: *"Reuses
-TicketIntegrationTokenEncryptor (AES/GCM, app.integrations.token-encryption-key)"*).
-So the real blast radius is **5 columns across 5 tables sharing 4 keys**, not
-4-and-4. This actually simplifies the fix slightly: fixing
-`TicketIntegrationTokenEncryptor` for versioning automatically covers
-`inbound_webhook_signing_secrets` too, with no fifth class needed.
-
-`totp_secret` is nullable/no `NOT NULL`, everything else is `NOT NULL TEXT`.
-
-## 4. Any real rows anywhere, or all per-run test fixtures?
-
-No evidence of real persisted rows in this repo:
-
-- No Flyway seed/data migration inserts any value into these five columns —
-  I grepped all `db/migration/*.sql` for the column names; every hit is a
-  `CREATE TABLE`/`ALTER TABLE` DDL statement, never an `INSERT`.
-- No test fixture files with static ciphertext — the encryptor unit tests
-  (`SlackTokenEncryptorTest`, etc.) and the service-level tests construct a
-  fresh `SecretKeySpec` from a fixed test key and round-trip encrypt/decrypt
-  in-memory per test run; nothing is checked into the repo as a pre-encrypted
-  value.
-- `src/test/resources/application-test.yml` supplies a single fixed key per
-  purpose for the test profile (`aetherops-totp-encryption-key-01`,
-  `aetherops-slack-token-enc-key-01`, etc.) — consistent with the memory note
-  that the test profile bypasses/stubs security concerns rather than exercising
-  production key material.
-
-Caveat I can't resolve from static analysis alone: `railway.toml` has an
-uncommitted change in your working tree (`healthcheckPath` →
-`/actuator/health/liveness`), which tells me there's a live Railway deployment
-target configured, but I have no way to inspect what rows actually exist in
-that deployed database from here. Everything in-repo is consistent with your
-framing ("only test data so far"), but if a Railway (or other) environment has
-already been used to click through the Slack/calendar/Jira OAuth flows or
-enroll a real TOTP user, those rows would be real production-shaped data sitting
-under the old unversioned format today. Worth a 10-second confirmation from you
-before I treat "no migration needed" as settled — I'm treating it as **very
-likely true, not certain**.
-
-Assuming it's confirmed clean: **no data migration is needed**, only a
-format/code change, exactly as you said.
-
-## 5. Design proposal
-
-### Format
-
-```
-Base64( keyId(1 byte, unsigned) || IV(12 bytes) || GCM-output(ciphertext || 16-byte tag) )
-```
-
-- `keyId` is a single unsigned byte (0–255) — plenty for any realistic rotation
-  schedule (you rotate keys, not accumulate hundreds of live versions).
-- Reserve `keyId == 0` to *mean* "this is actually the legacy unversioned
-  format, not a real version 0" — see below, this makes the fallback path an
-  explicit, named case rather than an implicit "parsing failed, assume old."
-- Everything after the keyId byte is unchanged from today's layout (IV then
-  GCM output), so the crypto core doesn't change at all, only what gets
-  concatenated before Base64-encoding.
-
-### Can the old and new formats be told apart reliably?
-
-**Not from byte layout alone — but reliably in practice via the GCM auth tag.**
-I want to be precise about this because it's the crux of whether a live-data
-migration is mandatory:
-
-- There is no magic number, no length invariant, and no structural marker that
-  distinguishes "IV || ciphertext" from "keyId || IV || ciphertext" — both are
-  just opaque byte strings that happen to be 1 byte apart in length for the
-  same plaintext. A legacy blob's first byte is a random IV byte; it can by
-  chance equal a valid configured keyId.
-- However, GCM's 128-bit authentication tag makes attempting the wrong parse
-  effectively self-correcting: if you tentatively treat byte 0 as a keyId,
-  look up that key, and try to GCM-decrypt bytes `[1..]` as `IV || ciphertext`,
-  decryption will only *succeed* if that really was the right key **and** the
-  right framing — GCM verifies the tag before returning plaintext, and a
-  1-byte framing shift changes every byte of the "IV" and "ciphertext" the
-  cipher sees, so a false-accept has probability ~2⁻¹²⁸ (astronomically
-  negligible, not a real risk).
-- So the reliable decode algorithm is: **try new-format parse first (only when
-  byte 0 matches a currently-configured non-legacy keyId); if that GCM-decrypts
-  successfully, accept it as versioned; otherwise fall back to the legacy parse
-  (byte 0 is part of the IV, decrypt the whole blob with the designated legacy
-  key)**. This is a "trial decrypt," not a static tag check — worth being
-  upfront about, since it's a slightly different shape than a typical
-  self-describing format, but it is deterministic and safe given AEAD.
-- Net answer to your question: distinguishing is reliable, so **this does not
-  force a mandatory eager migration** — old and new ciphertexts can coexist
-  indefinitely and decrypt correctly either way. (A background re-encryption
-  job to eventually retire the legacy path is still a good idea once rotation
-  actually happens, but it's optional cleanup, not a correctness requirement.)
-
-### Config shape
-
-Per purpose, move from one scalar key to a keyed map plus a current pointer,
-e.g. for Slack:
-
-```yaml
-app:
-  slack:
-    token-encryption:
-      current: 1
-      keys:
-        0: ${APP_SLACK_TOKEN_ENCRYPTION_KEY:}      # legacy key, same value as today — required so old rows keep decrypting
-        1: ${APP_SLACK_TOKEN_ENCRYPTION_KEY_V1:}    # first "real" versioned key
-```
-
-On day one of deploying this change, `keys[0]` and `keys[1]` would point at the
-*same* existing secret (no key value changes on this deploy — this step is
-purely about the envelope format). A future rotation adds `keys[2]`, points
-`current` at 2, and leaves `keys[0]`/`keys[1]` in place until every row
-encrypted under them has been re-encrypted (or forever, if you're fine keeping
-old keys around — cheaper and the norm for this kind of rotation).
-
-Same shape repeats for `app.calendar.token-encryption`,
-`app.integrations.token-encryption`, and `app.totp.encryption`.
-
-### Shared base class
-
-Extract one class, e.g. `com.aetherops.crypto.VersionedAesGcmEncryptor`, owning:
-- the `ALGORITHM`/`GCM_IV_LENGTH`/`GCM_TAG_LENGTH` constants (defined once),
-- a constructor taking `Map<Integer, SecretKeySpec> keysByVersion` + `int currentVersion`,
-- `encrypt(String)`: prepend `currentVersion` as a single byte, IV, GCM-output, Base64.
-- `decrypt(String)`: the try-new-then-fall-back-to-legacy algorithm above.
-
-Each of the four (really: four call sites, since the ticket/webhook one is
-shared) becomes a thin `@Component` that builds the key map from its own
-`@Value`-injected properties in its constructor and delegates to the shared
-base class — same pattern as today (one class per purpose, for clean DI and
-distinct config namespaces / error messages), but with zero duplicated crypto
-logic.
-
-### What I have NOT yet done
-
-No code changes, no config changes, nothing committed — this file is the only
-write. Waiting for your go-ahead (and confirmation on the "no real rows
-anywhere" question in §4) before implementing.
+Status: **implemented, not committed.** All three findings closed; details, tests, and
+one flagged-but-not-fixed pre-existing issue below.
 
 ---
 
-## 6. Implementation (design approved, now built)
+## Finding 2 — email verification tokens hashed at rest
 
-Confirmed before implementing: no real rows anywhere (Railway account suspended,
-nothing deployed, the uncommitted `railway.toml` edit is prep for a first
-deployment that hasn't happened) — so this was a pure format/code change, no
-data migration.
+**Pattern followed:** `PasswordResetService`'s `sha256(String)` helper (`MessageDigest`
++ `HexFormat` hex encoding) — chosen over `RefreshTokenService`'s identical copy,
+`ApiKeyService`'s identical copy, and `InvitationTokenGenerator`'s (Base64-url-encoded)
+variant because `PasswordResetService`'s use case is closest in shape: a single-use,
+time-limited token embedded in an emailed link, looked up once, cleared after use —
+exactly what `EmailVerificationService` already does. (Worth noting for later: all
+four existing copies are byte-for-byte duplicates of each other except
+`InvitationTokenGenerator`'s encoding choice — real duplication, same shape as the
+AES/GCM duplication G2 fixed. Out of scope here since it wasn't one of findings 2/3/4,
+but flagging it as a candidate for the same treatment.)
 
-### Can webhook signing secrets get their own key version space?
+**Migration — confirmed safe to rename rather than transform:**
+`src/main/resources/db/migration/V70__hash_email_verification_token.sql` does
+`ALTER TABLE users RENAME COLUMN email_verification_token TO email_verification_token_hash`,
+same shape as `V64__refresh_token_rotation.sql`'s precedent for refresh tokens. Confirmed
+safe from the schema, not just re-asserted from memory: grepped every migration file for
+`email_verification_token` — only `V33__add_email_verification.sql` (the original
+`ADD COLUMN` + partial unique index) and this new one touch it; no foreign key, no other
+index, no other migration references it. Combined with G2's already-established fact that
+no environment has ever actually been deployed (Railway account suspended), a plain
+rename carries zero data-loss risk.
 
-**No, not without extra complexity — and "extra complexity" here actually
-means splitting the trust domain, which you said to defer.** The version
-space is a property of the *key map* (`Map<Integer, SecretKeySpec>`), not of
-the call site. `WebhookSigningSecretService` and `TicketIntegrationConfigService`
-share one `TicketIntegrationTokenEncryptor` instance, which means they share
-one key map and one `current` pointer — there is no second axis to hang an
-independent version number on unless the two get independent key material
-(i.e. a real split into two encryptors/two env-var namespaces), which is the
-change you explicitly said not to make this pass. Numbering the two domains'
-versions differently while both numbers resolve to the same underlying keys
-would add bookkeeping for zero cryptographic benefit — a compromised key
-compromises both regardless of the label. So instead of a fake independent
-version space, I documented the coupling explicitly, prominently, in both
-places that share it:
-- `TicketIntegrationTokenEncryptionProperties` class Javadoc
-- `WebhookSigningSecretService` class Javadoc (new "Trust-domain coupling this
-  creates" section)
+**Code changes:**
+- `User.java` — field/column renamed `emailVerificationToken` → `emailVerificationTokenHash`
+  (`email_verification_token_hash`, still `VARCHAR(64)` — already the right width for a
+  SHA-256 hex digest, no length change needed).
+- `UserRepository.findByEmailVerificationToken` → `findByEmailVerificationTokenHash`.
+- `EmailVerificationService` — `sendVerificationEmail` now stores `sha256(token)`, not
+  `token`; `verifyEmail` looks up by `sha256(token)`. Raw-token generation (32 random
+  bytes, hex-encoded, 24h expiry) is unchanged — only what gets persisted changed. The
+  raw token still goes out in the email link exactly as before.
 
-Both point at this report so the next person who considers splitting them
-knows why they weren't already split.
+**Tests:**
+- `EmailVerificationServiceTest.sendVerificationEmail_persistsOnlyHash_neverRawToken_andVerificationStillWorksEndToEnd`
+  (new) — captures the actual link handed to `EmailService`, extracts the raw token,
+  asserts the persisted value is neither blank nor equal to the raw token but does equal
+  `sha256(rawToken)`, then feeds the raw token back into `verifyEmail` and asserts it
+  succeeds (user verified, hash cleared). This is the "raw token never persisted;
+  verification still works end to end" test.
+- `verifyEmail_validToken_setsVerifiedAndClearsToken` / `verifyEmail_expiredToken_...`
+  (existing, updated) — now build/mock against the hash, not the raw token.
+- `AuthIntegrationTest.register_createsUserWithUnverifiedEmail` — one-line rename
+  (`getEmailVerificationToken()` → `getEmailVerificationTokenHash()`), same assertion
+  (not blank).
 
-### Files changed
+---
+
+## Finding 3 — docker-compose env var names, hardcoded JWT fallback, stale encryption keys
+
+**Renamed** (`docker-compose.yml`, `aetherops` service): `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`
+→ `SPRING_DATASOURCE_URL`/`SPRING_DATASOURCE_USERNAME`/`SPRING_DATASOURCE_PASSWORD` — the
+names Spring's relaxed binding actually reads. The Postgres-container-derived defaults
+(`${POSTGRES_USER:-aetherops_user}` etc.) are unchanged; that's a local-dev convenience
+self-contained within this file, not the leaked-secret pattern the JWT var had, and finding
+3 didn't ask me to touch it.
+
+**JWT fallback removed, name fixed, and made fail-closed in the same change** (per your
+explicit instruction not to split the rename from the fallback removal):
+`JWT_SECRET: ${JWT_SECRET:-aetherops-local-dev-secret-key-minimum-32-chars}` →
+`APP_JWT_SECRET: ${APP_JWT_SECRET:?Set APP_JWT_SECRET in .env (32+ chars) — see .env.example}`.
+Docker Compose's `${VAR:?message}` syntax refuses to start the container at all if the var
+is unset/empty, printing that message — verified this actually works (see Verification
+below). The old hardcoded value is gone from the file entirely, not just unreferenced.
+
+**Superseded encryption key names — checked, none existed to rename or remove.**
+Grepped `docker-compose.yml` for `ENCRYPTION` before touching it: it set **none** of the
+four AES/GCM keys, neither the pre-G2 single-key names nor the post-G2 `_KEYS_n` names. So
+the literal instruction ("update them to the `_KEYS_1` form or remove them") had nothing to
+act on — but since G2 made these hard-required at Spring startup, `docker compose up` would
+have failed to boot the app entirely for a reason unrelated to the DB/JWT mismatches. I
+flagged this as a judgment call and you confirmed: added all four, fail-closed, no
+hardcoded values, same `${VAR:?...}` pattern as JWT:
+`APP_SLACK_TOKEN_ENCRYPTION_KEYS_1`, `APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_1`,
+`APP_INTEGRATIONS_TOKEN_ENCRYPTION_KEYS_1`, `APP_TOTP_ENCRYPTION_KEYS_1`.
+
+**Also added, per your follow-up message:** `APP_SLACK_OAUTH_STATE_SECRET` (new in this
+step, finding 4) and `APP_CALENDAR_OAUTH_STATE_SECRET` (pre-existing requirement that was
+already missing from this file for an unrelated, pre-G3 reason — see the flagged issue
+below). Same fail-closed syntax as everything else.
+
+**Error messages now name the exact variable and constraint** (your follow-up ask):
+- `VersionedAesGcmEncryptor.buildKeySpec(String key, String envVarName)` — signature
+  changed from `(key, version, purpose)` to take the exact env var name directly. Message:
+  `"<ENV_VAR> is required (exactly 32 characters)"`, e.g.
+  `"APP_TOTP_ENCRYPTION_KEYS_1 is required (exactly 32 characters)"` — your exact example.
+  Each of the four encryptor classes now builds that name itself
+  (`ENV_VAR_PREFIX + version`, e.g. `"APP_SLACK_TOKEN_ENCRYPTION_KEYS_" + version`).
+- `SlackOAuthStateService` / `CalendarOAuthStateService` blank-secret checks now say
+  `"APP_SLACK_OAUTH_STATE_SECRET is required (must not be blank)"` /
+  `"APP_CALENDAR_OAUTH_STATE_SECRET is required (must not be blank)"` (previously named
+  the Spring property path, e.g. `app.calendar.oauth-state-secret`, not the env var).
+- `TotpSecretEncryptor`'s insecure-default warning referenced the already-stale
+  `TOTP_ENCRYPTION_KEY` (never the real property name even before G2); corrected to name
+  the actual current env var (`APP_TOTP_ENCRYPTION_KEYS_{current}`).
+
+**`.env.example` updated to match** (per your follow-up ask) — added all of the above
+with a one-line comment above the encryption keys on generating one
+(`openssl rand -hex 16` → 16 bytes → 32 hex characters, verified by byte-counting an
+actual generated example). **Deliberately did not use realistic-looking generated
+values as the placeholders** — I generated some initially, then reconsidered: a
+plausible-looking 32-char secret sitting in this committed file is exactly the pattern
+finding 3 itself warns about (a secret that looks live, in git history, that someone
+might forget to replace). Used obviously-non-functional placeholders instead
+(`REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_16`, `REPLACE_WITH_YOUR_OWN_RANDOM_SECRET`) —
+for the length-constrained ones, copy-pasting the file unedited fails closed (wrong
+length) rather than silently running with a shared secret. Also fixed the same
+`DB_URL`/`DB_USERNAME`/`DB_PASSWORD` stale names in `.env.example`'s "local development
+only" section (→ `SPRING_DATASOURCE_*`) — same bug as docker-compose.yml, same fix.
+
+**Flagged, not fixed (outside findings 2/3/4):** `docker-compose.yml` has a pre-existing,
+unrelated YAML structural bug — `zipkin:` is nested under `volumes:` instead of being a
+sibling service, so `docker compose config`/`up` fails regardless of anything in this
+step (`volumes.pgdata additional properties 'zipkin' not allowed`). Verified this is the
+*only* remaining error once all required env vars are supplied (see Verification below) —
+my changes are otherwise syntactically complete and correct. Did not fix it: it's not a
+secret/env-var naming issue, doesn't touch findings 2/3/4, and you said fix nothing
+outside them. Separately, `kubernetes/deployment.yaml`/`secret.yaml` still reference the
+old single-key TOTP env var shape (`APP_TOTP_ENCRYPTIONKEY`, itself already missing an
+underscore even before G2) — flagged in the G2 report already, still unfixed, still not
+part of this step's scope (Railway, not Kubernetes, is the real deployment target).
+
+---
+
+## Finding 4 — SlackOAuthStateService gets its own key
+
+**Change:** `SlackOAuthStateService` no longer takes `SlackAppConfig` (and therefore no
+longer reads `app.slack.signing-secret`, the Slack-provided value
+`SlackRequestVerifier` uses to authenticate inbound requests). It now takes its own
+`@Value("${app.slack.oauth-state-secret}") String secret` directly, builds its own
+`SecretKeySpec`, and fails closed exactly like `CalendarOAuthStateService` — the pattern
+you named — throwing `IllegalArgumentException` if blank/unset, no default anywhere.
+
+**New env var:** `APP_SLACK_OAUTH_STATE_SECRET` (property `app.slack.oauth-state-secret`).
+No format/length constraint (it's an HMAC key, not AES — any length works), but treat it
+like every other secret here: long, random, unique per environment, never reused. Added
+to `.env.example` and `docker-compose.yml` (see Finding 3 above) and to
+`application.yml`'s comments alongside `app.calendar.oauth-state-secret`.
+
+**Test proving it validates under the new dedicated key** (your requirement):
+`SlackOAuthStateServiceTest` now constructs the service with `OAUTH_STATE_SECRET`, a
+value deliberately different from `SIGNING_SECRET` in the same file. Two tests cover
+this:
+- `issueThenVerify_roundTrip_returnsSameTenantId` — the direct proof: issue and verify
+  both go through the dedicated key end to end.
+- `verify_rejectsStateSignedWithSlackSigningSecret_provingKeysAreIndependent` (new) —
+  crafts a state signed with what `SIGNING_SECRET` would have been (the old shared
+  value) and asserts it's now rejected. Before this fix, since both values used to be
+  the same underlying `SlackAppConfig.getSigningSecret()`, this exact input would have
+  validated. This is the test that actually proves the coupling is gone, not just that
+  the happy path still works.
+- `constructor_rejectsBlankSecret` (new, mirrors `CalendarOAuthStateService`'s existing
+  test) — proves the fail-closed behavior.
+
+---
+
+## Files changed
 
 **New:**
-- `src/main/java/com/aetherops/crypto/VersionedAesGcmEncryptor.java` — the
-  shared core: wire format, encrypt/decrypt, the trial-decrypt-then-fall-back
-  algorithm, `buildKeySpec` validation.
-- `src/main/java/com/aetherops/slack/SlackTokenEncryptionProperties.java`
-- `src/main/java/com/aetherops/calendar/CalendarTokenEncryptionProperties.java`
-- `src/main/java/com/aetherops/integrations/service/TicketIntegrationTokenEncryptionProperties.java`
-- `src/main/java/com/aetherops/auth/service/TotpEncryptionProperties.java`
-  (each a small `@Configuration @ConfigurationProperties` holder — same
-  pattern as the existing `TwilioConfig`/`StripeConfig` — for `current` +
-  `keys` per purpose)
+- `src/main/resources/db/migration/V70__hash_email_verification_token.sql`
+
+**Changed — main:**
+- `src/main/java/com/aetherops/auth/model/User.java`
+- `src/main/java/com/aetherops/auth/repository/UserRepository.java`
+- `src/main/java/com/aetherops/auth/service/EmailVerificationService.java`
+- `src/main/java/com/aetherops/auth/service/TotpSecretEncryptor.java` (env-var-named
+  error messages, buildKeySpec signature)
+- `src/main/java/com/aetherops/calendar/CalendarOAuthStateService.java` (message only)
+- `src/main/java/com/aetherops/calendar/CalendarTokenEncryptor.java` (buildKeySpec signature)
+- `src/main/java/com/aetherops/crypto/VersionedAesGcmEncryptor.java` (`buildKeySpec` now
+  takes the exact env var name)
+- `src/main/java/com/aetherops/integrations/service/TicketIntegrationTokenEncryptor.java`
+  (buildKeySpec signature)
+- `src/main/java/com/aetherops/slack/SlackOAuthStateService.java` (dedicated key, finding 4)
+- `src/main/java/com/aetherops/slack/SlackTokenEncryptor.java` (buildKeySpec signature)
+- `src/main/resources/application.yml` (comments)
+- `docker-compose.yml`
+- `.env.example`
+
+**Changed — test:**
+- `src/test/java/com/aetherops/AbstractIntegrationTest.java` (+ `app.slack.oauth-state-secret`)
+- `src/test/java/com/aetherops/auth/AuthIntegrationTest.java` (rename)
+- `src/test/java/com/aetherops/auth/EmailVerificationServiceTest.java` (rewritten)
 - `src/test/java/com/aetherops/crypto/VersionedAesGcmEncryptorTest.java`
-- `src/test/java/com/aetherops/slack/SlackTokenEncryptionPropertiesTest.java`
-  (verifies Spring's relaxed binding actually produces the `Map<Integer,String>`
-  the encryptors rely on — the one part a plain `new XEncryptor(...)` unit
-  test can't exercise, since that bypasses property binding entirely)
+  (`buildKeySpec` call sites + new error-message test)
+- `src/test/java/com/aetherops/slack/SlackOAuthStateServiceTest.java` (rewritten)
+- `src/test/resources/application-test.yml` (+ `app.slack.oauth-state-secret`)
 
-**Changed:**
-- `SlackTokenEncryptor` / `CalendarTokenEncryptor` / `TicketIntegrationTokenEncryptor`
-  / `TotpSecretEncryptor` — now thin wrappers delegating to
-  `VersionedAesGcmEncryptor`, constructed from their new `*Properties` class.
-  Public `encrypt(String)`/`decrypt(String)` API unchanged, so every caller
-  (`SlackOAuthController`, `CalendarOAuthService`, `TicketIntegrationConfigService`,
-  `TotpService`, `WebhookSigningSecretService`) needed no changes.
-- `WebhookSigningSecretService` — Javadoc only, documenting the coupling above.
-- `application.yml` — comments updated to the new env var names
-  (`APP_*_TOKEN_ENCRYPTION_CURRENT`, `APP_*_TOKEN_ENCRYPTION_KEYS_n`); still no
-  secret values committed.
-- `application-test.yml`, `AbstractIntegrationTest` — updated to the new
-  nested `current`/`keys` shape (values unchanged, still test-only keys).
-- The four existing encryptor unit tests — updated to build a small
-  `*Properties` object instead of passing a bare string, same test intent
-  (round-trip, distinct ciphertexts each call, reject-wrong-length,
-  reject-missing-key) preserved.
+**Not touched, unrelated pre-existing edit still in your working tree:** `railway.toml`.
 
-**Not touched (flagged, not fixed — out of scope for this step):**
-`kubernetes/deployment.yaml`/`kubernetes/secret.yaml` still reference the old
-`app.totp.encryption-key` shape via env var `APP_TOTP_ENCRYPTIONKEY` (note:
-that's already missing an underscore vs. the property path even today, so it
-likely never worked). Railway, not Kubernetes, is the actual deployment
-target per your confirmation above, so I left these manifests alone rather
-than fix an unrelated pre-existing bug in an unused path — worth a cleanup
-pass if Kubernetes is ever actually used.
+## New tests, by name
 
-### New tests, by name
+- `EmailVerificationServiceTest.sendVerificationEmail_persistsOnlyHash_neverRawToken_andVerificationStillWorksEndToEnd`
+- `VersionedAesGcmEncryptorTest.buildKeySpec_errorMessage_namesExactEnvVarAndConstraint`
+- `SlackOAuthStateServiceTest.verify_rejectsStateSignedWithSlackSigningSecret_provingKeysAreIndependent`
+- `SlackOAuthStateServiceTest.constructor_rejectsBlankSecret`
 
-- `VersionedAesGcmEncryptorTest.legacyUnversionedCiphertext_stillDecryptsAfterVersioningIsIntroduced`
-  — builds a ciphertext with the exact pre-change algorithm (no version byte,
-  reproduced independently in the test, not by calling production code) and
-  confirms it still decrypts once versioning is in place.
-- `VersionedAesGcmEncryptorTest.rotation_oldCiphertextStillDecrypts_andNewCiphertextUsesNewVersion`
-  — the rotation proof you asked for: encrypts under key v1 (current), then
-  constructs a second encryptor representing post-rotation state (v1 + v2,
-  v2 current), confirms it decrypts the v1 ciphertext AND that a fresh
-  encryption is tagged with v2 and round-trips.
-- `VersionedAesGcmEncryptorTest.encryptDecrypt_roundTrip_returnsOriginal`
-- `VersionedAesGcmEncryptorTest.encrypt_taggedWithCurrentVersion`
-- `VersionedAesGcmEncryptorTest.constructor_rejectsCurrentVersionEqualToReservedLegacyVersion`
-- `VersionedAesGcmEncryptorTest.constructor_rejectsCurrentVersionWithNoConfiguredKey`
-- `VersionedAesGcmEncryptorTest.buildKeySpec_rejectsKeyOfWrongLength`
-- `SlackTokenEncryptionPropertiesTest.bindsCurrentAndIndexedKeysFromEnvVarStyleProperties`
-- `SlackTokenEncryptionPropertiesTest.defaultsCurrentToOneAndKeysToEmptyWhenUnconfigured`
+## Verification
 
-### Test run
+Docker is not running locally (confirmed via `docker info`, same as G2) — the
+Testcontainers-backed suite (`AbstractIntegrationTest` and everything extending it)
+cannot execute here. Ran everything that can run without it:
 
-Docker is not running locally (confirmed via `docker info`), so the
-Testcontainers-backed integration suite (`AbstractIntegrationTest` and
-everything extending it, including `TotpIntegrationTest`) cannot execute in
-this environment — every one of those fails at container startup with
-`IllegalStateException: Could not find a valid Docker environment`, not from
-anything in this change (verified by inspecting the stack traces).
+- `mvn test-compile` — clean, full main + test tree.
+- Targeted: every unit test class touched or exercising touched code —
+  `VersionedAesGcmEncryptorTest`, `SlackTokenEncryptorTest`, `CalendarTokenEncryptorTest`,
+  `TicketIntegrationTokenEncryptorTest`, `TotpSecretEncryptorTest`,
+  `SlackTokenEncryptionPropertiesTest`, `EmailVerificationServiceTest`,
+  `SlackOAuthStateServiceTest`, `CalendarOAuthStateServiceTest`, `SlackRequestVerifierTest`
+  → **51 tests, 0 failures, 0 errors.**
+- Full `mvn test -Dmaven.test.failure.ignore=true`: **1065 run, 0 failures, 290 errors** —
+  same 290-error Docker-unavailability signature as G2's baseline run (every one is
+  `NoClassDefFoundError` ← `Could not find a valid Docker environment`), 6 more tests run
+  than G2's baseline (the new ones above), zero new failures anywhere.
+- `docker compose config` (doesn't need the daemon, just validates/renders the file):
+  confirmed the new fail-closed env vars work exactly as intended — with none of them
+  set, it refuses with the exact custom message
+  (`required variable APP_JWT_SECRET is missing a value: Set APP_JWT_SECRET in .env...`);
+  with all seven required vars set, the only remaining error is the pre-existing
+  `zipkin`/`volumes` YAML bug flagged above, confirming my changes are otherwise
+  syntactically correct.
 
-You said "push to CI" as the fallback for that case, but this task also says
-"do not commit" (both at the start and again just now) — pushing to CI
-requires a commit, so I did not do that; flagging the conflict rather than
-guessing which instruction wins. Instead, ran everything runnable locally:
+Not verified in this session (needs Docker): the app actually booting end-to-end via
+`docker compose up` with real values, and the Testcontainers-backed integration suites
+(`TotpIntegrationTest`, `AuthIntegrationTest`, etc.) exercising these changes through a
+real Spring context + Postgres. Per your note, say so rather than run it — ready for you
+to push to CI for that verification.
 
-- Targeted: `mvn test -Dtest=VersionedAesGcmEncryptorTest,SlackTokenEncryptorTest,CalendarTokenEncryptorTest,TicketIntegrationTokenEncryptorTest,TotpSecretEncryptorTest,SlackTokenEncryptionPropertiesTest`
-  → **23 tests, 0 failures, 0 errors.**
-- `mvn test-compile` (full main + test source tree) → clean, confirming every
-  other file that references these four encryptor classes (mock-based service
-  tests: `SlackConversationServiceTest`, `CalendarOAuthServiceTest`,
-  `TicketIntegrationConfigServiceTest`, `JiraTicketServiceTest`,
-  `ServiceNowTicketServiceTest`, `WebhookSigningSecretServiceTest`, etc.) still
-  compiles against the new constructors.
-- Full `mvn test -Dmaven.test.failure.ignore=true` (whole suite): **1059 run,
-  0 failures, 290 errors** — every one of the 290 errors is the same Docker
-  unavailability (`NoClassDefFoundError: Could not initialize class
-  com.aetherops.AbstractIntegrationTest` ← `Could not find a valid Docker
-  environment`), confirmed by inspecting multiple surefire reports including
-  `TotpIntegrationTest`'s. **Every non-Docker test in the repo passes; zero
-  failures anywhere.**
-
-Not verified in this session: `TotpIntegrationTest` and the other
-`AbstractIntegrationTest`-based suites actually booting the full Spring
-context with real `TotpEncryptionProperties`/etc. beans wired end-to-end
-(needs Docker). `SlackTokenEncryptionPropertiesTest` covers the specific
-binding mechanism those beans depend on in isolation, which is the part most
-likely to break silently, but it isn't a substitute for the real integration
-run. Let me know if you'd like me to push to a branch for CI despite the
-no-commit instruction, or wait until Docker/CI is available to close that
-gap.
+Nothing committed.

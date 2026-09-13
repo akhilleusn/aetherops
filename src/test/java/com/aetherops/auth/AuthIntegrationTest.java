@@ -90,7 +90,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         // never the pre-existing fixture tenant from setUp().
         assertThat(user.getTenantId()).isNotNull().isNotEqualTo(tenantId);
         assertThat(tenantRepository.findById(user.getTenantId())).isPresent();
-        assertThat(user.getEmailVerificationToken()).isNotBlank();
+        assertThat(user.getEmailVerificationTokenHash()).isNotBlank();
     }
 
     @Test

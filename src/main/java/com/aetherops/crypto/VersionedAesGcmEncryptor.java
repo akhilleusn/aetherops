@@ -139,12 +139,16 @@ public final class VersionedAesGcmEncryptor {
     /**
      * Builds the AES-256 key for one configured key version, validating length the same way
      * every purpose-specific encryptor did before this class existed.
+     *
+     * @param envVarName the exact environment variable this key is read from (e.g.
+     *                    {@code "APP_TOTP_ENCRYPTION_KEYS_1"}), named in the exception message
+     *                    (Phase 3 finding 3, see STEP_REPORT.md) so a failed startup tells you
+     *                    what to fix without reading the source.
      */
-    public static SecretKeySpec buildKeySpec(String key, int version, String purpose) {
+    public static SecretKeySpec buildKeySpec(String key, String envVarName) {
         byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length != 32) {
-            throw new IllegalArgumentException(
-                purpose + " key version " + version + " must be exactly 32 characters (AES-256).");
+            throw new IllegalArgumentException(envVarName + " is required (exactly 32 characters)");
         }
         return new SecretKeySpec(keyBytes, "AES");
     }

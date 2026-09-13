@@ -13,13 +13,14 @@ import java.util.Map;
 public class SlackTokenEncryptor {
 
     private static final String PURPOSE = "Slack bot token";
+    private static final String ENV_VAR_PREFIX = "APP_SLACK_TOKEN_ENCRYPTION_KEYS_";
 
     private final VersionedAesGcmEncryptor core;
 
     public SlackTokenEncryptor(SlackTokenEncryptionProperties properties) {
         Map<Integer, SecretKeySpec> keys = new HashMap<>();
         properties.getKeys().forEach((version, key) ->
-            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, version, PURPOSE)));
+            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, ENV_VAR_PREFIX + version)));
         // Before this class supported versioning, everything was encrypted under whatever key
         // is configured as current -- so unless a rotation has already given version 0 its own
         // entry, the current key IS the legacy key.

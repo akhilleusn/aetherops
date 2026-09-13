@@ -41,12 +41,24 @@ services:
     ports:
       - "${SERVER_PORT:-8080}:8080"
     environment:
-      DB_URL:            jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aetherops}
-      DB_USERNAME:       ${POSTGRES_USER:-aetherops_user}
-      DB_PASSWORD:       ${POSTGRES_PASSWORD:-change_me}
+      # Phase 3 finding 3 (see STEP_REPORT.md): these must be the exact names Spring Boot's
+      # relaxed binding reads (SPRING_DATASOURCE_* / APP_*), not DB_URL/DB_USERNAME/DB_PASSWORD/
+      # JWT_SECRET — those were never consumed by the app, which is the only reason the
+      # hardcoded JWT fallback that used to live here was inert. Every secret below fails
+      # closed (docker compose refuses to start the container) rather than silently falling
+      # back to a value committed to this file. See .env.example for how to generate each one.
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB:-aetherops}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-aetherops_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       SERVER_PORT:       8080
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      JWT_SECRET: ${JWT_SECRET:-aetherops-local-dev-secret-key-minimum-32-chars}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?Set APP_JWT_SECRET in .env (32+ chars) — see .env.example}
+      APP_SLACK_TOKEN_ENCRYPTION_KEYS_1: ${APP_SLACK_TOKEN_ENCRYPTION_KEYS_1:?Set APP_SLACK_TOKEN_ENCRYPTION_KEYS_1 in .env (exactly 32 chars) — see .env.example}
+      APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_1: ${APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_1:?Set APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_1 in .env (exactly 32 chars) — see .env.example}
+      APP_INTEGRATIONS_TOKEN_ENCRYPTION_KEYS_1: ${APP_INTEGRATIONS_TOKEN_ENCRYPTION_KEYS_1:?Set APP_INTEGRATIONS_TOKEN_ENCRYPTION_KEYS_1 in .env (exactly 32 chars) — see .env.example}
+      APP_TOTP_ENCRYPTION_KEYS_1: ${APP_TOTP_ENCRYPTION_KEYS_1:?Set APP_TOTP_ENCRYPTION_KEYS_1 in .env (exactly 32 chars) — see .env.example}
+      APP_SLACK_OAUTH_STATE_SECRET: ${APP_SLACK_OAUTH_STATE_SECRET:?Set APP_SLACK_OAUTH_STATE_SECRET in .env — see .env.example}
+      APP_CALENDAR_OAUTH_STATE_SECRET: ${APP_CALENDAR_OAUTH_STATE_SECRET:?Set APP_CALENDAR_OAUTH_STATE_SECRET in .env — see .env.example}
       DEMO_MODE:         ${DEMO_MODE:-false}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:

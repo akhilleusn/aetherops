@@ -145,6 +145,7 @@ public abstract class AbstractIntegrationTest {
         registry.add("app.integrations.token-encryption.current", () -> "1");
         registry.add("app.integrations.token-encryption.keys.1", () -> "aetherops-integr-token-enc-key01");
         registry.add("app.calendar.oauth-state-secret", () -> "aetherops-test-calendar-oauth-state-secret");
+        registry.add("app.slack.oauth-state-secret", () -> "aetherops-test-slack-oauth-state-secret");
         // 1s instead of the 30s production default so replay-window tests don't need a real
         // 30s sleep to prove "accepted again after the window" — see MonitoringAlertReplayGuard.
         registry.add("app.webhooks.replay-window-seconds", () -> "1");

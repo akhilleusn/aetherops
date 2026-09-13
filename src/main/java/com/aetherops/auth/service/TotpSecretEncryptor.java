@@ -13,18 +13,20 @@ import java.util.Map;
 public class TotpSecretEncryptor {
 
     private static final String PURPOSE = "TOTP secret";
+    private static final String ENV_VAR_PREFIX = "APP_TOTP_ENCRYPTION_KEYS_";
     private static final String INSECURE_DEFAULT = "00000000000000000000000000000000";
 
     private final VersionedAesGcmEncryptor core;
 
     public TotpSecretEncryptor(TotpEncryptionProperties properties) {
         if (INSECURE_DEFAULT.equals(properties.getKeys().get(properties.getCurrent()))) {
-            log.warn("TOTP encryption key is using the insecure default. Set TOTP_ENCRYPTION_KEY in production.");
+            log.warn("TOTP encryption key is using the insecure default. Set APP_TOTP_ENCRYPTION_KEYS_{} in production.",
+                properties.getCurrent());
         }
 
         Map<Integer, SecretKeySpec> keys = new HashMap<>();
         properties.getKeys().forEach((version, key) ->
-            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, version, PURPOSE)));
+            keys.put(version, VersionedAesGcmEncryptor.buildKeySpec(key, ENV_VAR_PREFIX + version)));
         keys.putIfAbsent(VersionedAesGcmEncryptor.LEGACY_VERSION, keys.get(properties.getCurrent()));
 
         this.core = new VersionedAesGcmEncryptor(keys, properties.getCurrent(), PURPOSE);

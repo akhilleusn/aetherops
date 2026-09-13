@@ -17,6 +17,7 @@ app:
         1: aetherops-totp-encryption-key-01
   slack:
     signing-secret: aetherops-test-slack-signing-secret
+    oauth-state-secret: aetherops-test-slack-oauth-state-secret
     token-encryption:
       current: 1
       keys:

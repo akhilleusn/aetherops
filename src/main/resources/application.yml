@@ -104,9 +104,13 @@ app:
   # ServiceNow API tokens / inbound webhook signing secrets respectively) — also required via
   # env var only (APP_CALENDAR_TOKEN_ENCRYPTION_CURRENT/_KEYS_n,
   # APP_INTEGRATIONS_TOKEN_ENCRYPTION_CURRENT/_KEYS_n), never defaulted here.
-  # app.calendar.oauth-state-secret is the HMAC signing secret CalendarOAuthStateService
-  # uses for the calendar-connect OAuth "state" param (same role as app.slack.signing-secret
-  # for SlackOAuthStateService) — required via env var only, never defaulted here.
+  # app.calendar.oauth-state-secret (APP_CALENDAR_OAUTH_STATE_SECRET) and
+  # app.slack.oauth-state-secret (APP_SLACK_OAUTH_STATE_SECRET) are the HMAC signing secrets
+  # CalendarOAuthStateService/SlackOAuthStateService use for their respective OAuth "state"
+  # params — each its own dedicated key, deliberately NOT app.slack.signing-secret (that value
+  # is Slack-provided, for verifying INBOUND requests FROM Slack; reusing it here would couple
+  # two independent trust domains — Phase 3 finding 4, see STEP_REPORT.md). Required via env
+  # var only, never defaulted here.
   webhooks:
     # See MonitoringAlertReplayGuard's javadoc.
     replay-window-seconds: ${APP_WEBHOOKS_REPLAY_WINDOW_SECONDS:30}

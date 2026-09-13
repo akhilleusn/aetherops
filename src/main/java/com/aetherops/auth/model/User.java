@@ -47,8 +47,8 @@ public class User {
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
-    @Column(name = "email_verification_token", length = 64, unique = true)
-    private String emailVerificationToken;
+    @Column(name = "email_verification_token_hash", length = 64, unique = true)
+    private String emailVerificationTokenHash;
 
     @Column(name = "email_verification_token_expires_at")
     private Instant emailVerificationTokenExpiresAt;

@@ -15,11 +15,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SlackOAuthStateServiceTest {
 
+    // Deliberately different from SIGNING_SECRET below -- Phase 3 finding 4 (see
+    // STEP_REPORT.md) gave this service its own dedicated key, separate from
+    // app.slack.signing-secret (the Slack-provided value SlackRequestVerifier uses to verify
+    // INBOUND requests). Using two different values here proves the two are no longer coupled.
+    private static final String OAUTH_STATE_SECRET = "test-slack-oauth-state-secret";
     private static final String SIGNING_SECRET = "test-signing-secret";
 
-    private final SlackAppConfig config =
-        new SlackAppConfig("client-id", "client-secret", SIGNING_SECRET, "http://localhost:8080/slack/oauth/callback");
-    private final SlackOAuthStateService stateService = new SlackOAuthStateService(config);
+    private final SlackOAuthStateService stateService = new SlackOAuthStateService(OAUTH_STATE_SECRET);
 
     private static String independentHmac(String secret, String payload) {
         try {
@@ -45,6 +48,22 @@ class SlackOAuthStateServiceTest {
         assertThat(stateService.verify(state)).isEqualTo(tenantId);
     }
 
+    /**
+     * Phase 3 finding 4: proves the state token validates correctly under the new dedicated
+     * key, and — the actual point of the fix — a state forged with what used to be the shared
+     * app.slack.signing-secret value no longer validates. Before this fix, this exact input
+     * would have passed verification.
+     */
+    @Test
+    void verify_rejectsStateSignedWithSlackSigningSecret_provingKeysAreIndependent() {
+        UUID tenantId = UUID.randomUUID();
+        long futureExpiry = Instant.now().getEpochSecond() + 600;
+        String stateSignedWithSigningSecret = craftState(SIGNING_SECRET, tenantId, futureExpiry);
+
+        assertThatThrownBy(() -> stateService.verify(stateSignedWithSigningSecret))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test
     void verify_rejectsTamperedTenantId() {
         long futureExpiry = Instant.now().getEpochSecond() + 600;
@@ -65,7 +84,7 @@ class SlackOAuthStateServiceTest {
     void verify_rejectsExpiredState() {
         UUID tenantId = UUID.randomUUID();
         long pastExpiry = Instant.now().getEpochSecond() - 60;
-        String expiredState = craftState(SIGNING_SECRET, tenantId, pastExpiry);
+        String expiredState = craftState(OAUTH_STATE_SECRET, tenantId, pastExpiry);
 
         assertThatThrownBy(() -> stateService.verify(expiredState))
             .isInstanceOf(IllegalArgumentException.class)
@@ -85,6 +104,14 @@ class SlackOAuthStateServiceTest {
         String state = craftState("a-different-secret-entirely", tenantId, futureExpiry);
 
         assertThatThrownBy(() -> stateService.verify(state))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void constructor_rejectsBlankSecret() {
+        assertThatThrownBy(() -> new SlackOAuthStateService(""))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SlackOAuthStateService(null))
             .isInstanceOf(IllegalArgumentException.class);
     }
 }
