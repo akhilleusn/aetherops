@@ -102,6 +102,11 @@ public class JwtService {
     private Claims getClaims(String token) {
         return Jwts.parser()
             .verifyWith(key)
+            // Phase 3 finding 8 (see STEP_REPORT.md): jjwt's default clock-skew tolerance is
+            // zero. Across multiple replicas (or just ordinary clock drift), that's a source of
+            // spurious 401s right at token issuance/expiry boundaries that are miserable to
+            // diagnose — a small explicit allowance costs nothing security-wise at this scale.
+            .clockSkewSeconds(30)
             .build()
             .parseSignedClaims(token)
             .getPayload();

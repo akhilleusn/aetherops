@@ -25,4 +25,10 @@ public class ConfigureTicketIntegrationRequest {
 
     @NotBlank(message = "apiToken is required")
     private String apiToken;
+
+    @Override
+    public String toString() {
+        return "ConfigureTicketIntegrationRequest(provider=" + provider + ", baseUrl=" + baseUrl
+            + ", projectKey=" + projectKey + ", username=" + username + ", apiToken=[REDACTED])";
+    }
 }

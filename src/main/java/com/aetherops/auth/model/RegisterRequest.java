@@ -25,4 +25,10 @@ public record RegisterRequest(
     public RegisterRequest(String email, String password, String invitationToken) {
         this(email, password, invitationToken, null, null);
     }
+
+    @Override
+    public String toString() {
+        return "RegisterRequest[email=" + email + ", password=[REDACTED], invitationToken=[REDACTED], "
+            + "tenantId=" + tenantId + ", tenantSlug=" + tenantSlug + "]";
+    }
 }

@@ -1,13 +1,21 @@
 package com.aetherops.auth.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.aetherops.auth.model.GoogleUserInfo;
 import com.aetherops.common.exception.InvalidGoogleTokenException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
+
+import java.io.IOException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,6 +38,8 @@ class GoogleTokenVerifierTest {
 
     private GoogleTokenVerifier verifier;
     private MockRestServiceServer mockServer;
+    private ListAppender<ILoggingEvent> logAppender;
+    private Logger logger;
 
     @BeforeEach
     void setUp() {
@@ -40,6 +50,20 @@ class GoogleTokenVerifierTest {
         when(builder.build()).thenReturn(restTemplate);
 
         verifier = new GoogleTokenVerifier(CLIENT_ID, builder);
+
+        logger = (Logger) LoggerFactory.getLogger(GoogleTokenVerifier.class);
+        logAppender = new ListAppender<>();
+        logAppender.start();
+        logger.addAppender(logAppender);
+    }
+
+    @AfterEach
+    void detachAppender() {
+        logger.detachAppender(logAppender);
+    }
+
+    private List<String> loggedMessages() {
+        return logAppender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 
     @Test
@@ -89,5 +113,26 @@ class GoogleTokenVerifierTest {
         GoogleUserInfo result = verifier.verify(ID_TOKEN);
 
         assertThat(result.sub()).isEqualTo("12345");
+    }
+
+    /**
+     * Phase 3 finding 7 (see STEP_REPORT.md, UNVERIFIED at audit time): the raw Google ID token
+     * is embedded in the tokeninfo request URL. Spring's RestTemplate embeds the resolved
+     * request URI in a RestClientException's message on I/O failure (e.g. ResourceAccessException
+     * "I/O error on GET request for \"<url>\": ..."), so logging e.getMessage() unfiltered would
+     * write the raw token to the logs on every network hiccup talking to Google. Forces exactly
+     * that failure path (an I/O error on the request) and asserts the token never reaches the logs.
+     */
+    @Test
+    void verify_networkFailure_neverLogsRawToken() {
+        mockServer.expect(requestTo(TOKENINFO_URL))
+            .andRespond(request -> { throw new IOException("Connection refused"); });
+
+        assertThatThrownBy(() -> verifier.verify(ID_TOKEN))
+            .isInstanceOf(InvalidGoogleTokenException.class);
+
+        List<String> messages = loggedMessages();
+        assertThat(messages).isNotEmpty();
+        assertThat(messages).noneMatch(m -> m.contains(ID_TOKEN));
     }
 }

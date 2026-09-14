@@ -1,237 +1,224 @@
-# STEP G3 — Token Hashing, Config, and Key Separation (Phase 3 findings 2, 3, 4)
+# STEP G4 — Crypto Cleanup (Phase 3 findings 5, 6, 7, 8 + BCrypt bump)
 
-Status: **implemented, not committed.** All three findings closed; details, tests, and
-one flagged-but-not-fixed pre-existing issue below.
-
----
-
-## Finding 2 — email verification tokens hashed at rest
-
-**Pattern followed:** `PasswordResetService`'s `sha256(String)` helper (`MessageDigest`
-+ `HexFormat` hex encoding) — chosen over `RefreshTokenService`'s identical copy,
-`ApiKeyService`'s identical copy, and `InvitationTokenGenerator`'s (Base64-url-encoded)
-variant because `PasswordResetService`'s use case is closest in shape: a single-use,
-time-limited token embedded in an emailed link, looked up once, cleared after use —
-exactly what `EmailVerificationService` already does. (Worth noting for later: all
-four existing copies are byte-for-byte duplicates of each other except
-`InvitationTokenGenerator`'s encoding choice — real duplication, same shape as the
-AES/GCM duplication G2 fixed. Out of scope here since it wasn't one of findings 2/3/4,
-but flagging it as a candidate for the same treatment.)
-
-**Migration — confirmed safe to rename rather than transform:**
-`src/main/resources/db/migration/V70__hash_email_verification_token.sql` does
-`ALTER TABLE users RENAME COLUMN email_verification_token TO email_verification_token_hash`,
-same shape as `V64__refresh_token_rotation.sql`'s precedent for refresh tokens. Confirmed
-safe from the schema, not just re-asserted from memory: grepped every migration file for
-`email_verification_token` — only `V33__add_email_verification.sql` (the original
-`ADD COLUMN` + partial unique index) and this new one touch it; no foreign key, no other
-index, no other migration references it. Combined with G2's already-established fact that
-no environment has ever actually been deployed (Railway account suspended), a plain
-rename carries zero data-loss risk.
-
-**Code changes:**
-- `User.java` — field/column renamed `emailVerificationToken` → `emailVerificationTokenHash`
-  (`email_verification_token_hash`, still `VARCHAR(64)` — already the right width for a
-  SHA-256 hex digest, no length change needed).
-- `UserRepository.findByEmailVerificationToken` → `findByEmailVerificationTokenHash`.
-- `EmailVerificationService` — `sendVerificationEmail` now stores `sha256(token)`, not
-  `token`; `verifyEmail` looks up by `sha256(token)`. Raw-token generation (32 random
-  bytes, hex-encoded, 24h expiry) is unchanged — only what gets persisted changed. The
-  raw token still goes out in the email link exactly as before.
-
-**Tests:**
-- `EmailVerificationServiceTest.sendVerificationEmail_persistsOnlyHash_neverRawToken_andVerificationStillWorksEndToEnd`
-  (new) — captures the actual link handed to `EmailService`, extracts the raw token,
-  asserts the persisted value is neither blank nor equal to the raw token but does equal
-  `sha256(rawToken)`, then feeds the raw token back into `verifyEmail` and asserts it
-  succeeds (user verified, hash cleared). This is the "raw token never persisted;
-  verification still works end to end" test.
-- `verifyEmail_validToken_setsVerifiedAndClearsToken` / `verifyEmail_expiredToken_...`
-  (existing, updated) — now build/mock against the hash, not the raw token.
-- `AuthIntegrationTest.register_createsUserWithUnverifiedEmail` — one-line rename
-  (`getEmailVerificationToken()` → `getEmailVerificationTokenHash()`), same assertion
-  (not blank).
+Status: **implemented, not committed.** All five items closed. Finding 7 was
+investigated and found NOT to be a real issue in this codebase's Spring version —
+details below.
 
 ---
 
-## Finding 3 — docker-compose env var names, hardcoded JWT fallback, stale encryption keys
+## Finding 5 — constant-time backup code comparison
 
-**Renamed** (`docker-compose.yml`, `aetherops` service): `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`
-→ `SPRING_DATASOURCE_URL`/`SPRING_DATASOURCE_USERNAME`/`SPRING_DATASOURCE_PASSWORD` — the
-names Spring's relaxed binding actually reads. The Postgres-container-derived defaults
-(`${POSTGRES_USER:-aetherops_user}` etc.) are unchanged; that's a local-dev convenience
-self-contained within this file, not the leaked-secret pattern the JWT var had, and finding
-3 didn't ask me to touch it.
+`TotpService.java` line 129: `backup.getCodeHash().equals(codeHash)` →
+`MessageDigest.isEqual(backup.getCodeHash().getBytes(UTF_8), codeHash.getBytes(UTF_8))`,
+matching every HMAC comparison already in this codebase (`SlackOAuthStateService`,
+`CalendarOAuthStateService`, `WebhookSignatureVerifier`, etc.).
 
-**JWT fallback removed, name fixed, and made fail-closed in the same change** (per your
-explicit instruction not to split the rename from the fallback removal):
-`JWT_SECRET: ${JWT_SECRET:-aetherops-local-dev-secret-key-minimum-32-chars}` →
-`APP_JWT_SECRET: ${APP_JWT_SECRET:?Set APP_JWT_SECRET in .env (32+ chars) — see .env.example}`.
-Docker Compose's `${VAR:?message}` syntax refuses to start the container at all if the var
-is unset/empty, printing that message — verified this actually works (see Verification
-below). The old hardcoded value is gone from the file entirely, not just unreferenced.
-
-**Superseded encryption key names — checked, none existed to rename or remove.**
-Grepped `docker-compose.yml` for `ENCRYPTION` before touching it: it set **none** of the
-four AES/GCM keys, neither the pre-G2 single-key names nor the post-G2 `_KEYS_n` names. So
-the literal instruction ("update them to the `_KEYS_1` form or remove them") had nothing to
-act on — but since G2 made these hard-required at Spring startup, `docker compose up` would
-have failed to boot the app entirely for a reason unrelated to the DB/JWT mismatches. I
-flagged this as a judgment call and you confirmed: added all four, fail-closed, no
-hardcoded values, same `${VAR:?...}` pattern as JWT:
-`APP_SLACK_TOKEN_ENCRYPTION_KEYS_1`, `APP_CALENDAR_TOKEN_ENCRYPTION_KEYS_1`,
-`APP_INTEGRATIONS_TOKEN_ENCRYPTION_KEYS_1`, `APP_TOTP_ENCRYPTION_KEYS_1`.
-
-**Also added, per your follow-up message:** `APP_SLACK_OAUTH_STATE_SECRET` (new in this
-step, finding 4) and `APP_CALENDAR_OAUTH_STATE_SECRET` (pre-existing requirement that was
-already missing from this file for an unrelated, pre-G3 reason — see the flagged issue
-below). Same fail-closed syntax as everything else.
-
-**Error messages now name the exact variable and constraint** (your follow-up ask):
-- `VersionedAesGcmEncryptor.buildKeySpec(String key, String envVarName)` — signature
-  changed from `(key, version, purpose)` to take the exact env var name directly. Message:
-  `"<ENV_VAR> is required (exactly 32 characters)"`, e.g.
-  `"APP_TOTP_ENCRYPTION_KEYS_1 is required (exactly 32 characters)"` — your exact example.
-  Each of the four encryptor classes now builds that name itself
-  (`ENV_VAR_PREFIX + version`, e.g. `"APP_SLACK_TOKEN_ENCRYPTION_KEYS_" + version`).
-- `SlackOAuthStateService` / `CalendarOAuthStateService` blank-secret checks now say
-  `"APP_SLACK_OAUTH_STATE_SECRET is required (must not be blank)"` /
-  `"APP_CALENDAR_OAUTH_STATE_SECRET is required (must not be blank)"` (previously named
-  the Spring property path, e.g. `app.calendar.oauth-state-secret`, not the env var).
-- `TotpSecretEncryptor`'s insecure-default warning referenced the already-stale
-  `TOTP_ENCRYPTION_KEY` (never the real property name even before G2); corrected to name
-  the actual current env var (`APP_TOTP_ENCRYPTION_KEYS_{current}`).
-
-**`.env.example` updated to match** (per your follow-up ask) — added all of the above
-with a one-line comment above the encryption keys on generating one
-(`openssl rand -hex 16` → 16 bytes → 32 hex characters, verified by byte-counting an
-actual generated example). **Deliberately did not use realistic-looking generated
-values as the placeholders** — I generated some initially, then reconsidered: a
-plausible-looking 32-char secret sitting in this committed file is exactly the pattern
-finding 3 itself warns about (a secret that looks live, in git history, that someone
-might forget to replace). Used obviously-non-functional placeholders instead
-(`REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_16`, `REPLACE_WITH_YOUR_OWN_RANDOM_SECRET`) —
-for the length-constrained ones, copy-pasting the file unedited fails closed (wrong
-length) rather than silently running with a shared secret. Also fixed the same
-`DB_URL`/`DB_USERNAME`/`DB_PASSWORD` stale names in `.env.example`'s "local development
-only" section (→ `SPRING_DATASOURCE_*`) — same bug as docker-compose.yml, same fix.
-
-**Flagged, not fixed (outside findings 2/3/4):** `docker-compose.yml` has a pre-existing,
-unrelated YAML structural bug — `zipkin:` is nested under `volumes:` instead of being a
-sibling service, so `docker compose config`/`up` fails regardless of anything in this
-step (`volumes.pgdata additional properties 'zipkin' not allowed`). Verified this is the
-*only* remaining error once all required env vars are supplied (see Verification below) —
-my changes are otherwise syntactically complete and correct. Did not fix it: it's not a
-secret/env-var naming issue, doesn't touch findings 2/3/4, and you said fix nothing
-outside them. Separately, `kubernetes/deployment.yaml`/`secret.yaml` still reference the
-old single-key TOTP env var shape (`APP_TOTP_ENCRYPTIONKEY`, itself already missing an
-underscore even before G2) — flagged in the G2 report already, still unfixed, still not
-part of this step's scope (Railway, not Kubernetes, is the real deployment target).
+**Test:** no new unit test added — there's no existing `TotpServiceTest` unit-test
+file to extend (only `TotpIntegrationTest`, Docker-gated), and per the finding
+itself this is a "Low, consistency-only" fix with no behavior change:
+`MessageDigest.isEqual` and `String.equals` return identical true/false results for
+every input, just not in constant time. `TotpIntegrationTest`'s existing
+`verify_validBackupCode_returnsFullJwt` and `verify_usedBackupCode_returns400` (both
+Docker-gated, not run in this session) already exercise this exact branch and will
+continue to pass unchanged — this is a correctness-preserving substitution, not new
+behavior to cover.
 
 ---
 
-## Finding 4 — SlackOAuthStateService gets its own key
+## Finding 6 — redact secrets from DTO toString()
 
-**Change:** `SlackOAuthStateService` no longer takes `SlackAppConfig` (and therefore no
-longer reads `app.slack.signing-secret`, the Slack-provided value
-`SlackRequestVerifier` uses to authenticate inbound requests). It now takes its own
-`@Value("${app.slack.oauth-state-secret}") String secret` directly, builds its own
-`SecretKeySpec`, and fails closed exactly like `CalendarOAuthStateService` — the pattern
-you named — throwing `IllegalArgumentException` if blank/unset, no default anywhere.
+**The three named DTOs** (`LoginRequest`, `RegisterRequest`, `ResetPasswordRequest`)
+now override `toString()`, redacting `password`/`newPassword`/`token`.
 
-**New env var:** `APP_SLACK_OAUTH_STATE_SECRET` (property `app.slack.oauth-state-secret`).
-No format/length constraint (it's an HMAC key, not AES — any length works), but treat it
-like every other secret here: long, random, unique per environment, never reused. Added
-to `.env.example` and `docker-compose.yml` (see Finding 3 above) and to
-`application.yml`'s comments alongside `app.calendar.oauth-state-secret`.
+**Checked every other DTO for a secret, token, or key field** (grepped `model/*.java`
+for `password|token|secret|apiKey|code|...`-shaped fields) and found nine more that
+qualify. Fixed all of them:
 
-**Test proving it validates under the new dedicated key** (your requirement):
-`SlackOAuthStateServiceTest` now constructs the service with `OAUTH_STATE_SECRET`, a
-value deliberately different from `SIGNING_SECRET` in the same file. Two tests cover
-this:
-- `issueThenVerify_roundTrip_returnsSameTenantId` — the direct proof: issue and verify
-  both go through the dedicated key end to end.
-- `verify_rejectsStateSignedWithSlackSigningSecret_provingKeysAreIndependent` (new) —
-  crafts a state signed with what `SIGNING_SECRET` would have been (the old shared
-  value) and asserts it's now rejected. Before this fix, since both values used to be
-  the same underlying `SlackAppConfig.getSigningSecret()`, this exact input would have
-  validated. This is the test that actually proves the coupling is gone, not just that
-  the happy path still works.
-- `constructor_rejectsBlankSecret` (new, mirrors `CalendarOAuthStateService`'s existing
-  test) — proves the fail-closed behavior.
+| DTO | Field(s) redacted |
+|---|---|
+| `GoogleAuthRequest` | `idToken`, `invitationToken` |
+| `RefreshTokenRequest` | `refreshToken` |
+| `LogoutRequest` | `refreshToken` |
+| `TwoFaDisableRequest` | `password` |
+| `TwoFaVerifyRequest` | `partialToken`, `code` |
+| `TwoFaVerifySetupRequest` | `code` |
+| `TwoFaSetupResponse` | `secret`, `backupCodes`, **and `qrCodeUrl`** — it embeds the raw TOTP secret as a query param (`otpauth://...?secret=<raw>`), so it's just as sensitive as the `secret` field itself |
+| `AuthResponse` | `token`, `refreshToken`, `partialToken` |
+| `CreateApiKeyResponse` | `plaintext` (the one-time full API key; `keyPrefix` stays visible — it's meant to be shown) |
+| `ConfigureTicketIntegrationRequest` | `apiToken` |
+
+`RegisterRequest` also got `invitationToken` redacted alongside `password` (the
+finding named only "the password field" for this one, but `invitationToken` is a
+single-use tenant-joining credential on the same DTO — same category, so I treated
+it the same way rather than leaving a partial fix on a DTO I was already editing).
+
+**Considered and deliberately excluded:** `CloudWatchSnsRequest.token`. This is
+AWS SNS's own subscription-confirmation field name, not a user credential — it's
+single-use, tied to confirming/unsubscribing one specific topic subscription, and
+this class (`@Data`, no existing `toString()` override) represents an inbound
+webhook envelope where logging the full payload is a plausible, legitimate
+operational need for debugging alarm delivery. Judgment call, not explicitly
+covered by the finding's "secret, token, or key" wording taken literally — flagging
+it here rather than silently including or excluding it. Say the word if you want it
+redacted too.
+
+**Tests (new):**
+- `ToStringRedactsSecretsTest` (12 test methods, one per DTO above plus
+  `LoginRequest`/`RegisterRequest`/`ResetPasswordRequest`, plus one documenting
+  `ForgotPasswordRequest` was checked and has no secret field to redact) —
+  `src/test/java/com/aetherops/auth/model/ToStringRedactsSecretsTest.java`
+- `CreateApiKeyResponseTest.toString_redactsPlaintext_keepsPrefixVisible`
+- `ConfigureTicketIntegrationRequestTest.toString_redactsApiToken_keepsOtherFieldsVisible`
+
+---
+
+## Finding 7 — Google token in URL / logged on failure (UNVERIFIED → RESOLVED, no leak)
+
+**Investigated as instructed rather than assumed.** Wrote
+`GoogleTokenVerifierTest.verify_networkFailure_neverLogsRawToken`: forces a real
+`RestClientException` from the exact call path (`MockRestServiceServer` throws
+`IOException` from the response creator, so `RestTemplate` wraps it into a
+`ResourceAccessException`), attaches a Logback `ListAppender` to
+`GoogleTokenVerifier`'s logger (same pattern `EmailServiceTest` already uses), and
+asserts the captured `log.warn(..., e.getMessage())` output never contains the
+raw token.
+
+**Ran it before making any change**, to observe real behavior rather than reason
+about it: it **passed immediately, with zero code changes**. Logged message:
+```
+Google token verification failed: I/O error on GET request for "https://oauth2.googleapis.com/tokeninfo": Connection refused
+```
+No query string, no token — contradicting what I (and apparently the original
+audit) expected from the well-known older `ResourceAccessException` message format.
+
+**Root-caused it, not just observed it**, since a passing test alone doesn't prove
+*why*: decompiled `RestTemplate.class` from this project's actual dependency
+(`spring-web 7.0.5`) and confirmed `createResourceAccessException` is invoked with
+the resolved request `URI`, so in principle the query string *is* available to it —
+then independently verified with a **real** (non-mocked) `RestTemplate` against an
+actually-unreachable address (`http://127.0.0.1:1`, real `Connection refused`, no
+`MockRestServiceServer` involved) and got the identical query-string-free message.
+So this isn't a `MockRestServiceServer` quirk — Spring 7.0.5's actual
+`ResourceAccessException` message construction does not include the query string
+in this failure path, at least for a connection-refused-class I/O error.
+
+**Which way it went, concretely: the token does NOT leak.** No production code
+change was needed or made. The test stays as a regression guard — if a future
+Spring upgrade changes this message format back to including the full URI, this
+test will start failing and catch it before it ships.
+
+(I deleted a throwaway diagnostic test/scratch directory I used to independently
+confirm the real-RestTemplate behavior — not part of the diff, nothing left
+behind.)
+
+---
+
+## Finding 8 — JWT clock-skew tolerance
+
+`JwtService.getClaims()`: `Jwts.parser().verifyWith(key)` → `...verifyWith(key)
+.clockSkewSeconds(30).build()...` (jjwt 0.12.6's current fluent API; the older
+`setAllowedClockSkewSeconds` also exists but `.clockSkewSeconds(...)` matches the
+existing builder-chain style already in this method).
+
+**Existing test had to be fixed, not just extended** — `isTokenValid_withExpiredToken_returnsFalse`
+built its "expired" token via a 0-hour-expiry `JwtService` (`exp` ≈ token-creation
+instant). With 30s of tolerance now in place, that token would fall *inside* the
+new tolerance window and the test would start asserting the wrong thing (still
+technically pass by accident today, but become a race against wall-clock timing,
+and wrong in spirit — it would no longer be testing "expired is rejected", it'd be
+testing "expired-by-a-few-milliseconds is rejected", which is no longer true).
+Per "never weaken a test": I did not delete or loosen the assertion — I rebuilt it
+so it constructs a token whose `exp` is unambiguously in the past (60s, comfortably
+beyond the 30s tolerance) using jjwt directly against the same signing key,
+renamed to `isTokenValid_expiredBeyondClockSkewTolerance_returnsFalse` for clarity,
+and kept the exact same assertion (`isTokenValid(...)` is `false`). Net effect:
+same coverage, now actually correct given the new behavior, not weaker.
+
+**New tests:**
+- `isTokenValid_expiredBeyondClockSkewTolerance_returnsFalse` (rebuilt, see above)
+- `isTokenValid_expiredWithinClockSkewTolerance_returnsTrue` — the actual point of
+  the fix: a token that expired only 10s ago (well inside the 30s tolerance) is
+  still accepted.
+
+---
+
+## BCrypt bump (10 → 12)
+
+`PasswordEncoderConfig`: `new BCryptPasswordEncoder()` → `new BCryptPasswordEncoder(12)`.
+
+**Test proving old hashes still verify** (the whole risk of this change, per your
+instruction): `PasswordEncoderConfigTest.passwordHashedAtOldStrengthTen_stillAuthenticatesUnderNewEncoder`
+— hashes a password with an independently-constructed strength-10 encoder, then
+confirms the new strength-12 bean's `.matches(...)` still returns `true` against
+that old hash. A second test,
+`newlyEncodedPassword_usesStrengthTwelve`, parses the BCrypt hash format
+(`$<version>$<cost>$...`) and asserts the cost factor is actually `12` for newly
+encoded passwords — confirming the bump took effect, not just that old hashes
+still work.
 
 ---
 
 ## Files changed
 
-**New:**
-- `src/main/resources/db/migration/V70__hash_email_verification_token.sql`
+**Main:**
+- `src/main/java/com/aetherops/auth/service/TotpService.java` (finding 5)
+- `src/main/java/com/aetherops/auth/model/LoginRequest.java`,
+  `RegisterRequest.java`, `ResetPasswordRequest.java`, `GoogleAuthRequest.java`,
+  `RefreshTokenRequest.java`, `LogoutRequest.java`, `TwoFaDisableRequest.java`,
+  `TwoFaVerifyRequest.java`, `TwoFaVerifySetupRequest.java`, `TwoFaSetupResponse.java`,
+  `AuthResponse.java` (finding 6)
+- `src/main/java/com/aetherops/apikey/model/CreateApiKeyResponse.java`,
+  `src/main/java/com/aetherops/integrations/model/ConfigureTicketIntegrationRequest.java`
+  (finding 6)
+- `src/main/java/com/aetherops/auth/service/JwtService.java` (finding 8)
+- `src/main/java/com/aetherops/config/PasswordEncoderConfig.java` (BCrypt bump)
+- *(no production change for finding 7 — investigated, confirmed not an issue)*
 
-**Changed — main:**
-- `src/main/java/com/aetherops/auth/model/User.java`
-- `src/main/java/com/aetherops/auth/repository/UserRepository.java`
-- `src/main/java/com/aetherops/auth/service/EmailVerificationService.java`
-- `src/main/java/com/aetherops/auth/service/TotpSecretEncryptor.java` (env-var-named
-  error messages, buildKeySpec signature)
-- `src/main/java/com/aetherops/calendar/CalendarOAuthStateService.java` (message only)
-- `src/main/java/com/aetherops/calendar/CalendarTokenEncryptor.java` (buildKeySpec signature)
-- `src/main/java/com/aetherops/crypto/VersionedAesGcmEncryptor.java` (`buildKeySpec` now
-  takes the exact env var name)
-- `src/main/java/com/aetherops/integrations/service/TicketIntegrationTokenEncryptor.java`
-  (buildKeySpec signature)
-- `src/main/java/com/aetherops/slack/SlackOAuthStateService.java` (dedicated key, finding 4)
-- `src/main/java/com/aetherops/slack/SlackTokenEncryptor.java` (buildKeySpec signature)
-- `src/main/resources/application.yml` (comments)
-- `docker-compose.yml`
-- `.env.example`
+**Test — new:**
+- `src/test/java/com/aetherops/auth/model/ToStringRedactsSecretsTest.java`
+- `src/test/java/com/aetherops/apikey/model/CreateApiKeyResponseTest.java`
+- `src/test/java/com/aetherops/integrations/model/ConfigureTicketIntegrationRequestTest.java`
+- `src/test/java/com/aetherops/config/PasswordEncoderConfigTest.java`
 
-**Changed — test:**
-- `src/test/java/com/aetherops/AbstractIntegrationTest.java` (+ `app.slack.oauth-state-secret`)
-- `src/test/java/com/aetherops/auth/AuthIntegrationTest.java` (rename)
-- `src/test/java/com/aetherops/auth/EmailVerificationServiceTest.java` (rewritten)
-- `src/test/java/com/aetherops/crypto/VersionedAesGcmEncryptorTest.java`
-  (`buildKeySpec` call sites + new error-message test)
-- `src/test/java/com/aetherops/slack/SlackOAuthStateServiceTest.java` (rewritten)
-- `src/test/resources/application-test.yml` (+ `app.slack.oauth-state-secret`)
+**Test — changed:**
+- `src/test/java/com/aetherops/auth/service/GoogleTokenVerifierTest.java` (finding 7
+  investigation test + Logback appender wiring)
+- `src/test/java/com/aetherops/auth/JwtServiceTest.java` (finding 8 — rebuilt the
+  expired-token test, added the within-tolerance test)
 
 **Not touched, unrelated pre-existing edit still in your working tree:** `railway.toml`.
 
-## New tests, by name
+## New/changed tests, by name
 
-- `EmailVerificationServiceTest.sendVerificationEmail_persistsOnlyHash_neverRawToken_andVerificationStillWorksEndToEnd`
-- `VersionedAesGcmEncryptorTest.buildKeySpec_errorMessage_namesExactEnvVarAndConstraint`
-- `SlackOAuthStateServiceTest.verify_rejectsStateSignedWithSlackSigningSecret_provingKeysAreIndependent`
-- `SlackOAuthStateServiceTest.constructor_rejectsBlankSecret`
+- `ToStringRedactsSecretsTest` — 12 methods (see Finding 6 above)
+- `CreateApiKeyResponseTest.toString_redactsPlaintext_keepsPrefixVisible`
+- `ConfigureTicketIntegrationRequestTest.toString_redactsApiToken_keepsOtherFieldsVisible`
+- `GoogleTokenVerifierTest.verify_networkFailure_neverLogsRawToken`
+- `JwtServiceTest.isTokenValid_expiredBeyondClockSkewTolerance_returnsFalse` (rebuilt)
+- `JwtServiceTest.isTokenValid_expiredWithinClockSkewTolerance_returnsTrue`
+- `PasswordEncoderConfigTest.passwordHashedAtOldStrengthTen_stillAuthenticatesUnderNewEncoder`
+- `PasswordEncoderConfigTest.newlyEncodedPassword_usesStrengthTwelve`
 
 ## Verification
 
-Docker is not running locally (confirmed via `docker info`, same as G2) — the
-Testcontainers-backed suite (`AbstractIntegrationTest` and everything extending it)
-cannot execute here. Ran everything that can run without it:
+Docker is not running locally (confirmed via `docker info`, same as G2/G3) — the
+Testcontainers-backed suite still can't execute here. Ran everything that can run
+without it:
 
 - `mvn test-compile` — clean, full main + test tree.
-- Targeted: every unit test class touched or exercising touched code —
-  `VersionedAesGcmEncryptorTest`, `SlackTokenEncryptorTest`, `CalendarTokenEncryptorTest`,
-  `TicketIntegrationTokenEncryptorTest`, `TotpSecretEncryptorTest`,
-  `SlackTokenEncryptionPropertiesTest`, `EmailVerificationServiceTest`,
-  `SlackOAuthStateServiceTest`, `CalendarOAuthStateServiceTest`, `SlackRequestVerifierTest`
-  → **51 tests, 0 failures, 0 errors.**
-- Full `mvn test -Dmaven.test.failure.ignore=true`: **1065 run, 0 failures, 290 errors** —
-  same 290-error Docker-unavailability signature as G2's baseline run (every one is
-  `NoClassDefFoundError` ← `Could not find a valid Docker environment`), 6 more tests run
-  than G2's baseline (the new ones above), zero new failures anywhere.
-- `docker compose config` (doesn't need the daemon, just validates/renders the file):
-  confirmed the new fail-closed env vars work exactly as intended — with none of them
-  set, it refuses with the exact custom message
-  (`required variable APP_JWT_SECRET is missing a value: Set APP_JWT_SECRET in .env...`);
-  with all seven required vars set, the only remaining error is the pre-existing
-  `zipkin`/`volumes` YAML bug flagged above, confirming my changes are otherwise
-  syntactically correct.
+- Targeted: every new/changed test class —
+  `GoogleTokenVerifierTest`, `JwtServiceTest`, `PasswordEncoderConfigTest`,
+  `ToStringRedactsSecretsTest`, `CreateApiKeyResponseTest`,
+  `ConfigureTicketIntegrationRequestTest` → **31 tests, 0 failures, 0 errors.**
+- Full `mvn test -Dmaven.test.failure.ignore=true`: **1083 run, 0 failures, 290
+  errors** — identical 290-error Docker-unavailability signature as every prior
+  step's baseline (all `NoClassDefFoundError` ← `Could not find a valid Docker
+  environment`), 18 more tests run than G3's baseline, zero new failures anywhere.
 
-Not verified in this session (needs Docker): the app actually booting end-to-end via
-`docker compose up` with real values, and the Testcontainers-backed integration suites
-(`TotpIntegrationTest`, `AuthIntegrationTest`, etc.) exercising these changes through a
-real Spring context + Postgres. Per your note, say so rather than run it — ready for you
-to push to CI for that verification.
+Not verified in this session (needs Docker): `TotpIntegrationTest`'s backup-code
+tests exercising the finding-5 change through a real Spring context + Postgres;
+`AuthIntegrationTest`/`PasswordResetIntegrationTest`/`GoogleOAuthIntegrationTest`
+exercising findings 6/8/BCrypt end-to-end through real HTTP requests. Ready to push
+to CI for that verification, as in prior steps.
 
 Nothing committed.

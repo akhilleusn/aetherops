@@ -126,7 +126,9 @@ public class TotpService {
         String codeHash = sha256(code.toUpperCase());
         List<TotpBackupCode> unusedCodes = backupCodeRepository.findByUserIdAndUsedFalse(userId);
         for (TotpBackupCode backup : unusedCodes) {
-            if (backup.getCodeHash().equals(codeHash)) {
+            if (MessageDigest.isEqual(
+                    backup.getCodeHash().getBytes(StandardCharsets.UTF_8),
+                    codeHash.getBytes(StandardCharsets.UTF_8))) {
                 backup.setUsed(true);
                 backupCodeRepository.save(backup);
                 return authService.buildResponse(user);

@@ -20,4 +20,10 @@ public class CreateApiKeyResponse {
     private String plaintext;
     private String description;
     private Instant createdAt;
+
+    @Override
+    public String toString() {
+        return "CreateApiKeyResponse(id=" + id + ", projectId=" + projectId + ", keyPrefix=" + keyPrefix
+            + ", plaintext=[REDACTED], description=" + description + ", createdAt=" + createdAt + ")";
+    }
 }

@@ -18,4 +18,11 @@ public class AuthResponse {
     private String role;
     private Boolean requiresTwoFactor;
     private String partialToken;
+
+    @Override
+    public String toString() {
+        return "AuthResponse(token=[REDACTED], expiresAt=" + expiresAt + ", refreshToken=[REDACTED], "
+            + "userId=" + userId + ", tenantId=" + tenantId + ", email=" + email + ", role=" + role
+            + ", requiresTwoFactor=" + requiresTwoFactor + ", partialToken=[REDACTED])";
+    }
 }

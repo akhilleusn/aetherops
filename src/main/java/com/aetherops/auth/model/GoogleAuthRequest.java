@@ -18,4 +18,9 @@ public record GoogleAuthRequest(
     public GoogleAuthRequest(String idToken, String invitationToken) {
         this(idToken, invitationToken, null);
     }
+
+    @Override
+    public String toString() {
+        return "GoogleAuthRequest[idToken=[REDACTED], invitationToken=[REDACTED], tenantId=" + tenantId + "]";
+    }
 }
