@@ -58,6 +58,36 @@ analysis:
   use-stub: false
 
 app:
+  # Step H2 (see STEP_REPORT.md): default connect/read timeout applied to every outbound HTTP
+  # client in this app that doesn't set its own (Slack, calendar, push/Expo, the Anthropic
+  # health check, AWS SNS cert/subscription-confirm calls) via RestClientTimeoutConfig's
+  # RestClientCustomizer/RestTemplateCustomizer beans. Jira, ServiceNow, and webhook delivery
+  # configure their own (below) since SsrfGuard.disableRedirects needs its own explicit values.
+  # Short deliberately: a call that needs longer than this has already failed for this product's
+  # purposes (see STEP_REPORT.md's design discussion) -- every one of these targets (Slack API,
+  # Google/Microsoft OAuth+calendar APIs, Expo push, Anthropic's own health endpoint, AWS SNS)
+  # is a well-provisioned, low-latency API in normal operation.
+  http-client:
+    default-connect-timeout-ms: ${APP_HTTP_CLIENT_DEFAULT_CONNECT_TIMEOUT_MS:2000}
+    default-read-timeout-ms: ${APP_HTTP_CLIENT_DEFAULT_READ_TIMEOUT_MS:3000}
+  # Step H2: dedicated, isolated thread pools for the three areas that used to share Spring
+  # Boot's one default @Async executor (core size 8, effectively unbounded queue -- see
+  # AsyncExecutorConfig's javadoc for why that means no isolation and no backpressure). Bounded
+  # queues + AbortPolicy (explicit here, matches Spring's own default) so a saturated area
+  # rejects loudly instead of queueing silently and indefinitely.
+  async:
+    paging:
+      core-pool-size: ${APP_ASYNC_PAGING_CORE_POOL_SIZE:4}
+      max-pool-size: ${APP_ASYNC_PAGING_MAX_POOL_SIZE:4}
+      queue-capacity: ${APP_ASYNC_PAGING_QUEUE_CAPACITY:50}
+    slack:
+      core-pool-size: ${APP_ASYNC_SLACK_CORE_POOL_SIZE:4}
+      max-pool-size: ${APP_ASYNC_SLACK_MAX_POOL_SIZE:8}
+      queue-capacity: ${APP_ASYNC_SLACK_QUEUE_CAPACITY:100}
+    webhook:
+      core-pool-size: ${APP_ASYNC_WEBHOOK_CORE_POOL_SIZE:4}
+      max-pool-size: ${APP_ASYNC_WEBHOOK_MAX_POOL_SIZE:8}
+      queue-capacity: ${APP_ASYNC_WEBHOOK_QUEUE_CAPACITY:100}
   jwt:
     # Phase 1 Step B, item 6: cut from the prior 24h default. Role is a JWT claim, not
     # reloaded per request, so this is also the window a demoted/removed user keeps acting
@@ -111,9 +141,30 @@ app:
   # is Slack-provided, for verifying INBOUND requests FROM Slack; reusing it here would couple
   # two independent trust domains — Phase 3 finding 4, see STEP_REPORT.md). Required via env
   # var only, never defaulted here.
+  # Step H2 (see STEP_REPORT.md): Jira/ServiceNow ticket creation timeouts + the bounded total
+  # wait TicketController's caller thread blocks on (JiraApiClient/ServiceNowApiClient run on
+  # their own resilience4j THREADPOOL bulkhead, not the caller's thread -- call-timeout-ms is the
+  # caller's backstop in case that pool itself is momentarily saturated, on top of the HTTP call
+  # already being bounded by connect+read). No retry on either integration -- see
+  # JiraTicketService's javadoc for why (non-idempotent POST, no idempotency key).
+  integrations:
+    jira:
+      connect-timeout-ms: ${APP_INTEGRATIONS_JIRA_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${APP_INTEGRATIONS_JIRA_READ_TIMEOUT_MS:5000}
+      call-timeout-ms: ${APP_INTEGRATIONS_JIRA_CALL_TIMEOUT_MS:9000}
+    servicenow:
+      connect-timeout-ms: ${APP_INTEGRATIONS_SERVICENOW_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${APP_INTEGRATIONS_SERVICENOW_READ_TIMEOUT_MS:5000}
+      call-timeout-ms: ${APP_INTEGRATIONS_SERVICENOW_CALL_TIMEOUT_MS:9000}
   webhooks:
     # See MonitoringAlertReplayGuard's javadoc.
     replay-window-seconds: ${APP_WEBHOOKS_REPLAY_WINDOW_SECONDS:30}
+    # Step H2 (see STEP_REPORT.md): tenant webhook endpoints are arbitrary third-party
+    # infrastructure we don't control -- a bit more slack than the default bucket since delivery
+    # can involve real server-side work on the receiving end, but still short (see
+    # SsrfGuard.disableRedirects, which these are passed into directly).
+    delivery-connect-timeout-ms: ${APP_WEBHOOKS_DELIVERY_CONNECT_TIMEOUT_MS:3000}
+    delivery-read-timeout-ms: ${APP_WEBHOOKS_DELIVERY_READ_TIMEOUT_MS:5000}
     migration:
       # See LegacyWebhookSecretBackfillRunner's javadoc: a one-time backfill for tenants that
       # existed before per-provider static-token secrets did. Off by default — turn on for one
@@ -137,11 +188,67 @@ resilience4j:
         ignore-exceptions:
           - com.aetherops.common.exception.UsageLimitExceededException
           - com.aetherops.common.exception.ResourceNotFoundException
+      # Step H2 (see STEP_REPORT.md): jira-ticket/servicenow-ticket -- non-critical integrations,
+      # so unlike paging it's safe (and useful) to stop attempting a POST once the provider is
+      # clearly down. SsrfBlockedException ignored -- a rejected baseUrl is a permanent
+      # configuration problem, not transient provider unhealthiness, so it shouldn't count toward
+      # the failure rate (same reasoning anthropic-ai already applies to its own non-transient
+      # exceptions). Deliberately NO retry instance for either -- see JiraTicketService's javadoc:
+      # a retried POST after a timed-out-but-actually-succeeded create risks a duplicate ticket,
+      # and there's no idempotency key in either integration to make that safe.
+      jira-ticket:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.aetherops.common.exception.SsrfBlockedException
+      servicenow-ticket:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.aetherops.common.exception.SsrfBlockedException
+      # Step H2: calendar -- safe specifically because PtoAwarenessService already fails open on
+      # any exception from these clients (see their javadoc); tripping the breaker just makes a
+      # known-down provider fail (and therefore fail open) faster instead of waiting out a full
+      # connect+read timeout on every rotation participant on every page attempt. Google and
+      # Outlook get separate instances so one provider being down doesn't degrade checks against
+      # the other. No retry -- paging should fail open immediately, not wait through a retry's
+      # backoff first.
+      calendar-google:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      calendar-outlook:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
   bulkhead:
     instances:
       anthropic-ai:
         max-concurrent-calls: 10
         max-wait-duration: 100ms
+  # Step H2: THREADPOOL bulkhead type (not the default SEMAPHORE) for jira-ticket/
+  # servicenow-ticket specifically because it moves the actual HTTP call onto its own dedicated
+  # pool instead of just limiting how many callers can run it concurrently on their own thread --
+  # this is what "off the request thread" means for these two (see JiraTicketService's javadoc
+  # for why bounded-wait-on-a-dedicated-pool was chosen over true fire-and-forget async).
+  thread-pool-bulkhead:
+    instances:
+      jira-ticket:
+        core-thread-pool-size: ${RESILIENCE4J_JIRA_BULKHEAD_CORE_POOL_SIZE:4}
+        max-thread-pool-size: ${RESILIENCE4J_JIRA_BULKHEAD_MAX_POOL_SIZE:4}
+        queue-capacity: ${RESILIENCE4J_JIRA_BULKHEAD_QUEUE_CAPACITY:10}
+      servicenow-ticket:
+        core-thread-pool-size: ${RESILIENCE4J_SERVICENOW_BULKHEAD_CORE_POOL_SIZE:4}
+        max-thread-pool-size: ${RESILIENCE4J_SERVICENOW_BULKHEAD_MAX_POOL_SIZE:4}
+        queue-capacity: ${RESILIENCE4J_SERVICENOW_BULKHEAD_QUEUE_CAPACITY:10}
   retry:
     instances:
       anthropic-ai:
@@ -156,6 +263,15 @@ twilio:
   account-sid: ${TWILIO_ACCOUNT_SID:}
   auth-token: ${TWILIO_AUTH_TOKEN:}
   from-number: ${TWILIO_FROM_NUMBER:}
+  # Step H2 (see STEP_REPORT.md): the Twilio SDK's own built-in default (confirmed by decompiling
+  # twilio-9.0.0.jar, not assumed) is connect=10000ms / socket(read)=30500ms -- bounded, but not
+  # short. Paging is the one call where a slow success is close to useless: EscalationService's
+  # SMS→push→Slack fallback should already have moved on well before 30.5s. Tightened explicitly
+  # per instruction rather than left as an inherited SDK default -- see TwilioConfig's javadoc
+  # for the full reasoning and where these are wired in (Twilio.setRestClient, not Spring's
+  # RestClient -- the SDK has its own separate HTTP client).
+  connect-timeout-ms: ${TWILIO_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${TWILIO_READ_TIMEOUT_MS:5000}
 
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}

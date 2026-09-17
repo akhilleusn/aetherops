@@ -73,6 +73,22 @@ class PtoAwarenessServiceTest {
         assertThat(service.isUserAvailable(userId, now)).isTrue();
     }
 
+    // Step H2 (see STEP_REPORT.md): OutlookCalendarBusyStatusClient/GoogleCalendarBusyStatusClient
+    // no longer catch their own exceptions (needed so their @CircuitBreaker can actually observe
+    // failures) -- this proves the fail-open guarantee still holds end-to-end now that
+    // PtoAwarenessService's own catch is the only one standing between a hanging/failing
+    // calendar provider and "assume available."
+    @Test
+    void isUserAvailable_busyStatusClientThrows_failsOpenReturnsTrue() {
+        when(googleClient.provider()).thenReturn(CalendarProvider.GOOGLE);
+        service = new PtoAwarenessService(connectionRepository, oAuthService, List.of(googleClient));
+        when(connectionRepository.findByUserId(userId)).thenReturn(List.of(connection(CalendarProvider.GOOGLE)));
+        when(oAuthService.refreshAccessToken(any())).thenReturn("access-token");
+        when(googleClient.hasAllDayOrOofEventAt(any(), any(), any())).thenThrow(new RuntimeException("Google Calendar timed out"));
+
+        assertThat(service.isUserAvailable(userId, now)).isTrue();
+    }
+
     @Test
     void isUserAvailable_multipleConnections_anyOooMakesUnavailable() {
         when(googleClient.provider()).thenReturn(CalendarProvider.GOOGLE);

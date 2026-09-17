@@ -11,6 +11,7 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.http.HttpClient;
+import java.time.Duration;
 
 /**
  * Phase 2 remediation, findings 4/6/11 (see STEP_REPORT.md): a single, shared SSRF check used
@@ -146,10 +147,19 @@ public final class SsrfGuard {
      * remediation applies this to its own injected {@code RestClient.Builder} (which Spring
      * hands out as a fresh instance per injection point) rather than to any shared/global
      * builder, so this has no effect on unrelated outbound calls elsewhere in the app.
+     *
+     * <p>Step H2 (see STEP_REPORT.md): this replaces the builder's {@code requestFactory}
+     * wholesale, which used to silently discard any connect/read timeout a caller had
+     * configured on the builder before passing it here — exactly the three call sites that
+     * most needed a bounded timeout (Jira, ServiceNow, webhook delivery) were also the three
+     * routed through this method. Timeouts are now a required parameter here instead, so
+     * "no redirects" and "has a timeout" compose instead of one erasing the other.
      */
-    public static RestClient.Builder disableRedirects(RestClient.Builder builder) {
-        return builder.requestFactory(new JdkClientHttpRequestFactory(
-            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build()));
+    public static RestClient.Builder disableRedirects(RestClient.Builder builder, Duration connectTimeout, Duration readTimeout) {
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).connectTimeout(connectTimeout).build());
+        factory.setReadTimeout(readTimeout);
+        return builder.requestFactory(factory);
     }
 
     /** Returns the name of the rule that disallows {@code address}, or {@code null} if it's

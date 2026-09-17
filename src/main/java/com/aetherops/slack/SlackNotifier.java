@@ -25,9 +25,11 @@ public class SlackNotifier {
     @Autowired
     public SlackNotifier(
         @Value("${app.slack.webhook-url:}") String webhookUrl,
-        @Value("${app.dashboard-base-url:http://localhost:8080}") String dashboardBaseUrl
+        @Value("${app.dashboard-base-url:http://localhost:8080}") String dashboardBaseUrl,
+        @Value("${app.http-client.default-connect-timeout-ms}") long connectTimeoutMs,
+        @Value("${app.http-client.default-read-timeout-ms}") long readTimeoutMs
     ) {
-        this(webhookUrl, dashboardBaseUrl, buildDefaultRestClient());
+        this(webhookUrl, dashboardBaseUrl, buildDefaultRestClient(connectTimeoutMs, readTimeoutMs));
     }
 
     SlackNotifier(String webhookUrl, String dashboardBaseUrl, RestClient restClient) {
@@ -36,7 +38,7 @@ public class SlackNotifier {
         this.restClient = restClient;
     }
 
-    @Async
+    @Async("slackExecutor")
     public void notify(Incident incident) {
         if (webhookUrl.isBlank()) {
             return;
@@ -115,10 +117,10 @@ public class SlackNotifier {
             .replace(">", "&gt;");
     }
 
-    private static RestClient buildDefaultRestClient() {
+    private static RestClient buildDefaultRestClient(long connectTimeoutMs, long readTimeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(3));
-        factory.setReadTimeout(Duration.ofSeconds(5));
+        factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
         return RestClient.builder().requestFactory(factory).build();
     }
 }

@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -34,15 +33,21 @@ class WebhookServiceTest {
     @Mock private FeatureFlagService featureFlagService;
     @Mock private WebhookSignatureVerifier signatureVerifier;
 
-    @InjectMocks
     private WebhookService webhookService;
 
     @BeforeEach
     void setUp() {
-        // SsrfGuard.disableRedirects(restClientBuilder) calls .requestFactory(...), which a
+        // SsrfGuard.disableRedirects(restClientBuilder, ...) calls .requestFactory(...), which a
         // real RestClient.Builder returns `this` from (fluent/mutating) -- mirror that so a
         // subsequent .build() still hits whatever a test stubs it to return.
         lenient().when(restClientBuilder.requestFactory(any())).thenReturn(restClientBuilder);
+        // Step H2 (see STEP_REPORT.md): WebhookService now takes explicit connect/read timeout
+        // ms constructor params (see application.yml's app.webhooks.delivery-*-timeout-ms) --
+        // @InjectMocks would silently fill these with 0, and HttpClient.Builder.connectTimeout
+        // throws IllegalArgumentException on a non-positive Duration, so this constructs the
+        // service explicitly with real values instead.
+        webhookService = new WebhookService(endpointRepository, deliveryRepository, objectMapper,
+            restClientBuilder, featureFlagService, signatureVerifier, 3000L, 5000L);
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.aetherops.oncall;
 import com.aetherops.incident.model.IncidentSeverity;
 import com.aetherops.oncall.OnCallService.PageResult;
 import com.aetherops.push.PushNotificationService;
+import com.aetherops.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -36,8 +37,25 @@ public class IncidentPagingService {
     private final IncidentTimelineService timelineService;
     private final PushNotificationService pushNotificationService;
 
-    @Async
+    @Async("pagingExecutor")
     public void maybePage(UUID tenantId, UUID incidentId, String serviceId, String title, IncidentSeverity severity) {
+        // Step H2 (see STEP_REPORT.md): bug found while implementing, not part of the original
+        // finding -- this method was already @Async (on the shared default pool) before this
+        // change. TenantContext is a plain ThreadLocal with no propagation across an executor
+        // boundary (see WebhookService.deliver's javadoc for the full explanation), so
+        // alertDeduplication's and timelineService's RLS-protected calls below ran with
+        // app.tenant_id unset on whatever thread actually executed this method. Traced through
+        // the code and the RLS policy SQL, not observed against a live database (Docker/
+        // Testcontainers unavailable in this session, same as every prior step).
+        TenantContext.set(tenantId);
+        try {
+            maybePageInternal(tenantId, incidentId, serviceId, title, severity);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private void maybePageInternal(UUID tenantId, UUID incidentId, String serviceId, String title, IncidentSeverity severity) {
         SeverityLevel level = SeverityLevel.fromIncidentSeverity(severity);
         if (!level.shouldPageImmediately()) {
             return;

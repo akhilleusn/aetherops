@@ -7,10 +7,11 @@ import com.aetherops.oncall.OnCallService.PageResult;
 import com.aetherops.push.PushNotificationService;
 import com.aetherops.slack.SlackConversationService;
 import com.aetherops.slack.SlackWorkspaceRepository;
+import com.aetherops.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Executes one escalation step: records it, then re-alerts through channels in order --
@@ -23,9 +24,33 @@ import org.springframework.transaction.annotation.Transactional;
  * regardless of whether any of them actually worked, and recorded nothing about the outcome.
  * Now sequential-stop-on-success (paging someone three times for one incident is noise, not
  * redundancy) with every attempt's result persisted on {@link EscalationExecution}.
- * {@code EscalationCheckJob} needs no changes -- it already advances escalation levels purely
- * on elapsed time, blind to delivery outcome, so a failed channel here was never what gated the
- * next level; only the *recording* of what happened was missing.
+ *
+ * <p>Step H2 (see STEP_REPORT.md): this used to run synchronously on whatever thread called it
+ * -- which, via {@code EscalationCheckJob}, was Spring Boot's single default {@code @Scheduled}
+ * thread. No {@code TaskScheduler} bean or {@code spring.task.scheduling.*} property exists
+ * anywhere in this codebase, so that one thread also runs every other scheduled job in the app
+ * ({@code OutboxService}, {@code SlaMonitoringJob}, {@code WarRoomAutoOpenJob}, this class's own
+ * {@code IncidentReportService}). A hang in SMS/push/Slack here didn't just stall escalation --
+ * it stopped outbox processing and SLA monitoring too. Now {@code @Async("pagingExecutor")}, so
+ * {@code EscalationCheckJob}'s sweep dispatches each incident's escalation and moves on
+ * immediately; {@code EscalationCheckJob} itself needed no change; this method just now runs on
+ * its own thread from the same small pool paging uses (its own priority, isolated from Jira/
+ * ServiceNow/Slack-notification/webhook traffic).
+ *
+ * <p>{@code @Transactional} deliberately dropped rather than kept alongside {@code @Async}: this
+ * method is invoked via a bean reference from {@code EscalationCheckJob}, which already sets
+ * {@code TenantContext} on ITS thread before calling in -- but {@code TenantContext} is a plain
+ * ThreadLocal, so once {@code @Async} hops this call to a different thread, that value doesn't
+ * follow. Setting it again as this method's own first line only works reliably if nothing else
+ * needs it set any earlier in the same method's proxy chain -- true for a bare {@code @Async}
+ * method, not guaranteed for one that's also {@code @Transactional} (whose advice would run
+ * before this method's body, and Spring does not document a stable relative order for
+ * {@code @Async} vs {@code @Transactional} advisors on the same method). The individual writes
+ * below ({@code executionRepository.save}, and everything inside {@code onCallService}/
+ * {@code pushNotificationService}/{@code slackConversationService}) are each transactional on
+ * their own bean via Spring Data/their own annotations, invoked strictly after this method's
+ * {@code TenantContext.set} -- so correctness doesn't depend on this method having its own
+ * transaction boundary, only on every DB write here happening as a call to another bean.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,8 +63,17 @@ public class EscalationService {
     private final SlackWorkspaceRepository slackWorkspaceRepository;
     private final SlackConversationService slackConversationService;
 
-    @Transactional
+    @Async("pagingExecutor")
     public void escalate(Incident incident, EscalationPolicy policy, int level) {
+        TenantContext.set(incident.getTenantId());
+        try {
+            escalateInternal(incident, policy, level);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private void escalateInternal(Incident incident, EscalationPolicy policy, int level) {
         EscalationExecution execution = EscalationExecution.builder()
             .tenantId(incident.getTenantId())
             .incidentId(incident.getId())

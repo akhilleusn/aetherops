@@ -24,12 +24,24 @@ public class AIProviderConfig {
         }
     }
 
+    /**
+     * Step H2 (see STEP_REPORT.md): bug found while implementing, not part of the original
+     * finding -- this used {@code RestClient.create()}, a bare static factory that bypasses
+     * Spring Boot's {@code RestClient.Builder} autoconfiguration entirely (and therefore every
+     * {@code RestClientCustomizer} bean, including the default connect/read timeout this batch
+     * adds in {@code RestClientTimeoutConfig}). The actual Anthropic API call this powers had no
+     * timeout at all, independent of the {@code anthropic-ai} resilience4j circuit breaker/
+     * bulkhead/retry already wrapping it -- those bound concurrency and retries, not the socket
+     * itself; a single hung call still occupied a bulkhead slot for as long as the OS allowed.
+     * Injecting the builder (same as {@link #anthropicHealthIndicator}, just below, already
+     * does) picks up the timeout for free.
+     */
     @Bean
     @Primary
     @Conditional(AnthropicKeyPresent.class)
-    public AIProvider anthropicAIProvider(ObjectMapper objectMapper) {
+    public AIProvider anthropicAIProvider(ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
         String apiKey = System.getenv("ANTHROPIC_API_KEY");
-        return new AnthropicAIProvider(apiKey, RestClient.create(), objectMapper);
+        return new AnthropicAIProvider(apiKey, restClientBuilder.build(), objectMapper);
     }
 
     /** Only registered when ANTHROPIC_API_KEY is present — avoids phantom UNKNOWN in health. */

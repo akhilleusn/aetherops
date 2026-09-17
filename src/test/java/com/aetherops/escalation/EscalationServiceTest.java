@@ -113,6 +113,29 @@ class EscalationServiceTest {
         verify(pushNotificationService).sendPageAlert(eq(tenantId), contains("ESCALATED"), eq("DB down"));
     }
 
+    // Step H2 (see STEP_REPORT.md): the paging path specifically must not have a slow SMS
+    // attempt block the push/Slack fallback -- in production, onCallService.pageOnCall is
+    // bounded by Twilio's own (tightened, see TwilioConfig) connect/read timeout; this simulates
+    // a call that takes a while right up against that bound and then fails, and proves push
+    // still gets attempted rather than the fallback chain stalling or being skipped.
+    @Test
+    void escalate_slowFailingSmsAttempt_stillFallsBackToPush_doesNotBlockOnIt() {
+        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(onCallService.pageOnCall(any(), any(), any())).thenAnswer(invocation -> {
+            Thread.sleep(150);
+            return new PageResult(PageOutcome.PROVIDER_ERROR, null, "Twilio timed out");
+        });
+        when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(true);
+
+        long start = System.currentTimeMillis();
+        escalationService.escalate(incident(null), policy(), 1);
+        long elapsedMs = System.currentTimeMillis() - start;
+
+        verify(pushNotificationService).sendPageAlert(eq(tenantId), contains("ESCALATED"), eq("DB down"));
+        verifyNoInteractions(slackWorkspaceRepository, slackConversationService);
+        assertThat(elapsedMs).isLessThan(2000L);
+    }
+
     @Test
     void escalate_smsAndPushFail_fallsBackToSlack() {
         when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));

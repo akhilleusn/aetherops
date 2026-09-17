@@ -3,22 +3,23 @@ package com.aetherops.webhook;
 import com.aetherops.common.security.SsrfGuard;
 import com.aetherops.config.FeatureFlag;
 import com.aetherops.config.FeatureFlagService;
+import com.aetherops.tenant.TenantContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class WebhookService {
 
@@ -28,9 +29,51 @@ public class WebhookService {
     private final RestClient.Builder restClientBuilder;
     private final FeatureFlagService featureFlagService;
     private final WebhookSignatureVerifier signatureVerifier;
+    private final Duration connectTimeout;
+    private final Duration readTimeout;
 
-    @Async
+    public WebhookService(
+            WebhookEndpointRepository endpointRepository,
+            WebhookDeliveryRepository deliveryRepository,
+            ObjectMapper objectMapper,
+            RestClient.Builder restClientBuilder,
+            FeatureFlagService featureFlagService,
+            WebhookSignatureVerifier signatureVerifier,
+            @Value("${app.webhooks.delivery-connect-timeout-ms}") long connectTimeoutMs,
+            @Value("${app.webhooks.delivery-read-timeout-ms}") long readTimeoutMs) {
+        this.endpointRepository = endpointRepository;
+        this.deliveryRepository = deliveryRepository;
+        this.objectMapper = objectMapper;
+        this.restClientBuilder = restClientBuilder;
+        this.featureFlagService = featureFlagService;
+        this.signatureVerifier = signatureVerifier;
+        this.connectTimeout = Duration.ofMillis(connectTimeoutMs);
+        this.readTimeout = Duration.ofMillis(readTimeoutMs);
+    }
+
+    @Async("webhookExecutor")
     public void deliver(UUID tenantId, String eventType, Object payload) {
+        // Step H2 (see STEP_REPORT.md): bug found while implementing, not part of the original
+        // finding -- this method was already @Async (on the shared default pool) before this
+        // change, dispatched from a caller (e.g. IncidentService) that has TenantContext set on
+        // ITS OWN thread. TenantContext is a plain ThreadLocal (see TenantContext.java) with no
+        // propagation across an executor boundary, so it was never actually set on whatever
+        // thread ran this method's body -- meaning every RLS-protected read/write below
+        // (endpointRepository, deliveryRepository) ran with app.tenant_id unset. Per the RLS
+        // policies (see V28/V60 migrations), an unset app.tenant_id makes tenant_id = NULL,
+        // which never matches -- reads silently return zero rows and writes fail RLS's check.
+        // Traced through the code and the RLS policy SQL, not observed against a live database
+        // (Docker/Testcontainers unavailable in this session, same as every prior step) -- see
+        // STEP_REPORT.md for why this is reported as a real, separate bug rather than assumed.
+        TenantContext.set(tenantId);
+        try {
+            deliverInternal(tenantId, eventType, payload);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private void deliverInternal(UUID tenantId, String eventType, Object payload) {
         if (!featureFlagService.isEnabled(FeatureFlag.WEBHOOKS, tenantId)) {
             log.info("WEBHOOKS feature flag disabled for tenantId={}", tenantId);
             return;
@@ -76,7 +119,7 @@ public class WebhookService {
 
             String signature = signatureVerifier.computeHmacSha256(endpoint.getSecret(), delivery.getPayload());
 
-            RestClient client = SsrfGuard.disableRedirects(restClientBuilder).build();
+            RestClient client = SsrfGuard.disableRedirects(restClientBuilder, connectTimeout, readTimeout).build();
             ResponseEntity<Void> response = client.post()
                     .uri(endpoint.getUrl())
                     .header("Content-Type", "application/json")

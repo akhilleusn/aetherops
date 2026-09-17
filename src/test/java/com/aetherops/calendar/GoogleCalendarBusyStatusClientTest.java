@@ -11,6 +11,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,10 +63,16 @@ class GoogleCalendarBusyStatusClientTest {
         assertThat(client.hasAllDayOrOofEventAt("token", "primary", Instant.now())).isFalse();
     }
 
+    // Step H2 (see STEP_REPORT.md): this client no longer swallows its own exceptions -- a
+    // circuit breaker (@CircuitBreaker(name = "calendar-google") on this method) can't trip on
+    // a failure it never sees. PtoAwarenessService already catches and fails open one level up
+    // (see PtoAwarenessServiceTest's busyStatusClientThrows_failsOpenReturnsTrue), so the
+    // end-to-end behavior is unchanged -- only which layer catches it.
     @Test
-    void hasAllDayOrOofEventAt_apiThrows_returnsFalseNotThrows() {
+    void hasAllDayOrOofEventAt_apiThrows_propagatesException() {
         when(mockRestClient.get()).thenThrow(new RuntimeException("network error"));
-        assertThat(client.hasAllDayOrOofEventAt("token", "primary", Instant.now())).isFalse();
+        assertThatThrownBy(() -> client.hasAllDayOrOofEventAt("token", "primary", Instant.now()))
+            .isInstanceOf(RuntimeException.class);
     }
 
     @Test

@@ -8,6 +8,7 @@ import org.springframework.web.client.RestClient;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -194,7 +195,7 @@ class SsrfGuardTest {
         testServer.start();
         int port = testServer.getAddress().getPort();
 
-        RestClient client = SsrfGuard.disableRedirects(RestClient.builder()).build();
+        RestClient client = SsrfGuard.disableRedirects(RestClient.builder(), Duration.ofSeconds(3), Duration.ofSeconds(5)).build();
         var response = client.get()
             .uri("http://127.0.0.1:" + port + "/start")
             .retrieve()
@@ -202,5 +203,43 @@ class SsrfGuardTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(302);
         assertThat(targetHits.get()).isZero();
+    }
+
+    // --- Step H2 (see STEP_REPORT.md): configured timeout actually bounds the call ---
+    //
+    // Proves disableRedirects' connect/read timeout parameters are real, against a real local
+    // server, not a mock -- the exact mechanism JiraApiClient, ServiceNowApiClient, and
+    // WebhookService all route their outbound call through. Doesn't go through
+    // SsrfGuard.validate() first (same as the redirect test above) because validate() rejects
+    // loopback addresses unconditionally -- this isolates the timeout mechanism itself from that
+    // separate, already-covered check.
+    @Test
+    void disableRedirects_honorsConfiguredReadTimeout_failsFastInsteadOfHangingForever() throws Exception {
+        AtomicInteger requestsReceived = new AtomicInteger(0);
+        testServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        testServer.createContext("/hangs", exchange -> {
+            requestsReceived.incrementAndGet();
+            // Deliberately never call exchange.sendResponseHeaders/close -- simulates a hung
+            // third party that accepted the TCP connection but never answers.
+        });
+        testServer.start();
+        int port = testServer.getAddress().getPort();
+
+        RestClient client = SsrfGuard.disableRedirects(RestClient.builder(), Duration.ofMillis(500), Duration.ofMillis(500)).build();
+
+        long start = System.currentTimeMillis();
+        assertThatThrownBy(() -> client.get()
+            .uri("http://127.0.0.1:" + port + "/hangs")
+            .retrieve()
+            .toBodilessEntity())
+            .isInstanceOf(Exception.class);
+        long elapsedMs = System.currentTimeMillis() - start;
+
+        assertThat(requestsReceived.get()).isEqualTo(1);
+        // Configured read timeout is 500ms -- 5s is a generous upper bound that would still
+        // catch a regression back to "no timeout" (which would instead hang far longer than
+        // any real test suite would tolerate, rather than failing comfortably inside 5s the way
+        // a real ~500ms timeout does).
+        assertThat(elapsedMs).isLessThan(5000L);
     }
 }

@@ -2,6 +2,7 @@ package com.aetherops.slack;
 
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.repository.IncidentRepository;
+import com.aetherops.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -23,12 +24,26 @@ public class IncidentSlackNotificationService {
     private final SlackNotifier legacyNotifier;
     private final IncidentRepository incidentRepository;
 
-    @Async
+    @Async("slackExecutor")
     public void notify(Incident incident) {
-        workspaceRepository.findByTenantId(incident.getTenantId())
-            .ifPresentOrElse(
-                workspace -> notifyViaBotToken(workspace, incident),
-                () -> legacyNotifier.notify(incident));
+        // Step H2 (see STEP_REPORT.md): bug found while implementing, not part of the original
+        // finding -- this method was already @Async (on the shared default pool) before this
+        // change. TenantContext is a plain ThreadLocal with no propagation across an executor
+        // boundary (see WebhookService.deliver's javadoc for the full explanation, and
+        // TenantContextInterceptor for how RLS depends on it), so workspaceRepository's and
+        // incidentRepository's RLS-protected calls below ran with app.tenant_id unset on
+        // whatever thread actually executed this method. Traced through the code and the RLS
+        // policy SQL, not observed against a live database (Docker/Testcontainers unavailable in
+        // this session, same as every prior step).
+        TenantContext.set(incident.getTenantId());
+        try {
+            workspaceRepository.findByTenantId(incident.getTenantId())
+                .ifPresentOrElse(
+                    workspace -> notifyViaBotToken(workspace, incident),
+                    () -> legacyNotifier.notify(incident));
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private void notifyViaBotToken(SlackWorkspace workspace, Incident incident) {

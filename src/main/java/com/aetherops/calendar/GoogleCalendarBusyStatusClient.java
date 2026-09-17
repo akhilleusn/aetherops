@@ -2,6 +2,7 @@ package com.aetherops.calendar;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,13 @@ import java.util.Locale;
  * Google Calendar has no first-class PTO concept, so this looks for an all-day
  * event (a date-only start, no time-of-day) or a title containing an OOO/PTO
  * keyword.
+ *
+ * <p>Step H2 (see STEP_REPORT.md): same reasoning as {@link OutlookCalendarBusyStatusClient} --
+ * this sits directly in the paging path, {@code PtoAwarenessService} already fails open on any
+ * exception, so a circuit breaker here is safe and this method no longer swallows its own
+ * exceptions (a swallowed exception is invisible to a circuit breaker, which would then never
+ * trip). No {@code @Retry} for the same reason: paging should fail open fast, not wait out a
+ * retry's backoff first.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,6 +44,7 @@ public class GoogleCalendarBusyStatusClient implements CalendarBusyStatusClient 
     }
 
     @Override
+    @CircuitBreaker(name = "calendar-google")
     public boolean hasAllDayOrOofEventAt(String accessToken, String calendarId, Instant at) {
         String cal = calendarId != null && !calendarId.isBlank() ? calendarId : "primary";
         Instant timeMin = at.minus(1, ChronoUnit.DAYS);
@@ -46,27 +55,27 @@ public class GoogleCalendarBusyStatusClient implements CalendarBusyStatusClient 
             + "/events?singleEvents=true&timeMin=" + URLEncoder.encode(timeMin.toString(), StandardCharsets.UTF_8)
             + "&timeMax=" + URLEncoder.encode(timeMax.toString(), StandardCharsets.UTF_8);
 
-        try {
-            String body = restClientBuilder.build().get()
-                .uri(uri)
-                .headers(h -> h.setBearerAuth(accessToken))
-                .retrieve()
-                .body(String.class);
+        String body = restClientBuilder.build().get()
+            .uri(uri)
+            .headers(h -> h.setBearerAuth(accessToken))
+            .retrieve()
+            .body(String.class);
 
-            JsonNode items = objectMapper.readTree(body).path("items");
-            for (JsonNode item : items) {
-                boolean allDay = item.path("start").has("date") && !item.path("start").has("dateTime");
-                String summary = item.path("summary").asText("").toLowerCase(Locale.ROOT);
-                boolean oooTitled = containsOooKeyword(summary);
-                if (allDay || oooTitled) {
-                    return true;
-                }
-            }
-            return false;
+        JsonNode items;
+        try {
+            items = objectMapper.readTree(body).path("items");
         } catch (Exception e) {
-            log.warn("Google Calendar events.list failed calendarId={}", cal, e);
-            return false;
+            throw new IllegalStateException("Failed to parse Google Calendar events.list response for calendarId=" + cal, e);
         }
+        for (JsonNode item : items) {
+            boolean allDay = item.path("start").has("date") && !item.path("start").has("dateTime");
+            String summary = item.path("summary").asText("").toLowerCase(Locale.ROOT);
+            boolean oooTitled = containsOooKeyword(summary);
+            if (allDay || oooTitled) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean containsOooKeyword(String summary) {

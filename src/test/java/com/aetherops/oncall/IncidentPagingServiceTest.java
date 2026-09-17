@@ -165,6 +165,34 @@ class IncidentPagingServiceTest {
         verify(timelineService, never()).record(any(), any(), eq(IncidentTimeline.TimelineEventType.ENGINEER_PAGED), any(SeverityLevel.class), any());
     }
 
+    // Step H2 (see STEP_REPORT.md): proves a slow SMS attempt does not block the push fallback
+    // that follows it. onCallService.pageOnCall is bounded in production by Twilio's own
+    // (tightened, see TwilioConfig) connect/read timeout -- "slow" here means "took a while and
+    // then failed," simulating what a real call looks like right up against that bound, without
+    // this test itself depending on a real network call or the full connect+read duration.
+    @Test
+    void maybePage_slowFailingSmsAttempt_stillAttemptsPushFallback_doesNotBlockOnIt() {
+        when(alertDeduplication.record(any())).thenReturn(unlinkedDedup());
+        when(onCallService.pageOnCall(any(), any(), any())).thenAnswer(invocation -> {
+            Thread.sleep(150);
+            return new PageResult(PageOutcome.PROVIDER_ERROR, null, "Twilio timed out");
+        });
+        when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(true);
+
+        long start = System.currentTimeMillis();
+        pagingService.maybePage(tenantId, incidentId, "db-svc", "DB down", IncidentSeverity.CRITICAL);
+        long elapsedMs = System.currentTimeMillis() - start;
+
+        verify(onCallService).pageOnCall(tenantId, "db-svc", "DB down");
+        verify(pushNotificationService).sendPageAlert(eq(tenantId), any(), eq("DB down"));
+        verify(timelineService).record(eq(tenantId), eq(incidentId),
+            eq(IncidentTimeline.TimelineEventType.ENGINEER_PAGED), eq(SeverityLevel.P1), any());
+        // Push ran after the slow SMS attempt (this method is deliberately sequential, not
+        // parallel -- see IncidentPagingService's javadoc), so this just confirms it wasn't
+        // additionally delayed or skipped, not that it ran concurrently with the SMS attempt.
+        assertThat(elapsedMs).isLessThan(2000L);
+    }
+
     @Test
     void maybePage_smsFailsButPushSucceeds_stillRecordsEngineerPaged() {
         when(alertDeduplication.record(any())).thenReturn(unlinkedDedup());
