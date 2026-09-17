@@ -51,6 +51,13 @@ public class IncidentTimeline {
         /** Step G1 (see STEP_REPORT.md): every paging channel failed. ENGINEER_PAGED means the
          *  provider actually accepted a send; this is what gets recorded instead when none did. */
         PAGE_FAILED,
-        RESOLVED
+        RESOLVED,
+        /** Step H1 Part 2 (see STEP_REPORT.md): a Slack workspace member clicked "Acknowledge"
+         *  or "Resolve" on an incident message. Neither action executes anymore -- no
+         *  Slack-user-to-AetherOps-user mapping exists to authorize either, so both redirect to
+         *  the dashboard, where the real role check applies. This event is an audit trail of the
+         *  attempt and the presented Slack identity in {@code detail}, recorded even though (in
+         *  fact, especially because) no incident state changed. */
+        SLACK_ACTION_REQUESTED
     }
 }
