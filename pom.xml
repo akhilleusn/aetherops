@@ -65,6 +65,16 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- Cloud SQL Auth socket factory for the Postgres JDBC driver. Only activates when
+             the JDBC URL contains socketFactory=com.google.cloud.sql.postgres.SocketFactory
+             (see .env.example); inert for local/test profiles, which use a plain
+             jdbc:postgresql://host:port/db URL. -->
+        <dependency>
+            <groupId>com.google.cloud.sql</groupId>
+            <artifactId>postgres-socket-factory</artifactId>
+            <version>1.30.0</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
