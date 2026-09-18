@@ -2,11 +2,9 @@ package com.aetherops.slack;
 
 import com.aetherops.incident.model.Incident;
 import com.aetherops.incident.model.IncidentSeverity;
-import com.aetherops.incident.repository.IncidentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -14,7 +12,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -24,7 +21,7 @@ class IncidentSlackNotificationServiceTest {
     @Mock private SlackWorkspaceRepository workspaceRepository;
     @Mock private SlackConversationService conversationService;
     @Mock private SlackNotifier legacyNotifier;
-    @Mock private IncidentRepository incidentRepository;
+    @Mock private IncidentSlackMetadataUpdater metadataUpdater;
 
     @InjectMocks
     private IncidentSlackNotificationService notificationService;
@@ -60,10 +57,7 @@ class IncidentSlackNotificationServiceTest {
 
         notificationService.notify(incident);
 
-        ArgumentCaptor<Incident> captor = ArgumentCaptor.forClass(Incident.class);
-        verify(incidentRepository).save(captor.capture());
-        assertThat(captor.getValue().getSlackChannelId()).isEqualTo("C1");
-        assertThat(captor.getValue().getSlackThreadTs()).isEqualTo("1111.2222");
+        verify(metadataUpdater).update(incident, "C1", "1111.2222");
         verifyNoInteractions(legacyNotifier);
     }
 
@@ -78,7 +72,7 @@ class IncidentSlackNotificationServiceTest {
         notificationService.notify(incident);
 
         verify(legacyNotifier).notify(incident);
-        verify(incidentRepository, never()).save(any());
+        verify(metadataUpdater, never()).update(any(), any(), any());
     }
 
     @Test
@@ -89,6 +83,6 @@ class IncidentSlackNotificationServiceTest {
 
         notificationService.notify(incident());
 
-        verifyNoInteractions(incidentRepository);
+        verifyNoInteractions(metadataUpdater);
     }
 }

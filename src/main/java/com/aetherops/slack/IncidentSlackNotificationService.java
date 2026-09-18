@@ -1,7 +1,6 @@
 package com.aetherops.slack;
 
 import com.aetherops.incident.model.Incident;
-import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +21,7 @@ public class IncidentSlackNotificationService {
     private final SlackWorkspaceRepository workspaceRepository;
     private final SlackConversationService conversationService;
     private final SlackNotifier legacyNotifier;
-    private final IncidentRepository incidentRepository;
+    private final IncidentSlackMetadataUpdater metadataUpdater;
 
     @Async("slackExecutor")
     public void notify(Incident incident) {
@@ -49,9 +48,7 @@ public class IncidentSlackNotificationService {
     private void notifyViaBotToken(SlackWorkspace workspace, Incident incident) {
         conversationService.postIncidentAlert(workspace, incident).ifPresentOrElse(
             posted -> {
-                incident.setSlackChannelId(posted.channel());
-                incident.setSlackThreadTs(posted.ts());
-                incidentRepository.save(incident);
+                metadataUpdater.update(incident, posted.channel(), posted.ts());
                 log.info("Posted incident alert via Slack bot token incidentId={} channel={} ts={}",
                     incident.getId(), posted.channel(), posted.ts());
             },

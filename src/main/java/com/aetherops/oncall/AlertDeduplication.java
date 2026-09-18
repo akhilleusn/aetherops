@@ -72,6 +72,7 @@ public class AlertDeduplication {
         }
     }
 
+    @Transactional
     public void linkIncident(DeduplicatedAlert dedup, UUID incidentId) {
         dedup.setIncidentId(incidentId);
         repository.save(dedup);
