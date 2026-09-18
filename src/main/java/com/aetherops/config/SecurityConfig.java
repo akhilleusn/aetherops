@@ -58,6 +58,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,  "/api/v1/auth/verify-email").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/resend-verification").permitAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers(HttpMethod.GET, "/slack/oauth/callback").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/interactivity").permitAll()
                 .requestMatchers(HttpMethod.POST, "/slack/commands").permitAll()
