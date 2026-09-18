@@ -16,7 +16,7 @@ import java.util.Map;
  * </pre>
  */
 @Configuration
-@ConfigurationProperties(prefix = "app.calendar.token-encryption")
+@ConfigurationProperties(prefix = "app.calendar.token.encryption")
 public class CalendarTokenEncryptionProperties {
 
     private int current = 1;

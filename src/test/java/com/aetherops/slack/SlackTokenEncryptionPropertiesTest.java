@@ -26,10 +26,10 @@ class SlackTokenEncryptionPropertiesTest {
     void bindsCurrentAndIndexedKeysFromEnvVarStyleProperties() {
         runner
             .withPropertyValues(
-                "app.slack.token-encryption.current=2",
-                "app.slack.token-encryption.keys.0=legacy-key-0000000000000000000000",
-                "app.slack.token-encryption.keys.1=old-current-key-000000000000000",
-                "app.slack.token-encryption.keys.2=new-current-key-000000000000000")
+                "app.slack.token.encryption.current=2",
+                "app.slack.token.encryption.keys.0=legacy-key-0000000000000000000000",
+                "app.slack.token.encryption.keys.1=old-current-key-000000000000000",
+                "app.slack.token.encryption.keys.2=new-current-key-000000000000000")
             .run(context -> {
                 SlackTokenEncryptionProperties properties = context.getBean(SlackTokenEncryptionProperties.class);
                 assertThat(properties.getCurrent()).isEqualTo(2);

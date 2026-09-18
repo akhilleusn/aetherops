@@ -19,7 +19,7 @@ import java.util.Map;
  * so ciphertext encrypted under the old key keeps decrypting.
  */
 @Configuration
-@ConfigurationProperties(prefix = "app.slack.token-encryption")
+@ConfigurationProperties(prefix = "app.slack.token.encryption")
 public class SlackTokenEncryptionProperties {
 
     private int current = 1;

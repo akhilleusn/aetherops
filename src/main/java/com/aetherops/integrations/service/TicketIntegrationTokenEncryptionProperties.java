@@ -24,7 +24,7 @@ import java.util.Map;
  * STEP_REPORT.md for why that split was deliberately deferred.
  */
 @Configuration
-@ConfigurationProperties(prefix = "app.integrations.token-encryption")
+@ConfigurationProperties(prefix = "app.integrations.token.encryption")
 public class TicketIntegrationTokenEncryptionProperties {
 
     private int current = 1;

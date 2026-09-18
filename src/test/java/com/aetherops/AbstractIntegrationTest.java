@@ -138,12 +138,12 @@ public abstract class AbstractIntegrationTest {
         // deliberately runs under the *default* profile (so the real SecurityConfig, not the
         // permit-all TestSecurityConfig, is what it exercises) while still needing these beans
         // to construct.
-        registry.add("app.slack.token-encryption.current", () -> "1");
-        registry.add("app.slack.token-encryption.keys.1", () -> "aetherops-slack-token-enc-key-01");
-        registry.add("app.calendar.token-encryption.current", () -> "1");
-        registry.add("app.calendar.token-encryption.keys.1", () -> "aetherops-calendar-token-key-012");
-        registry.add("app.integrations.token-encryption.current", () -> "1");
-        registry.add("app.integrations.token-encryption.keys.1", () -> "aetherops-integr-token-enc-key01");
+        registry.add("app.slack.token.encryption.current", () -> "1");
+        registry.add("app.slack.token.encryption.keys.1", () -> "aetherops-slack-token-enc-key-01");
+        registry.add("app.calendar.token.encryption.current", () -> "1");
+        registry.add("app.calendar.token.encryption.keys.1", () -> "aetherops-calendar-token-key-012");
+        registry.add("app.integrations.token.encryption.current", () -> "1");
+        registry.add("app.integrations.token.encryption.keys.1", () -> "aetherops-integr-token-enc-key01");
         registry.add("app.calendar.oauth-state-secret", () -> "aetherops-test-calendar-oauth-state-secret");
         registry.add("app.slack.oauth-state-secret", () -> "aetherops-test-slack-oauth-state-secret");
         // 1s instead of the 30s production default so replay-window tests don't need a real

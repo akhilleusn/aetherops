@@ -18,18 +18,21 @@ app:
   slack:
     signing-secret: aetherops-test-slack-signing-secret
     oauth-state-secret: aetherops-test-slack-oauth-state-secret
-    token-encryption:
-      current: 1
-      keys:
-        1: aetherops-slack-token-enc-key-01
+    token:
+      encryption:
+        current: 1
+        keys:
+          1: aetherops-slack-token-enc-key-01
   calendar:
-    token-encryption:
-      current: 1
-      keys:
-        1: aetherops-calendar-token-key-012
+    token:
+      encryption:
+        current: 1
+        keys:
+          1: aetherops-calendar-token-key-012
     oauth-state-secret: aetherops-test-calendar-oauth-state-secret
   integrations:
-    token-encryption:
-      current: 1
-      keys:
-        1: aetherops-integr-token-enc-key01
+    token:
+      encryption:
+        current: 1
+        keys:
+          1: aetherops-integr-token-enc-key01
