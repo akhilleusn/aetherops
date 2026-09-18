@@ -21,7 +21,7 @@ html{transition:background-color 0.2s,color 0.2s}
 [data-theme="light"]{
 --bg:#faf9f7;--bg2:#f2f0eb;--bg3:#e8e4dc;--card:#ffffff;
 --border:#ddd8cc;--border2:#c9c0ae;
---text:#0d1320;--text2:#2a3245;--muted:#5a6072;--dim:#4a5060;--text-soft:#1f2740;
+--text:#0d1320;--text2:#2a3245;--muted:#5a6072;--dim:#4a5060;
 --gold:#8a6c10;--gold2:#6b5210;
 --crit:#dc2626;--high:#ea580c;--med:#b45309;--low:#2563eb;
 --open:#dc2626;--invest:#ea580c;--resolved:#16a34a;--closed:#6b7280;
@@ -30,7 +30,7 @@ html{transition:background-color 0.2s,color 0.2s}
 [data-theme="dark"]{
 --bg:#080e18;--bg2:#0d1520;--bg3:#121e2e;--card:#0f1a28;
 --border:#1e2d3f;--border2:#2a3d52;
---text:#f0ead8;--text2:#c8bfa8;--muted:#8a97a8;--dim:#6d7a8c;--text-soft:#ded3ba;
+--text:#f0ead8;--text2:#c8bfa8;--muted:#8a97a8;--dim:#6d7a8c;
 --gold:#c9a84c;--gold2:#b8952a;
 --crit:#ef4444;--high:#f97316;--med:#f59e0b;--low:#60a5fa;
 --open:#ef4444;--invest:#f97316;--resolved:#22c55e;--closed:#6b7280;
@@ -71,7 +71,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.1rem
 @media (max-width:860px){.hero{grid-template-columns:1fr}}
 .hero-inner{text-align:left}
 .hero-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:1.25rem}
-h1{font-size:2.125rem;font-weight:500;letter-spacing:-0.01em;line-height:1.3;margin-bottom:1.25rem;color:var(--text-soft)}
+h1{font-size:2.125rem;font-weight:500;letter-spacing:-0.01em;line-height:1.3;margin-bottom:1.25rem;color:var(--text)}
 @media (max-width:860px){h1{font-size:1.875rem}}
 .hero-sub{font-size:1.0625rem;color:var(--text2);max-width:560px;margin-bottom:2rem;line-height:1.7}
 .hero-actions{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem}
@@ -147,8 +147,8 @@ h1{font-size:2.125rem;font-weight:500;letter-spacing:-0.01em;line-height:1.3;mar
 .pd-steps li{padding:0.3rem 0.75rem;border:1px solid var(--border2);border-radius:20px;text-align:center;white-space:nowrap}
 @media (max-width:900px){.pipeline-demo{flex-direction:column}.pd-steps{flex-direction:row;flex-wrap:wrap;justify-content:flex-start}}
 .pd-notes{list-style:none;margin-top:2rem;display:flex;flex-direction:column;gap:0.6rem;max-width:760px}
-.pd-notes li{font-size:0.8375rem;color:var(--muted);line-height:1.6}
-.pd-notes strong{color:var(--text2);font-weight:600}
+.pd-notes li{font-size:0.8375rem;color:var(--text);line-height:1.6}
+.pd-notes strong{color:var(--text);font-weight:600}
 .pd-notes code{font-size:0.75rem;background:var(--bg3);padding:0.1rem 0.35rem;border-radius:3px;color:var(--gold)}
 
 /* INTEGRATIONS */
@@ -339,7 +339,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;flex-
         </ul>
       </div>
 
-      <div class="a-meta">model: claude-sonnet-4-20250514 &nbsp;·&nbsp; confidence capped at 70% without metrics or traces &nbsp;·&nbsp; generated 2m ago</div>
+      <div class="a-meta">confidence capped at 65% without metrics or traces &nbsp;·&nbsp; generated 2m ago</div>
     </div>
   </div>
 </section>
@@ -384,7 +384,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;flex-
   <ul class="pd-notes">
     <li><strong>ingest</strong> — <code>POST /api/v1/logs</code>, API-key authenticated (SHA-256 hashed key), rate-limited per key.</li>
     <li><strong>correlate / group</strong> — fingerprinted by service, alert name, and severity; repeat occurrences roll into the same incident instead of creating a new one.</li>
-    <li><strong>analyze</strong> — evidence sent to Claude (Anthropic) after secrets and tokens are masked, never before.</li>
+    <li><strong>analyze</strong> — evidence is passed to the analysis engine, which returns a structured, evidence-cited result (summary, likely cause, confidence, unknowns, next checks). Secrets and tokens are masked before evidence is ever stored, regardless of which analysis backend handles the request.</li>
     <li><strong>evidence / explain</strong> — the returned summary and likely cause are cross-checked against cited log evidence IDs before being shown.</li>
     <li><strong>unknowns / next checks</strong> — missing metrics or traces are listed explicitly; suggested checks are read-only diagnostics only.</li>
   </ul>
@@ -421,7 +421,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;flex-
       <code class="redact-code">POST /api/v1/checkout Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyXzQ0MiJ9.k3f9x7 user=442</code>
     </div>
     <div class="redact-row redact-after">
-      <span class="redact-lbl"><i class="ti ti-eye-off" aria-hidden="true"></i> What's stored and sent to the model</span>
+      <span class="redact-lbl"><i class="ti ti-eye-off" aria-hidden="true"></i> What's actually stored</span>
       <code class="redact-code">POST /api/v1/checkout Authorization: Bearer [REDACTED] user=442</code>
     </div>
   </div>
