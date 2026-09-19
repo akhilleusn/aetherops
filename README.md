@@ -31,38 +31,37 @@
 
 ```mermaid
 flowchart TD
-    Client["Client\n(Browser / API consumer)"]
+    Client["Client"]
 
-    subgraph app["Cloud Run: aetherops\n(Spring Boot 3.4.1)"]
-        GW["API Gateway Filter\n(rate limit · auth · tenant resolution)"]
-        Core["Application Core\n(REST controllers · services · domain)"]
-        Metrics["/actuator/prometheus\n(metrics exposed — nothing\nconfirmed scraping it today)"]
+    subgraph app["Cloud Run: aetherops"]
+        GW["API Gateway Filter"]
+        Core["Application Core"]
+        Metrics["/actuator/prometheus"]
     end
 
-    PG[("Cloud SQL for PostgreSQL\n(via Cloud SQL socket factory)")]
-    Redis[("Memorystore for Redis\n(rate limiting · caching\n· distributed locks)")]
+    PG[("Cloud SQL\nPostgreSQL")]
+    Redis[("Memorystore\nRedis")]
+    AI["AI Provider\n(mock / Anthropic)"]
 
-    AI["AI Provider · pluggable\nMock by default · Anthropic Claude env-gated"]
-
-    subgraph localonly["Local docker-compose only — not deployed in production"]
-        Topic["Apache Kafka\nincident.created + DLQ + Outbox relay"]
-        ZipkinLocal["Zipkin\n(distributed tracing collector)"]
+    subgraph localonly["Local docker-compose only"]
+        Topic["Kafka"]
+        ZipkinLocal["Zipkin"]
     end
 
     Client -->|HTTPS| GW
     GW --> Core
     Core -->|JDBC| PG
-    Core -->|Lettuce/Redisson| Redis
-    Core -->|HTTP + circuit breaker\nretry · bulkhead| AI
-    Core -.->|unconditional publish attempt\nno broker configured in prod| Topic
-    Core -.->|unconditional span export\nno collector configured in prod| ZipkinLocal
+    Core -->|Lettuce| Redis
+    Core -->|HTTP| AI
+    Core -.-> Topic
+    Core -.-> ZipkinLocal
     Core --> Metrics
 
     style app fill:#1a1a2e,stroke:#6DB33F,color:#fff
     style localonly fill:#2e1a1a,stroke:#a33,color:#fff,stroke-dasharray: 5 5
 ```
 
-The live deployment runs on Cloud Run, backed by Cloud SQL for PostgreSQL and Memorystore for Redis — not the docker-compose stack shown in [Getting Started](#getting-started). Kafka and Zipkin exist as real, wired-in code and run in the local docker-compose environment, but neither is configured in production:
+The live deployment runs on Cloud Run, backed by Cloud SQL for PostgreSQL and Memorystore for Redis — not the docker-compose stack shown in [Getting Started](#getting-started). The API Gateway filter handles auth, tenant resolution, and rate limiting (see [Architecture Patterns](#architecture-patterns)); the AI Provider call goes through a circuit breaker, retry, and bulkhead (see [Resilience](#resilience)). Kafka and Zipkin (dashed, above) exist as real, wired-in code and run in the local docker-compose environment, but neither is configured in production:
 
 - **Kafka** — `incident.created` publishing, the Outbox relay, and the DLQ are real code paths, but they aren't gated behind a check for a reachable broker. Without `spring.kafka.bootstrap-servers` pointed at a real cluster, these calls run unconditionally against the Spring Boot default (`localhost:9092`) and don't deliver anything in production.
 - **Zipkin** — trace export behaves the same way: without `ZIPKIN_ENDPOINT` set, spans are shipped unconditionally to the default `http://localhost:9411/api/v2/spans`, which doesn't exist in production, so they're silently dropped.
