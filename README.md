@@ -32,6 +32,7 @@
 ```mermaid
 flowchart TD
     Client["Client"]
+    LB["HTTPS Load Balancer"]
 
     subgraph app["Cloud Run: aetherops"]
         GW["API Gateway Filter"]
@@ -39,6 +40,7 @@ flowchart TD
         Metrics["/actuator/prometheus"]
     end
 
+    Secrets[("Secret Manager")]
     PG[("Cloud SQL\nPostgreSQL")]
     Redis[("Memorystore\nRedis")]
     AI["AI Provider\n(mock / Anthropic)"]
@@ -48,8 +50,10 @@ flowchart TD
         ZipkinLocal["Zipkin"]
     end
 
-    Client -->|HTTPS| GW
+    Client -->|HTTPS| LB
+    LB --> GW
     GW --> Core
+    Secrets -.->|secrets at startup| app
     Core -->|JDBC| PG
     Core -->|Lettuce| Redis
     Core -->|HTTP| AI
@@ -61,13 +65,30 @@ flowchart TD
     style localonly fill:#2e1a1a,stroke:#a33,color:#fff,stroke-dasharray: 5 5
 ```
 
-The live deployment runs on Cloud Run, backed by Cloud SQL for PostgreSQL and Memorystore for Redis — not the docker-compose stack shown in [Getting Started](#getting-started). The API Gateway filter handles auth, tenant resolution, and rate limiting (see [Architecture Patterns](#architecture-patterns)); the AI Provider call goes through a circuit breaker, retry, and bulkhead (see [Resilience](#resilience)). Kafka and Zipkin (dashed, above) exist as real, wired-in code and run in the local docker-compose environment, but neither is configured in production:
+The live deployment sits behind an external HTTPS Load Balancer (Serverless NEG + managed SSL cert, fronting `aetheropsai.com`) in front of Cloud Run, backed by Cloud SQL for PostgreSQL, Memorystore for Redis, and Secret Manager for every credential (JWT secret, encryption keys, DB password) — not the docker-compose stack shown in [Getting Started](#getting-started). The API Gateway filter handles auth, tenant resolution, and rate limiting (see [Architecture Patterns](#architecture-patterns)); the AI Provider call goes through a circuit breaker, retry, and bulkhead (see [Resilience](#resilience)). Kafka and Zipkin (dashed, above) exist as real, wired-in code and run in the local docker-compose environment, but neither is configured in production:
 
 - **Kafka** — `incident.created` publishing, the Outbox relay, and the DLQ are real code paths, but they aren't gated behind a check for a reachable broker. Without `spring.kafka.bootstrap-servers` pointed at a real cluster, these calls run unconditionally against the Spring Boot default (`localhost:9092`) and don't deliver anything in production.
 - **Zipkin** — trace export behaves the same way: without `ZIPKIN_ENDPOINT` set, spans are shipped unconditionally to the default `http://localhost:9411/api/v2/spans`, which doesn't exist in production, so they're silently dropped.
 - **Prometheus** — `/actuator/prometheus` is a real, working metrics endpoint in every environment including production. What's not verified is whether any Prometheus server is actually configured to scrape it today — there's no scrape config or dashboard in this repo or the GCP project confirming one is.
 
 AI analysis defaults to a deterministic mock provider for demo reliability and zero inference cost. Real Anthropic integration is implemented behind a Strangler Fig feature flag — set `ANTHROPIC_API_KEY` to enable it.
+
+### Deploy Pipeline
+
+```mermaid
+flowchart TD
+    subgraph ci["GitHub Actions -- CI only, not wired to deploy"]
+        Push["git push"] --> GHA["test + build"] --> GHCR[("GHCR")]
+    end
+
+    subgraph deploy["Actual production deploy -- manual today"]
+        Submit["gcloud builds submit"] --> CB["Cloud Build"] --> AR[("Artifact Registry")] --> CR["Cloud Run: aetherops"]
+    end
+
+    GHCR ~~~ Submit
+```
+
+These are two disconnected paths today. GitHub Actions (`.github/workflows/ci.yml`) runs the test suite and pushes an image to GHCR on every push, but nothing consumes that image — it doesn't trigger a deploy. The image actually running in production is built and shipped by hand: `gcloud builds submit` (Cloud Build, pushing to Artifact Registry) followed by `gcloud run deploy`, both run manually from a developer's machine.
 
 ---
 
