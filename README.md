@@ -33,42 +33,42 @@
 flowchart TD
     Client["Client\n(Browser / API consumer)"]
 
-    subgraph app["Spring Boot 3.4.1"]
+    subgraph app["Cloud Run: aetherops\n(Spring Boot 3.4.1)"]
         GW["API Gateway Filter\n(rate limit · auth · tenant resolution)"]
         Core["Application Core\n(REST controllers · services · domain)"]
+        Metrics["/actuator/prometheus\n(metrics exposed — nothing\nconfirmed scraping it today)"]
     end
 
-    PG[("PostgreSQL\n(HikariCP pool)")]
-    Redis[("Redis\n(rate limiting · caching\n· distributed locks)")]
-
-    subgraph kafka["Apache Kafka"]
-        Topic["incident.created\n(+ other domain events)"]
-        DLQ["Dead Letter Topic\n(failed events)"]
-        Outbox["Transactional Outbox\nRelay"]
-    end
+    PG[("Cloud SQL for PostgreSQL\n(via Cloud SQL socket factory)")]
+    Redis[("Memorystore for Redis\n(rate limiting · caching\n· distributed locks)")]
 
     AI["AI Provider · pluggable\nMock by default · Anthropic Claude env-gated"]
-    Zipkin["Zipkin\n(distributed tracing)"]
-    Prometheus["Prometheus\n(metrics scrape)"]
+
+    subgraph localonly["Local docker-compose only — not deployed in production"]
+        Topic["Apache Kafka\nincident.created + DLQ + Outbox relay"]
+        ZipkinLocal["Zipkin\n(distributed tracing collector)"]
+    end
 
     Client -->|HTTPS| GW
     GW --> Core
     Core -->|JDBC| PG
-    Core -->|Lettuce| Redis
-    Core -->|KafkaTemplate| Topic
-    Topic -->|on failure| DLQ
-    Outbox -->|polls + publishes| Topic
+    Core -->|Lettuce/Redisson| Redis
     Core -->|HTTP + circuit breaker\nretry · bulkhead| AI
-    Core -->|spans| Zipkin
-    Prometheus -->|scrapes /actuator/prometheus| Core
+    Core -.->|unconditional publish attempt\nno broker configured in prod| Topic
+    Core -.->|unconditional span export\nno collector configured in prod| ZipkinLocal
+    Core --> Metrics
 
     style app fill:#1a1a2e,stroke:#6DB33F,color:#fff
-    style kafka fill:#1a1a2e,stroke:#231F20,color:#fff
+    style localonly fill:#2e1a1a,stroke:#a33,color:#fff,stroke-dasharray: 5 5
 ```
 
-AI analysis defaults to a deterministic mock provider for demo reliability and zero inference cost. Real Anthropic integration is implemented behind a Strangler Fig feature flag — set `ANTHROPIC_API_KEY` to enable it.
+The live deployment runs on Cloud Run, backed by Cloud SQL for PostgreSQL and Memorystore for Redis — not the docker-compose stack shown in [Getting Started](#getting-started). Kafka and Zipkin exist as real, wired-in code and run in the local docker-compose environment, but neither is configured in production:
 
-Kafka publishing (`incident.created`, the Outbox relay, the DLQ) is real, wired-in code — but unlike the AI provider, it isn't gated behind a check for a reachable broker. Without `spring.kafka.bootstrap-servers` pointed at a real Kafka cluster, these calls run unconditionally against the Spring Boot default (`localhost:9092`) and will not actually deliver anything.
+- **Kafka** — `incident.created` publishing, the Outbox relay, and the DLQ are real code paths, but they aren't gated behind a check for a reachable broker. Without `spring.kafka.bootstrap-servers` pointed at a real cluster, these calls run unconditionally against the Spring Boot default (`localhost:9092`) and don't deliver anything in production.
+- **Zipkin** — trace export behaves the same way: without `ZIPKIN_ENDPOINT` set, spans are shipped unconditionally to the default `http://localhost:9411/api/v2/spans`, which doesn't exist in production, so they're silently dropped.
+- **Prometheus** — `/actuator/prometheus` is a real, working metrics endpoint in every environment including production. What's not verified is whether any Prometheus server is actually configured to scrape it today — there's no scrape config or dashboard in this repo or the GCP project confirming one is.
+
+AI analysis defaults to a deterministic mock provider for demo reliability and zero inference cost. Real Anthropic integration is implemented behind a Strangler Fig feature flag — set `ANTHROPIC_API_KEY` to enable it.
 
 ---
 
@@ -77,12 +77,12 @@ Kafka publishing (`incident.created`, the Outbox relay, the DLQ) is real, wired-
 | Technology | Purpose |
 |---|---|
 | Java 17 + Spring Boot 3.4.1 | Core framework, dependency injection, auto-configuration |
-| PostgreSQL + Flyway | Relational persistence with versioned schema migrations |
-| Redis (Lettuce / Redisson) | Distributed rate limiting, response caching, distributed locks |
-| Apache Kafka | Asynchronous event streaming, Dead Letter Queue, Transactional Outbox — requires a configured broker; not connected in the current deployment |
+| PostgreSQL + Flyway | Relational persistence with versioned schema migrations (Cloud SQL in production) |
+| Redis (Lettuce / Redisson) | Distributed rate limiting, response caching, distributed locks (Memorystore in production) |
+| Apache Kafka | Asynchronous event streaming, Dead Letter Queue, Transactional Outbox — runs in local docker-compose only; no broker configured in production |
 | Resilience4j | Circuit breaker, retry with exponential backoff, bulkhead isolation |
-| Micrometer + Prometheus | Metrics collection, `/actuator/prometheus` scrape endpoint |
-| Micrometer Tracing + Zipkin | End-to-end distributed tracing across service boundaries |
+| Micrometer + Prometheus | `/actuator/prometheus` metrics endpoint exposed in every environment; no confirmed scraper deployed |
+| Micrometer Tracing + Zipkin | Distributed tracing code path — runs in local docker-compose only; no collector configured in production |
 | Spring Security + JWT | Stateless authentication, role-based authorization |
 | Testcontainers | Integration tests against real PostgreSQL and Redis instances |
 | Docker + Kubernetes | Multi-stage image build, namespace-scoped K8s manifests, HPA |
@@ -116,8 +116,8 @@ Kafka publishing (`incident.created`, the Outbox relay, the DLQ) is real, wired-
 - Strangler Fig approach for incremental replacement of legacy incident handling
 
 ### Observability
-- Micrometer metrics on every key operation, scraped by Prometheus
-- Zipkin distributed tracing with per-request trace and span propagation
+- Micrometer metrics on every key operation, exposed at `/actuator/prometheus` — no Prometheus server is confirmed scraping it in production
+- Zipkin distributed tracing with per-request trace and span propagation — code path is real, but only runs in local docker-compose; no collector is configured in production
 - Spring Boot Actuator health groups: liveness, readiness, and per-dependency checks (DB, Redis, Kafka)
 
 ### Data
