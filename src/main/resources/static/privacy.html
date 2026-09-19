@@ -61,7 +61,7 @@ footer{border-top:1px solid var(--border);padding:1.75rem 2.5rem;display:flex;al
 <div class="page">
   <div class="page-eyebrow">Legal</div>
   <h1>Privacy Policy</h1>
-  <div class="meta">Effective date: June 17, 2026 &nbsp;&middot;&nbsp; Last updated: June 17, 2026</div>
+  <div class="meta">Effective date: June 17, 2026 &nbsp;&middot;&nbsp; Last updated: September 19, 2026</div>
 
   <p>AetherOps ("we", "us", or "our") operates the AetherOps platform. This policy explains what data we collect, how we use it, and what rights you have over it.</p>
 
@@ -92,10 +92,10 @@ footer{border-top:1px solid var(--border);padding:1.75rem 2.5rem;display:flex;al
   <p>Every piece of data in AetherOps is scoped to your tenant. Our queries are structured so that cross-tenant data access is architecturally impossible — not just policy-restricted. Your incidents, analyses, and log events are never visible to other tenants.</p>
 
   <h2>4. AI and third-party providers</h2>
-  <p>When you request an AI analysis, your log event data (with secrets already masked) is sent to our AI provider for processing. We do not send account data, email addresses, or tenant names to the AI provider. We may change AI providers; the masking guarantee holds regardless of provider.</p>
+  <p>AetherOps performs incident analysis using an internal analysis engine. As of this policy's last update, this does not involve sending your data to an external AI provider — no third party receives your log data for analysis today. If we introduce a third-party AI provider, only your log event data (with secrets already masked) would be shared with it — never account data, email addresses, or tenant names — and we will update this policy first.</p>
 
   <h2>5. Data retention</h2>
-  <p>Log events and incidents are retained according to your plan (7 to 90 days by default) and deleted automatically by our retention service. Audit logs are retained permanently. You may request deletion of your account and associated data by contacting us.</p>
+  <p>Log events and incidents are retained for a configurable period you set (1 to 365 days) and are removed only when a tenant owner explicitly runs the retention process via the API. This is not an automatic background process today. Audit logs are retained permanently. You may request deletion of your account and associated data by contacting us.</p>
 
   <h2>6. Security</h2>
   <ul>
@@ -109,7 +109,7 @@ footer{border-top:1px solid var(--border);padding:1.75rem 2.5rem;display:flex;al
   <p>You have the right to access, correct, or delete your personal data. To exercise these rights, contact us at <a href="mailto:zeytates@gmail.com">zeytates@gmail.com</a>. We will respond within 30 days.</p>
 
   <h2>8. Cookies</h2>
-  <p>AetherOps does not use tracking cookies. We use only session-required storage (e.g., a refresh token stored in memory on the client) that is strictly necessary to operate the service.</p>
+  <p>AetherOps does not use tracking cookies. We use only the browser storage required to keep you signed in — an authentication token stored in your browser's local storage — and nothing beyond what's necessary to operate the service.</p>
 
   <h2>9. Changes to this policy</h2>
   <p>We may update this policy. When we do, we will revise the "Last updated" date above. Continued use of the service after a change constitutes acceptance of the updated policy.</p>

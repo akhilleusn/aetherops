@@ -56,13 +56,13 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.1rem
 .logo{font-size:1.1rem;font-weight:700;color:var(--text)}
 .logo span{color:var(--gold)}
 .nav-links{display:flex;gap:2rem;font-size:0.875rem}
-.nav-links a{color:var(--muted);transition:color 0.15s}
-.nav-links a:hover{color:var(--text)}
+.nav-links a{color:var(--text);transition:color 0.15s}
+.nav-links a:hover{color:var(--gold)}
 .nav-right{display:flex;align-items:center;gap:1rem}
 .theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:5px;font-size:0.8125rem;cursor:pointer;transition:all 0.15s}
 .theme-btn:hover{border-color:var(--gold);color:var(--gold)}
-.nav-login{color:var(--muted);font-size:0.875rem;transition:color 0.15s;padding:0.5rem}
-.nav-login:hover{color:var(--text)}
+.nav-login{color:var(--text);font-size:0.875rem;transition:color 0.15s;padding:0.5rem}
+.nav-login:hover{color:var(--gold)}
 .nav-cta{display:inline-flex;align-items:center;background:var(--gold);color:#0a0e14;padding:0.5rem 1.25rem;border-radius:5px;font-size:0.875rem;font-weight:600;cursor:pointer;border:none;transition:background 0.15s}
 .nav-cta:hover{background:var(--gold2)}
 
@@ -70,7 +70,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1.1rem
 .hero{max-width:1140px;margin:0 auto;padding:4.5rem 2.5rem 3.5rem;display:grid;grid-template-columns:1.1fr 1fr;gap:3rem;align-items:center}
 @media (max-width:860px){.hero{grid-template-columns:1fr}}
 .hero-inner{text-align:left}
-.hero-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:1.25rem}
+.hero-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);margin-bottom:1.25rem}
 h1{font-size:2.125rem;font-weight:500;letter-spacing:-0.01em;line-height:1.3;margin-bottom:1.25rem;color:var(--text)}
 @media (max-width:860px){h1{font-size:1.875rem}}
 .hero-sub{font-size:1.0625rem;color:var(--text2);max-width:560px;margin-bottom:2rem;line-height:1.7}
@@ -95,7 +95,7 @@ h1{font-size:2.125rem;font-weight:500;letter-spacing:-0.01em;line-height:1.3;mar
 
 /* SECTIONS */
 .section{padding:4rem 2.5rem;max-width:1080px;margin:0 auto}
-.section-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:0.75rem}
+.section-eyebrow{font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);margin-bottom:0.75rem}
 .section-title{font-size:1.625rem;font-weight:700;letter-spacing:-0.01em;margin-bottom:0.75rem;color:var(--text)}
 .section-sub{font-size:0.9375rem;color:var(--text2);max-width:560px;line-height:1.7}
 .demo-tag{display:inline-flex;align-items:center;gap:6px;font-size:0.75rem;font-weight:600;color:var(--med);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);padding:0.3rem 0.7rem;border-radius:5px;margin-top:1rem}
@@ -511,10 +511,10 @@ function toggleTheme(){
   document.getElementById('themeIcon').className=isDark?'ti ti-moon':'ti ti-sun';
   document.getElementById('themeLabel').textContent=isDark?'Light':'Dark';
 }
-/* The only motion on this page: the hero terminal prints its output line by
-   line, like a real CLI session would, instead of appearing all at once.
-   No scroll-triggered effects, no transforms -- just sequential reveal, and
-   it's skipped entirely under prefers-reduced-motion. */
+/* Motion on this page is limited to two places, both showing the software
+   doing something rather than decorating the page: the hero terminal
+   printing its output, and the architecture pipeline lighting up as data
+   flows through it below. No fade-up, no scroll effects anywhere else. */
 (function(){
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(reduceMotion) return;
@@ -531,6 +531,58 @@ function toggleTheme(){
     setTimeout(next, i === 1 ? 500 : 260);
   }
   setTimeout(next, 300);
+}());
+
+/* Architecture pipeline: plays once when it first scrolls into view --
+   log event in, then each stage lights in order, then the incident record
+   resolves. Never replays on subsequent scrolls. Skipped entirely under
+   prefers-reduced-motion (the section is already fully visible by default,
+   so reduced motion just means no animation, not missing content). */
+(function(){
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var demo = document.querySelector('.pipeline-demo');
+  if(!demo || reduceMotion) return;
+
+  var ios   = demo.querySelectorAll('.pd-io');
+  var input = ios[0], output = ios[1];
+  var steps = demo.querySelectorAll('.pd-steps li');
+  if(!input || !output || !steps.length) return;
+
+  input.style.opacity = '0';
+  output.style.opacity = '0';
+  steps.forEach(function(s){ s.style.opacity = '0'; });
+
+  function play(){
+    input.style.transition = 'opacity 0.4s ease';
+    input.style.opacity = '1';
+    var i = 0;
+    function nextStep(){
+      if(i >= steps.length){
+        output.style.transition = 'opacity 0.4s ease';
+        output.style.opacity = '1';
+        return;
+      }
+      steps[i].style.transition = 'opacity 0.2s ease';
+      steps[i].style.opacity = '1';
+      i++;
+      setTimeout(nextStep, 150);
+    }
+    setTimeout(nextStep, 350);
+  }
+
+  if('IntersectionObserver' in window){
+    var obs = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){
+          play();
+          obs.disconnect();
+        }
+      });
+    }, {threshold: 0.4});
+    obs.observe(demo);
+  } else {
+    play();
+  }
 }());
 </script>
 </body>
