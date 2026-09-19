@@ -102,7 +102,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(
             "http://localhost:8080",
-            "https://aetherops-production.up.railway.app"
+            "https://aetheropsai.com"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-Api-Key", "X-Request-Id"));
