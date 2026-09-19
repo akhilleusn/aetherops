@@ -4,11 +4,10 @@
   <img src="https://img.shields.io/badge/Spring_Boot-3.4.1-6DB33F?style=flat-square&logo=springboot&logoColor=white" alt="Spring Boot 3.4.1"/>
   <img src="https://img.shields.io/badge/PostgreSQL-17-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
   <img src="https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis"/>
-  <img src="https://img.shields.io/badge/Apache_Kafka-3-231F20?style=flat-square&logo=apachekafka&logoColor=white" alt="Apache Kafka"/>
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker"/>
   <img src="https://img.shields.io/badge/Kubernetes-manifests-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="Kubernetes"/>
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License MIT"/>
-  <img src="https://img.shields.io/badge/Tests-339_passing-brightgreen?style=flat-square&logo=checkmarx&logoColor=white" alt="339 tests passing"/>
+  <img src="https://img.shields.io/badge/Tests-passing-brightgreen?style=flat-square&logo=checkmarx&logoColor=white" alt="Tests passing"/>
 </p>
 
 <h1 align="center">AetherOps</h1>
@@ -25,10 +24,6 @@
 ## Live Demo
 
 **[https://aetheropsai.com/landing.html](https://aetheropsai.com/landing.html)**
-
-> Demo tenant available — click **Try Demo** on the landing page. No account required.
-
-
 
 ---
 
@@ -73,6 +68,8 @@ flowchart TD
 
 AI analysis defaults to a deterministic mock provider for demo reliability and zero inference cost. Real Anthropic integration is implemented behind a Strangler Fig feature flag — set `ANTHROPIC_API_KEY` to enable it.
 
+Kafka publishing (`incident.created`, the Outbox relay, the DLQ) is real, wired-in code — but unlike the AI provider, it isn't gated behind a check for a reachable broker. Without `spring.kafka.bootstrap-servers` pointed at a real Kafka cluster, these calls run unconditionally against the Spring Boot default (`localhost:9092`) and will not actually deliver anything.
+
 ---
 
 ## Tech Stack
@@ -82,7 +79,7 @@ AI analysis defaults to a deterministic mock provider for demo reliability and z
 | Java 17 + Spring Boot 3.4.1 | Core framework, dependency injection, auto-configuration |
 | PostgreSQL + Flyway | Relational persistence with versioned schema migrations |
 | Redis (Lettuce / Redisson) | Distributed rate limiting, response caching, distributed locks |
-| Apache Kafka | Asynchronous event streaming, Dead Letter Queue, Transactional Outbox |
+| Apache Kafka | Asynchronous event streaming, Dead Letter Queue, Transactional Outbox — requires a configured broker; not connected in the current deployment |
 | Resilience4j | Circuit breaker, retry with exponential backoff, bulkhead isolation |
 | Micrometer + Prometheus | Metrics collection, `/actuator/prometheus` scrape endpoint |
 | Micrometer Tracing + Zipkin | End-to-end distributed tracing across service boundaries |
@@ -98,7 +95,7 @@ AI analysis defaults to a deterministic mock provider for demo reliability and z
 ### Security
 - Stateless JWT authentication with sliding refresh tokens
 - Two-factor authentication via TOTP (Google Authenticator compatible)
-- Google OAuth 2.0 social login
+- Google OAuth 2.0 social login — env-gated behind `app.google.client-id`; not configured in the current deployment, so this path is inactive today
 - Per-IP rate limiting enforced at the servlet filter layer
 - BCrypt password hashing with configurable strength
 
@@ -108,13 +105,12 @@ AI analysis defaults to a deterministic mock provider for demo reliability and z
 - Bulkhead to cap concurrent AI requests and prevent thread-pool saturation
 
 ### Event-Driven
-- Kafka event publishing on incident lifecycle transitions (`incident.created`, etc.)
+- Kafka event publishing on incident lifecycle transitions (`incident.created`, etc.) — the code path is real and unconditional, but requires a reachable broker; the current deployment has none configured, so publishes do not currently deliver
 - Dead Letter Queue for events that exhaust retries — no silent drops
 - Transactional Outbox pattern ensures at-least-once delivery without dual-write inconsistency
 
 ### Architecture Patterns
-- Event Sourcing and CQRS for incident state reconstruction and read-model separation
-- Distributed Saga with compensating transactions for multi-step workflows
+- A 3-step saga (create incident → record billing → deliver webhook) with one compensating action (soft-delete the incident) on failure — a real, if modest, instance of the saga pattern, not a multi-service distributed saga
 - Domain-Driven Design — bounded contexts, aggregates, domain events
 - API Gateway filter for cross-cutting concerns (auth, tenant resolution, rate limiting)
 - Strangler Fig approach for incremental replacement of legacy incident handling
@@ -125,7 +121,6 @@ AI analysis defaults to a deterministic mock provider for demo reliability and z
 - Spring Boot Actuator health groups: liveness, readiness, and per-dependency checks (DB, Redis, Kafka)
 
 ### Data
-- Multi-tenancy enforced at the repository layer — every query is scoped by `tenantId`
 - Soft delete with `deletedAt` timestamps — no hard data loss on entity removal
 - Idempotency keys on mutation endpoints — safe to retry without duplicate side-effects
 - Redisson distributed locks for cluster-safe critical sections
@@ -163,7 +158,7 @@ AI analysis defaults to a deterministic mock provider for demo reliability and z
 ### Run Locally
 
 ```bash
-# 1. Clone the repository
+# 1. Clone the repository (private — requires collaborator access)
 git clone https://github.com/akhilleusn/aetherops.git
 cd aetherops
 
@@ -190,7 +185,7 @@ Zipkin UI: `http://localhost:9411`
 mvn clean test
 ```
 
-> **339 integration tests** run against real PostgreSQL and Redis instances via Testcontainers. Docker must be running — Testcontainers pulls and starts containers automatically.
+> A large integration test suite runs against real PostgreSQL and Redis instances via Testcontainers. Docker must be running — Testcontainers pulls and starts containers automatically.
 
 Test coverage includes: authentication flows, JWT lifecycle, TOTP enrollment, Google OAuth, multi-tenant isolation, incident grouping, AI analysis (circuit breaker + fallback), audit logging, rate limiting, Kafka event publishing, Transactional Outbox, Evidence Packs, Postmortems, Runbooks, and more.
 
@@ -198,7 +193,7 @@ Test coverage includes: authentication flows, JWT lifecycle, TOTP enrollment, Go
 
 ## Kubernetes Deployment
 
-The `kubernetes/` directory contains production-ready manifests. Apply them in order:
+The `kubernetes/` directory contains manifests for an alternative deployment path. **The live deployment actually runs on Cloud Run today**, not Kubernetes — these manifests exist in the repo but haven't been verified against the current application as it's configured now. Apply them in order:
 
 ```bash
 # 1. Create the namespace
@@ -243,7 +238,6 @@ src/main/java/com/aetherops/
 ├── auth/              # JWT, TOTP 2FA, Google OAuth, email verification, password reset
 ├── common/            # Shared exceptions, response wrappers, converters
 ├── config/            # SecurityConfig, WebConfig, feature flags, rate limit config
-├── demo/              # DemoDataInitializer — seeds demo tenant, incidents, embeddings
 ├── evidence/          # Evidence pack assembly from log events
 ├── incident/          # Core incident lifecycle — CRUD, grouping, correlation, severity
 ├── ingestion/         # Log event ingestion endpoint — secret masking, deduplication
@@ -253,9 +247,9 @@ src/main/java/com/aetherops/
 ├── project/           # Project management — multi-project support per tenant
 ├── ratelimit/         # Sliding-window rate limiting via Redis sorted sets
 ├── report/            # Scheduled weekly MTTR / incident reports (cron)
-├── retention/         # Automated data retention enforcement per plan tier
+├── retention/         # Per-tenant configurable retention window (1-365 days) — deletion is triggered explicitly via API, not scheduled or tied to plan
 ├── runbook/           # AI-generated safe runbooks (read-only steps only)
-├── saga/              # Distributed Saga orchestration with compensating transactions
+├── saga/              # 3-step incident-creation saga with one compensating action (soft-delete) on failure
 ├── security/          # HMAC webhook signing, security header filters
 ├── service/           # Service registry — multi-environment service catalogue
 ├── similarity/        # Embedding-based similar-incident retrieval (RAG-lite)
