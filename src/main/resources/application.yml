@@ -56,6 +56,10 @@ management:
 
 analysis:
   use-stub: false
+  # No upstream limit on log message size today (see LogEventRequest) -- this is the one place
+  # that caps what actually reaches an analysis provider's prompt, per evidence item. Tighten
+  # this before enabling a real, billed provider.
+  max-evidence-summary-chars: ${ANALYSIS_MAX_EVIDENCE_SUMMARY_CHARS:4000}
 
 app:
   # Step H2 (see STEP_REPORT.md): default connect/read timeout applied to every outbound HTTP

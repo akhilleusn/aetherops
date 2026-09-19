@@ -15,6 +15,10 @@ public class AIAnalysisResponse {
     private UUID id;
     private UUID incidentId;
     private UUID tenantId;
+    /** COMPLETED for a real result, FAILED if the provider call failed or the circuit was open. */
+    private AnalysisStatus status;
+    /** Populated only when status is FAILED. */
+    private String errorMessage;
     private String summary;
     private String likelyCause;
     /** Decimal 0.0–1.0. Example: 0.35 = 35% confidence. */

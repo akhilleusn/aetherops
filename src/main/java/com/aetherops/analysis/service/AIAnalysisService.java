@@ -18,6 +18,7 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -44,6 +45,10 @@ public class AIAnalysisService {
     private final UsageBillingService usageBillingService;
     private final FeatureFlagService featureFlagService;
     private final IncidentEmbeddingService incidentEmbeddingService;
+    private final FailedAnalysisRecorder failedAnalysisRecorder;
+
+    @Value("${analysis.max-evidence-summary-chars}")
+    private int maxEvidenceSummaryChars;
 
 
     @CircuitBreaker(name = "anthropic-ai", fallbackMethod = "analyzeFallback")
@@ -138,9 +143,12 @@ public class AIAnalysisService {
         }
         log.warn("Circuit breaker open for AI analysis incidentId={} reason={}",
                 incidentId, ex.getMessage());
+        failedAnalysisRecorder.record(incidentId, tenantId, ex.getMessage());
         return AIAnalysisResponse.builder()
                 .incidentId(incidentId)
                 .tenantId(tenantId)
+                .status(AnalysisStatus.FAILED)
+                .errorMessage(ex.getMessage())
                 .summary("AI analysis temporarily unavailable. Please try again later.")
                 .likelyCause("Analysis service is currently unavailable.")
                 .confidenceScore(0.0)
@@ -163,7 +171,7 @@ public class AIAnalysisService {
                 .map(item -> AIAnalysisContext.EvidenceContext.builder()
                         .evidenceItemId(item.getId().toString())
                         .type(item.getType().name())
-                        .summary(item.getSummary())
+                        .summary(truncate(item.getSummary()))
                         .level(item.getLevel())
                         .timestamp(item.getTimestamp())
                         .build())
@@ -183,11 +191,25 @@ public class AIAnalysisService {
                 .build();
     }
 
+    /**
+     * Caps evidence text before it's sent to any analysis provider. Configurable
+     * (analysis.max-evidence-summary-chars) so this can be tightened once a real, billed
+     * provider is enabled -- there's currently no upstream limit on log message size.
+     */
+    private String truncate(String summary) {
+        if (summary == null || summary.length() <= maxEvidenceSummaryChars) {
+            return summary;
+        }
+        return summary.substring(0, maxEvidenceSummaryChars) + "…[truncated]";
+    }
+
     private AIAnalysisResponse toResponse(AIAnalysis analysis) {
         return AIAnalysisResponse.builder()
                 .id(analysis.getId())
                 .incidentId(analysis.getIncidentId())
                 .tenantId(analysis.getTenantId())
+                .status(analysis.getStatus())
+                .errorMessage(analysis.getErrorMessage())
                 .summary(analysis.getSummary())
                 .likelyCause(analysis.getLikelyCause())
                 .confidenceScore(analysis.getConfidenceScore())
