@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 class WebhookServiceTest {
 
     @Mock private WebhookEndpointRepository endpointRepository;
-    @Mock private WebhookDeliveryRepository deliveryRepository;
+    @Mock private WebhookDeliveryRecorder deliveryRecorder;
     @Mock private ObjectMapper objectMapper;
     @Mock private RestClient.Builder restClientBuilder;
     @Mock private FeatureFlagService featureFlagService;
@@ -46,7 +46,7 @@ class WebhookServiceTest {
         // @InjectMocks would silently fill these with 0, and HttpClient.Builder.connectTimeout
         // throws IllegalArgumentException on a non-positive Duration, so this constructs the
         // service explicitly with real values instead.
-        webhookService = new WebhookService(endpointRepository, deliveryRepository, objectMapper,
+        webhookService = new WebhookService(endpointRepository, deliveryRecorder, objectMapper,
             restClientBuilder, featureFlagService, signatureVerifier, 3000L, 5000L);
     }
 
@@ -58,7 +58,7 @@ class WebhookServiceTest {
 
         webhookService.deliver(tenantId, "incident.created", new Object());
 
-        verify(deliveryRepository, never()).save(any());
+        verifyNoInteractions(deliveryRecorder);
     }
 
     @Test
@@ -69,7 +69,7 @@ class WebhookServiceTest {
         webhookService.deliver(tenantId, "incident.created", new Object());
 
         verify(endpointRepository, never()).findByTenantIdAndActiveTrue(any());
-        verify(deliveryRepository, never()).save(any());
+        verifyNoInteractions(deliveryRecorder);
     }
 
     // 8.8.8.8 (Google public DNS) is used as a stable, always-public IP literal rather than a
@@ -89,7 +89,7 @@ class WebhookServiceTest {
         when(featureFlagService.isEnabled(FeatureFlag.WEBHOOKS, tenantId)).thenReturn(true);
         when(endpointRepository.findByTenantIdAndActiveTrue(tenantId)).thenReturn(List.of(endpoint));
         when(objectMapper.writeValueAsString(any())).thenReturn("{\"test\":\"data\"}");
-        when(deliveryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(deliveryRecorder.create(any())).thenAnswer(i -> i.getArgument(0));
         when(signatureVerifier.computeHmacSha256(anyString(), anyString())).thenReturn("sha256=abc123");
 
         RestClient mockClient = mock(RestClient.class);
@@ -107,7 +107,8 @@ class WebhookServiceTest {
 
         webhookService.deliver(tenantId, "incident.created", new Object());
 
-        verify(deliveryRepository, atLeastOnce()).save(any());
+        verify(deliveryRecorder).create(any());
+        verify(deliveryRecorder).save(any());
     }
 
     @Test
@@ -173,7 +174,7 @@ class WebhookServiceTest {
         when(featureFlagService.isEnabled(FeatureFlag.WEBHOOKS, tenantId)).thenReturn(true);
         when(endpointRepository.findByTenantIdAndActiveTrue(tenantId)).thenReturn(List.of(endpoint));
         when(objectMapper.writeValueAsString(any())).thenReturn("{\"test\":\"data\"}");
-        when(deliveryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(deliveryRecorder.create(any())).thenAnswer(i -> i.getArgument(0));
 
         webhookService.deliver(tenantId, "incident.created", new Object());
         return endpoint;
@@ -184,11 +185,11 @@ class WebhookServiceTest {
         deliverToUrl("https://10.0.0.5/hook");
 
         verifyNoInteractions(restClientBuilder);
-        // deliver() saves once to create the PENDING row, attemptDelivery() saves again with
-        // the final status -- same mutable WebhookDelivery instance both times, so the last
-        // capture reflects its final state.
+        // deliverToUrl() creates the PENDING row via deliveryRecorder.create(), then
+        // attemptDelivery() persists the final outcome via deliveryRecorder.save() -- distinct
+        // methods now, so capturing save()'s argument directly gives the final state.
         ArgumentCaptor<WebhookDelivery> captor = ArgumentCaptor.forClass(WebhookDelivery.class);
-        verify(deliveryRepository, times(2)).save(captor.capture());
+        verify(deliveryRecorder).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo("RETRYING");
     }
 
@@ -211,7 +212,7 @@ class WebhookServiceTest {
         deliverToUrl("https://8.8.8.8/hook");
 
         ArgumentCaptor<WebhookDelivery> captor = ArgumentCaptor.forClass(WebhookDelivery.class);
-        verify(deliveryRepository, times(2)).save(captor.capture());
+        verify(deliveryRecorder).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo("RETRYING");
     }
 }

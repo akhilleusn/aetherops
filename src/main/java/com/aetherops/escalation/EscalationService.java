@@ -45,19 +45,29 @@ import org.springframework.stereotype.Service;
  * needs it set any earlier in the same method's proxy chain -- true for a bare {@code @Async}
  * method, not guaranteed for one that's also {@code @Transactional} (whose advice would run
  * before this method's body, and Spring does not document a stable relative order for
- * {@code @Async} vs {@code @Transactional} advisors on the same method). The individual writes
- * below ({@code executionRepository.save}, and everything inside {@code onCallService}/
- * {@code pushNotificationService}/{@code slackConversationService}) are each transactional on
- * their own bean via Spring Data/their own annotations, invoked strictly after this method's
- * {@code TenantContext.set} -- so correctness doesn't depend on this method having its own
- * transaction boundary, only on every DB write here happening as a call to another bean.
+ * {@code @Async} vs {@code @Transactional} advisors on the same method). Every DB write below --
+ * everything inside {@code onCallService}/{@code pushNotificationService}/
+ * {@code slackConversationService}, and this class's own write via
+ * {@link EscalationExecutionRecorder#save} -- goes through its own bean's {@code @Transactional}
+ * method via a genuine cross-bean call, invoked strictly after this method's
+ * {@code TenantContext.set}, so correctness doesn't depend on this method having its own
+ * transaction boundary.
+ *
+ * <p>Recon finding (see STEP_REPORT.md): this javadoc previously claimed the execution write was
+ * already "transactional on its own bean" -- it wasn't. {@code executionRepository.save(execution)}
+ * was called directly from {@code escalateInternal}, a private method self-invoked from
+ * {@code escalate}; self-invocation bypasses the Spring AOP proxy entirely, so that write never
+ * ran inside a transaction {@code TenantContextInterceptor} could act on, the same gap fixed this
+ * morning in {@code AlertDeduplication.linkIncident} and
+ * {@code IncidentSlackNotificationService.notifyViaBotToken}. Fixed by moving the write into
+ * {@link EscalationExecutionRecorder}, a real separate bean reached by a genuine cross-bean call.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EscalationService {
 
-    private final EscalationExecutionRepository executionRepository;
+    private final EscalationExecutionRecorder executionRecorder;
     private final OnCallService onCallService;
     private final PushNotificationService pushNotificationService;
     private final SlackWorkspaceRepository slackWorkspaceRepository;
@@ -100,7 +110,7 @@ public class EscalationService {
             }
         }
 
-        executionRepository.save(execution);
+        executionRecorder.save(execution);
         log.warn("Escalated incidentId={} tenantId={} level={} serviceId={} sms={} push={} slack={}",
             incident.getId(), incident.getTenantId(), level, incident.getServiceId(),
             execution.getSmsStatus(), execution.getPushStatus(), execution.getSlackStatus());

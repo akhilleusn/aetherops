@@ -24,7 +24,7 @@ import java.util.UUID;
 public class WebhookService {
 
     private final WebhookEndpointRepository endpointRepository;
-    private final WebhookDeliveryRepository deliveryRepository;
+    private final WebhookDeliveryRecorder deliveryRecorder;
     private final ObjectMapper objectMapper;
     private final RestClient.Builder restClientBuilder;
     private final FeatureFlagService featureFlagService;
@@ -34,7 +34,7 @@ public class WebhookService {
 
     public WebhookService(
             WebhookEndpointRepository endpointRepository,
-            WebhookDeliveryRepository deliveryRepository,
+            WebhookDeliveryRecorder deliveryRecorder,
             ObjectMapper objectMapper,
             RestClient.Builder restClientBuilder,
             FeatureFlagService featureFlagService,
@@ -42,7 +42,7 @@ public class WebhookService {
             @Value("${app.webhooks.delivery-connect-timeout-ms}") long connectTimeoutMs,
             @Value("${app.webhooks.delivery-read-timeout-ms}") long readTimeoutMs) {
         this.endpointRepository = endpointRepository;
-        this.deliveryRepository = deliveryRepository;
+        this.deliveryRecorder = deliveryRecorder;
         this.objectMapper = objectMapper;
         this.restClientBuilder = restClientBuilder;
         this.featureFlagService = featureFlagService;
@@ -95,7 +95,7 @@ public class WebhookService {
         }
 
         for (WebhookEndpoint endpoint : endpoints) {
-            WebhookDelivery delivery = deliveryRepository.save(WebhookDelivery.builder()
+            WebhookDelivery delivery = deliveryRecorder.create(WebhookDelivery.builder()
                     .webhookEndpointId(endpoint.getId())
                     .eventType(eventType)
                     .payload(payloadJson)
@@ -146,7 +146,7 @@ public class WebhookService {
                     endpoint.getId(), delivery.getAttempts(), e.getMessage());
         }
 
-        deliveryRepository.save(delivery);
+        deliveryRecorder.save(delivery);
     }
 
     public WebhookEndpoint register(UUID tenantId, String url, String secret) {

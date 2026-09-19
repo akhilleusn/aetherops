@@ -42,7 +42,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class EscalationServiceTest {
 
-    @Mock private EscalationExecutionRepository executionRepository;
+    @Mock private EscalationExecutionRecorder executionRecorder;
     @Mock private OnCallService onCallService;
     @Mock private PushNotificationService pushNotificationService;
     @Mock private SlackWorkspaceRepository slackWorkspaceRepository;
@@ -71,19 +71,17 @@ class EscalationServiceTest {
 
     @Test
     void escalate_recordsExecutionWithGivenLevel() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any())).thenReturn(ACCEPTED);
 
         escalationService.escalate(incident(null), policy(), 2);
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getEscalationLevel()).isEqualTo(2);
     }
 
     @Test
     void escalate_pagesOnCallDirectly() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any())).thenReturn(ACCEPTED);
 
         escalationService.escalate(incident(null), policy(), 1);
@@ -93,7 +91,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsAccepted_doesNotAttemptPushOrSlack() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any())).thenReturn(ACCEPTED);
 
         escalationService.escalate(incident("C123"), policy(), 1);
@@ -103,7 +100,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsFails_sendsPushAlert() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(true);
@@ -120,7 +116,6 @@ class EscalationServiceTest {
     // still gets attempted rather than the fallback chain stalling or being skipped.
     @Test
     void escalate_slowFailingSmsAttempt_stillFallsBackToPush_doesNotBlockOnIt() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any())).thenAnswer(invocation -> {
             Thread.sleep(150);
             return new PageResult(PageOutcome.PROVIDER_ERROR, null, "Twilio timed out");
@@ -138,7 +133,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsAndPushFail_fallsBackToSlack() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
@@ -156,7 +150,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsAndPushFailAndNoSlackChannel_skipsSlackLookupEntirely() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
@@ -168,7 +161,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsAndPushFailSlackChannelPresentButNoWorkspace_doesNotThrow() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
@@ -183,13 +175,12 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsAccepted_recordsSmsAcceptedAndOtherChannelsNotAttempted() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any())).thenReturn(ACCEPTED);
 
         escalationService.escalate(incident("C123"), policy(), 1);
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getSmsStatus()).isEqualTo(ChannelStatus.ACCEPTED);
         assertThat(captor.getValue().getPushStatus()).isEqualTo(ChannelStatus.NOT_ATTEMPTED);
         assertThat(captor.getValue().getSlackStatus()).isEqualTo(ChannelStatus.NOT_ATTEMPTED);
@@ -197,7 +188,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_smsFailsPushAccepted_recordsBothAndSkipsSlack() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.NOT_CONFIGURED, null, "not configured"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(true);
@@ -205,7 +195,7 @@ class EscalationServiceTest {
         escalationService.escalate(incident("C123"), policy(), 1);
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getSmsStatus()).isEqualTo(ChannelStatus.FAILED);
         assertThat(captor.getValue().getPushStatus()).isEqualTo(ChannelStatus.ACCEPTED);
         assertThat(captor.getValue().getSlackStatus()).isEqualTo(ChannelStatus.NOT_ATTEMPTED);
@@ -214,7 +204,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_allThreeChannelsFail_recordsAllFailed() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
@@ -225,7 +214,7 @@ class EscalationServiceTest {
         escalationService.escalate(incident("C123"), policy(), 1);
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getSmsStatus()).isEqualTo(ChannelStatus.FAILED);
         assertThat(captor.getValue().getPushStatus()).isEqualTo(ChannelStatus.FAILED);
         assertThat(captor.getValue().getSlackStatus()).isEqualTo(ChannelStatus.FAILED);
@@ -233,7 +222,6 @@ class EscalationServiceTest {
 
     @Test
     void escalate_noSlackChannelConfigured_recordsSlackNotAttemptedNotFailed() {
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(onCallService.pageOnCall(any(), any(), any()))
             .thenReturn(new PageResult(PageOutcome.PROVIDER_ERROR, null, "boom"));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
@@ -241,7 +229,7 @@ class EscalationServiceTest {
         escalationService.escalate(incident(null), policy(), 1);
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getSlackStatus()).isEqualTo(ChannelStatus.NOT_ATTEMPTED);
     }
 
@@ -271,10 +259,9 @@ class EscalationServiceTest {
         ReflectionTestUtils.setField(realOnCallService, "ptoAwarenessService", null);
 
         EscalationService escalationServiceWithRealOnCall = new EscalationService(
-            executionRepository, realOnCallService, pushNotificationService,
+            executionRecorder, realOnCallService, pushNotificationService,
             slackWorkspaceRepository, slackConversationService);
 
-        when(executionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(pushNotificationService.sendPageAlert(any(), any(), any())).thenReturn(false);
 
         try (MockedStatic<Message> mockedMessage = mockStatic(Message.class)) {
@@ -287,7 +274,7 @@ class EscalationServiceTest {
         }
 
         ArgumentCaptor<EscalationExecution> captor = ArgumentCaptor.forClass(EscalationExecution.class);
-        verify(executionRepository).save(captor.capture());
+        verify(executionRecorder).save(captor.capture());
         assertThat(captor.getValue().getSmsStatus()).isEqualTo(ChannelStatus.FAILED);
         assertThat(captor.getValue().getSmsDetail()).contains("PROVIDER_ERROR");
     }
