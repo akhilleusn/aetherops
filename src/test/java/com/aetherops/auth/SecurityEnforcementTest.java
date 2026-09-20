@@ -1,7 +1,11 @@
 package com.aetherops.auth;
 
+import com.aetherops.auth.model.Invitation;
 import com.aetherops.auth.model.RegisterRequest;
+import com.aetherops.auth.model.Role;
+import com.aetherops.auth.repository.InvitationRepository;
 import com.aetherops.auth.repository.UserRepository;
+import com.aetherops.auth.service.InvitationTokenGenerator;
 import com.aetherops.auth.service.JwtService;
 import com.aetherops.tenant.model.Plan;
 import com.aetherops.tenant.model.Tenant;
@@ -15,6 +19,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,6 +33,7 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired TenantRepository tenantRepository;
     @Autowired UserRepository userRepository;
+    @Autowired InvitationRepository invitationRepository;
     @Autowired JwtService jwtService;
 
     private Tenant tenant;
@@ -41,6 +48,18 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
             .aiMonthlyBudgetCents(0)
             .retentionDays(30)
             .build());
+    }
+
+    private String createInvitation(String email) {
+        String token = InvitationTokenGenerator.generateToken();
+        invitationRepository.save(Invitation.builder()
+            .tokenHash(InvitationTokenGenerator.hash(token))
+            .tenantId(tenant.getId())
+            .email(email)
+            .role(Role.MEMBER)
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build());
+        return token;
     }
 
     @Test
@@ -75,7 +94,7 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
 
     @Test
     void protectedEndpoint_validToken_returns2xx() throws Exception {
-        var regReq = new RegisterRequest("sectest@example.com", "password123", null);
+        var regReq = new RegisterRequest("sectest@example.com", "password123", createInvitation("sectest@example.com"));
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
@@ -94,11 +113,16 @@ class SecurityEnforcementTest extends AbstractIntegrationTest {
 
     @Test
     void authRegisterEndpoint_noToken_isPublic() throws Exception {
+        // "Public" means Spring Security doesn't block an unauthenticated caller from reaching
+        // this endpoint -- not that registration succeeds without an invitation. Registration
+        // requires a non-blank invitationToken now, so a request without one is correctly
+        // rejected by business validation (422), not by the security filter chain (401/403);
+        // that distinction is exactly what this test needs to keep proving.
         var req = new RegisterRequest("pub@example.com", "password123", null);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
-            .andExpect(status().isCreated());
+            .andExpect(status().isUnprocessableEntity());
     }
 
     @Test

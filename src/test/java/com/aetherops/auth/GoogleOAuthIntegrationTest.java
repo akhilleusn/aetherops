@@ -137,23 +137,20 @@ class GoogleOAuthIntegrationTest extends AbstractIntegrationTest {
     // ── tenant binding (Phase 1 remediation item 2) ──────────────────────────
 
     @Test
-    void googleLogin_validToken_newUser_withoutInvitation_createsNewTenantAndReturnsJwt() throws Exception {
+    void googleLogin_validToken_newUser_withoutInvitation_isRejected() throws Exception {
+        // Registration is by invitation only (see AuthService.register / GoogleAuthService
+        // .authenticate) — a brand-new Google-verified email with no invitation must not be
+        // able to self-serve a new tenant, the same rule the password-registration path
+        // enforces via RegisterRequest's @NotBlank invitationToken.
         when(googleTokenVerifier.verify(FAKE_ID_TOKEN))
             .thenReturn(new GoogleUserInfo(GOOGLE_SUB, "newuser@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/google")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(googleBody()))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.token").isNotEmpty())
-            .andExpect(jsonPath("$.data.email").value("newuser@example.com"));
+            .andExpect(status().isBadRequest());
 
-        User created = userRepository.findByEmail("newuser@example.com").orElseThrow();
-        // No invitationToken was supplied, so this must be a brand-new tenant — never the
-        // pre-existing fixture tenant from setUp().
-        assertThat(created.getTenantId()).isNotNull().isNotEqualTo(tenantId);
-        assertThat(tenantRepository.findById(created.getTenantId())).isPresent();
-        assertThat(created.getRole()).isEqualTo(Role.OWNER);
+        assertThat(userRepository.findByEmail("newuser@example.com")).isEmpty();
     }
 
     @Test

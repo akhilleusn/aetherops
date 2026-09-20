@@ -9,13 +9,16 @@ import java.util.UUID;
 
 /**
  * The caller never chooses which tenant they join. An {@code invitationToken} (issued
- * server-side) binds registration to an existing tenant; without one, registration always
- * creates a brand-new tenant. {@code tenantId}/{@code tenantSlug} exist on this DTO only so
- * a client-supplied value is rejected outright rather than silently ignored.
+ * server-side) binds registration to an existing tenant -- registration is by invitation only,
+ * so this is required, not optional. A brand-new tenant is created through the authenticated
+ * {@code POST /api/v1/tenants} endpoint instead, not by self-registering. {@code tenantId}/
+ * {@code tenantSlug} exist on this DTO only so a client-supplied value is rejected outright
+ * rather than silently ignored.
  */
 public record RegisterRequest(
     @NotBlank @Email String email,
     @NotBlank @Size(min = 8, message = "Password must be at least 8 characters") String password,
+    @NotBlank(message = "invitationToken is required -- registration is by invitation only")
     String invitationToken,
     @Null(message = "tenantId must not be supplied; registration joins a tenant via invitationToken or creates a new one")
     UUID tenantId,

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign Up — AetherOps</title>
+<title>Access — AetherOps</title>
 <link rel="icon" href="/weblogos/favicon_logo.ico" sizes="any">
 <link rel="icon" href="/weblogos/logo-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/weblogos/logo-180.png">
@@ -14,19 +14,14 @@
 --border:#1e2d3f;--border2:#2a3d52;
 --text:#f0ead8;--text2:#c8bfa8;--muted:#7a8898;--dim:#4a5668;
 --gold:#c9a84c;--gold2:#b8952a;
---err-bg:rgba(180,40,40,0.12);--err-border:rgba(200,60,60,0.28);--err-text:#fca5a5;
---ok-bg:rgba(40,160,80,0.10);--ok-border:rgba(50,180,100,0.28);--ok-text:#86efac;
 }
 [data-theme="light"]{
 --bg:#faf9f7;--bg2:#f2f0eb;--card:#ffffff;
 --border:#ddd8cc;--border2:#c9c0ae;
 --text:#0d1320;--text2:#2a3245;--muted:#6b7080;--dim:#9aa0ae;
 --gold:#b8952a;--gold2:#9a7c20;
---err-bg:#fef2f2;--err-border:#fca5a5;--err-text:#991b1b;
---ok-bg:#f0fdf4;--ok-border:#a3e6c8;--ok-text:#166534;
 }
 
-/* Layout */
 body{
   font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
   font-size:14px;line-height:1.5;
@@ -39,7 +34,6 @@ body{
   background-image:radial-gradient(circle,rgba(20,40,90,0.22) 1px,transparent 1px);
 }
 
-/* Nav */
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2rem;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
 .logo{font-size:1.2rem;font-weight:700;color:var(--text);font-family:'Georgia',serif;text-decoration:none}
 .logo span{color:var(--gold)}
@@ -47,60 +41,22 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 2
 .theme-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:0.4rem 1rem;border-radius:4px;font-size:0.8125rem;cursor:pointer;font-family:-apple-system,sans-serif;transition:all 0.2s}
 .theme-btn:hover{border-color:var(--gold);color:var(--gold)}
 
-/* Page center */
 .page-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2.5rem 1.5rem}
 
-/* Card */
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12);text-align:center}
 [data-theme="dark"] .card{box-shadow:0 4px 28px rgba(0,0,0,0.45)}
 
-/* Tabs */
-.tabs{display:flex;border-bottom:1px solid var(--border)}
-.tab{flex:1;padding:13px 12px;font-size:13px;font-weight:600;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:color .15s,background .15s;letter-spacing:.01em;border-bottom:2px solid transparent;margin-bottom:-1px}
-.tab:hover{color:var(--text2);background:var(--bg2)}
-.tab.active{color:var(--gold);border-bottom-color:var(--gold);background:transparent}
+.card-body{padding:36px 32px}
+h2{font-size:18px;font-weight:700;margin-bottom:14px;color:var(--text);font-family:'Georgia',serif}
+p.copy{font-size:13.5px;color:var(--text2);line-height:1.6;margin-bottom:24px}
 
-/* Form body */
-.card-body{padding:28px 32px 32px}
-h2{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--text);font-family:'Georgia',serif}
-
-/* Fields */
-.field{margin-bottom:15px}
-label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
-[data-theme="light"] label{color:var(--text2)}
-
-input[type=email],input[type=password],input[type=text]{
-  width:100%;padding:9px 12px;
-  background:var(--bg2);border:1px solid var(--border);border-radius:6px;
-  color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .15s;
-}
-input:focus{border-color:var(--gold)}
-input::placeholder{color:var(--muted)}
-[data-theme="light"] input::placeholder{color:var(--dim)}
-
-/* Hint text */
-.hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.55}
-[data-theme="light"] .hint{color:var(--text2)}
-.hint code{font-family:'Courier New',monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;font-size:10px;color:var(--text2)}
-
-/* Submit button */
-.btn-submit{
-  width:100%;padding:10px;background:var(--gold);color:#fff;
+.btn-request{
+  display:inline-block;padding:10px 24px;background:var(--gold);color:#fff;
   border:none;border-radius:6px;font-size:14px;font-weight:600;
-  cursor:pointer;margin-top:6px;transition:background .15s;
+  cursor:pointer;text-decoration:none;transition:background .15s;
 }
-.btn-submit:hover{background:var(--gold2)}
-.btn-submit:disabled{opacity:0.5;cursor:not-allowed}
+.btn-request:hover{background:var(--gold2)}
 
-/* Alerts */
-.alert{border-radius:6px;font-size:13px;line-height:1.5;margin-bottom:16px;padding:10px 14px;display:none}
-.alert-err{background:var(--err-bg);border:1px solid var(--err-border);color:var(--err-text)}
-.alert-ok{background:var(--ok-bg);border:1px solid var(--ok-border);color:var(--ok-text)}
-
-/* Tenant ID reveal */
-.tenant-id-reveal{margin-top:8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--gold);border-radius:5px;font-family:'Courier New',monospace;font-size:12px;color:var(--gold);word-break:break-all;display:none}
-
-/* Footer link */
 .footer-link{text-align:center;margin-top:20px;font-size:13px;color:var(--muted)}
 .footer-link a{color:var(--gold);text-decoration:none}
 .footer-link a:hover{color:var(--gold2);text-decoration:underline}
@@ -117,56 +73,14 @@ input::placeholder{color:var(--muted)}
 
 <div class="page-center">
   <div class="card">
-    <div class="tabs">
-      <button class="tab active" id="tab-new"  onclick="switchTab('new')">New organization</button>
-      <button class="tab"        id="tab-join" onclick="switchTab('join')">Join existing</button>
-    </div>
-
     <div class="card-body">
-      <!-- alerts (shared) -->
-      <div class="alert alert-err" id="err"></div>
-      <div class="alert alert-ok"  id="ok"></div>
-      <div class="tenant-id-reveal" id="tenantReveal"></div>
-
-      <!-- ── MODE 1: create new org ── -->
-      <div id="form-new">
-        <h2>Create your organization</h2>
-        <div class="field">
-          <label for="orgName">Organization name</label>
-          <input id="orgName" type="text" placeholder="Acme Engineering" autocomplete="organization">
-        </div>
-        <div class="field">
-          <label for="email-new">Email</label>
-          <input id="email-new" type="email" placeholder="you@example.com" autocomplete="email">
-        </div>
-        <div class="field">
-          <label for="password-new">Password</label>
-          <input id="password-new" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
-        </div>
-        <button class="btn-submit" id="btn-new" onclick="doCreateOrg()">Create organization</button>
-      </div>
-
-      <!-- ── MODE 2: join existing org ── -->
-      <div id="form-join" style="display:none">
-        <h2>Join your team</h2>
-        <div class="field">
-          <label for="tenantId">Tenant ID</label>
-          <input id="tenantId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
-          <p class="hint">
-            Your organisation's Tenant ID — a UUID issued when the workspace was created.
-            Ask your workspace owner if you don't have one.
-          </p>
-        </div>
-        <div class="field">
-          <label for="email-join">Email</label>
-          <input id="email-join" type="email" placeholder="you@example.com" autocomplete="email">
-        </div>
-        <div class="field">
-          <label for="password-join">Password</label>
-          <input id="password-join" type="password" placeholder="Min. 8 characters" autocomplete="new-password">
-        </div>
-        <button class="btn-submit" id="btn-join" onclick="doJoinOrg()">Create account</button>
-      </div>
+      <h2>Access is by invitation</h2>
+      <p class="copy">
+        AetherOps doesn't offer self-serve sign-up. Existing teams add teammates by invitation
+        from inside their workspace — if you're expecting an invite, check your email for a link.
+        Otherwise, request access below.
+      </p>
+      <a class="btn-request" href="https://docs.google.com/forms/d/e/1FAIpQLSd6OMDqgPELhF4Y1SGecgMIz5Wd4kVyS3RBzNe7kM4rOsKKWg/viewform" target="_blank" rel="noopener">Request access</a>
     </div>
   </div>
 
@@ -175,168 +89,6 @@ input::placeholder{color:var(--muted)}
 
 <script>
 'use strict';
-
-if (localStorage.getItem('ao_token')) {
-  window.location.replace('/index.html');
-}
-
-let activeTab = 'new';
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    activeTab === 'new' ? doCreateOrg() : doJoinOrg();
-  }
-});
-
-function switchTab(tab) {
-  activeTab = tab;
-  hideMessages();
-  document.getElementById('tab-new').classList.toggle('active', tab === 'new');
-  document.getElementById('tab-join').classList.toggle('active', tab === 'join');
-  document.getElementById('form-new').style.display  = tab === 'new'  ? '' : 'none';
-  document.getElementById('form-join').style.display = tab === 'join' ? '' : 'none';
-}
-
-// ── Mode 1: Create new org ─────────────────────────────────────────────────
-
-async function doCreateOrg() {
-  const orgName  = document.getElementById('orgName').value.trim();
-  const email    = document.getElementById('email-new').value.trim();
-  const password = document.getElementById('password-new').value;
-  const btn      = document.getElementById('btn-new');
-
-  hideMessages();
-
-  if (!orgName)    { showErr('Organization name is required.'); return; }
-  if (orgName.length < 2) { showErr('Organization name must be at least 2 characters.'); return; }
-  if (!email)      { showErr('Email is required.'); return; }
-  if (!password)   { showErr('Password is required.'); return; }
-  if (password.length < 8) { showErr('Password must be at least 8 characters.'); return; }
-
-  setLoading(btn, true, 'Creating organization…');
-
-  try {
-    // Step 1: create the tenant
-    const tenantRes = await fetch('/api/v1/tenants', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: orgName,
-        plan: 'FREE',
-        aiMonthlyBudgetCents: 0,
-        retentionDays: 7
-      })
-    });
-    const tenantBody = await tenantRes.json().catch(() => null);
-    if (!tenantRes.ok || !tenantBody?.success) {
-      const msg = tenantBody?.message || tenantBody?.error || 'Failed to create organization.';
-      showErr(msg);
-      return;
-    }
-
-    const tenantId = tenantBody.data.id;
-
-    // Step 2: register the first user under that tenant
-    const regRes = await fetch('/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, tenantId })
-    });
-    const regBody = await regRes.json().catch(() => null);
-    if (!regRes.ok || !regBody?.success) {
-      const msg = regBody?.message || regBody?.error || 'Account registration failed.';
-      showErr(msg);
-      return;
-    }
-
-    // Success
-    showOk(
-      '✓ Organization "' + orgName + '" created and account registered! ' +
-      'Check your email to verify your account before signing in.'
-    );
-    revealTenantId(tenantId);
-    setTimeout(() => window.location.replace('/login.html'), 5000);
-
-  } catch (_) {
-    showErr('Could not reach the server. Please try again.');
-  } finally {
-    setLoading(btn, false, 'Create organization');
-  }
-}
-
-// ── Mode 2: Join existing org ──────────────────────────────────────────────
-
-async function doJoinOrg() {
-  const tenantId = document.getElementById('tenantId').value.trim();
-  const email    = document.getElementById('email-join').value.trim();
-  const password = document.getElementById('password-join').value;
-  const btn      = document.getElementById('btn-join');
-
-  hideMessages();
-
-  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!tenantId)           { showErr('Tenant ID is required.'); return; }
-  if (!uuidRe.test(tenantId)) {
-    showErr('Tenant ID must be a valid UUID (e.g. 550e8400-e29b-41d4-a716-446655440000).');
-    return;
-  }
-  if (!email)    { showErr('Email is required.'); return; }
-  if (!password) { showErr('Password is required.'); return; }
-  if (password.length < 8) { showErr('Password must be at least 8 characters.'); return; }
-
-  setLoading(btn, true, 'Creating account…');
-
-  try {
-    const r = await fetch('/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, tenantId })
-    });
-    const body = await r.json().catch(() => null);
-    if (!r.ok || !body?.success) {
-      showErr(body?.message || body?.error || 'Registration failed. Please try again.');
-      return;
-    }
-    showOk('✓ Account created! Check your email to verify before signing in.');
-    setTimeout(() => window.location.replace('/login.html'), 3000);
-  } catch (_) {
-    showErr('Could not reach the server. Please try again.');
-  } finally {
-    setLoading(btn, false, 'Create account');
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function setLoading(btn, loading, label) {
-  btn.disabled = loading;
-  btn.textContent = label;
-}
-
-function showErr(msg) {
-  const el = document.getElementById('err');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
-function showOk(msg) {
-  const el = document.getElementById('ok');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
-function revealTenantId(id) {
-  const el = document.getElementById('tenantReveal');
-  el.textContent = 'Tenant ID (share with teammates): ' + id;
-  el.style.display = 'block';
-}
-
-function hideMessages() {
-  document.getElementById('err').style.display = 'none';
-  document.getElementById('ok').style.display  = 'none';
-  document.getElementById('tenantReveal').style.display = 'none';
-}
-
 function toggleTheme() {
   var html = document.documentElement;
   var isDark = html.getAttribute('data-theme') === 'dark';

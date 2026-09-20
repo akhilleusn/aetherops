@@ -62,9 +62,49 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     // ── register ──────────────────────────────────────────────────────────
 
+    private String createInvitation(String email) {
+        return createInvitation(email, tenantId, Role.MEMBER);
+    }
+
+    private String createInvitation(String email, UUID forTenantId, Role role) {
+        String token = InvitationTokenGenerator.generateToken();
+        invitationRepository.save(Invitation.builder()
+            .tokenHash(InvitationTokenGenerator.hash(token))
+            .tenantId(forTenantId)
+            .email(email)
+            .role(role)
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build());
+        return token;
+    }
+
+    @Test
+    void register_withoutInvitationToken_isRejected() throws Exception {
+        var req = new RegisterRequest("no-invite@example.com", "password123", null);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.details.invitationToken").isNotEmpty());
+
+        assertThat(userRepository.findByEmail("no-invite@example.com")).isEmpty();
+    }
+
+    @Test
+    void register_blankInvitationToken_isRejected() throws Exception {
+        var req = new RegisterRequest("blank-invite@example.com", "password123", "   ");
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.details.invitationToken").isNotEmpty());
+    }
+
     @Test
     void register_validRequest_returns201WithPendingMessage() throws Exception {
-        var req = new RegisterRequest("alice@example.com", "password123", null);
+        var req = new RegisterRequest("alice@example.com", "password123", createInvitation("alice@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -77,7 +117,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void register_createsUserWithUnverifiedEmail() throws Exception {
-        var req = new RegisterRequest("bob@example.com", "password123", null);
+        var req = new RegisterRequest("bob@example.com", "password123", createInvitation("bob@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -86,24 +126,26 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
         var user = userRepository.findByEmail("bob@example.com").orElseThrow();
         assertThat(user.isEmailVerified()).isFalse();
-        // No invitationToken was supplied, so registration must create a brand-new tenant —
-        // never the pre-existing fixture tenant from setUp().
-        assertThat(user.getTenantId()).isNotNull().isNotEqualTo(tenantId);
-        assertThat(tenantRepository.findById(user.getTenantId())).isPresent();
+        // Registration is by invitation only now -- the user must join the tenant the
+        // invitation names, not a brand-new one.
+        assertThat(user.getTenantId()).isEqualTo(tenantId);
         assertThat(user.getEmailVerificationTokenHash()).isNotBlank();
     }
 
     @Test
     void register_duplicateEmail_returns409() throws Exception {
-        var req = new RegisterRequest("dup@example.com", "password123", null);
-        String body = objectMapper.writeValueAsString(req);
+        // Two separate, unredeemed invitations for the same email -- an invitation can only be
+        // redeemed once, so reusing one token for both requests would fail on the second as
+        // "already redeemed" (400) rather than exercising the duplicate-email path (409).
+        var req1 = new RegisterRequest("dup@example.com", "password123", createInvitation("dup@example.com"));
+        var req2 = new RegisterRequest("dup@example.com", "password123", createInvitation("dup@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(req1)))
             .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(req2)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.status").value(409));
     }
@@ -196,7 +238,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void login_validCredentials_returns200WithToken() throws Exception {
-        var regReq = new RegisterRequest("eve@example.com", "mypassword", null);
+        var regReq = new RegisterRequest("eve@example.com", "mypassword", createInvitation("eve@example.com"));
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
@@ -215,7 +257,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void login_wrongPassword_returns401() throws Exception {
-        var regReq = new RegisterRequest("frank@example.com", "correctpass", null);
+        var regReq = new RegisterRequest("frank@example.com", "correctpass", createInvitation("frank@example.com"));
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))
@@ -248,7 +290,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         loginAttemptService.recordSuccess(email); // ensure clean state
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", null))))
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", createInvitation(email)))))
             .andExpect(status().isCreated());
 
         for (int i = 0; i < 5; i++) {
@@ -269,7 +311,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         loginAttemptService.recordSuccess(email);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", null))))
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", createInvitation(email)))))
             .andExpect(status().isCreated());
 
         for (int i = 0; i < 5; i++) {
@@ -291,7 +333,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         loginAttemptService.recordSuccess(email);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", null))))
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", createInvitation(email)))))
             .andExpect(status().isCreated());
         verifyUserEmail(email);
 
@@ -321,7 +363,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         loginAttemptService.recordSuccess(email);
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", null))))
+                .content(objectMapper.writeValueAsString(new RegisterRequest(email, "correctpass", createInvitation(email)))))
             .andExpect(status().isCreated());
 
         for (int i = 0; i < 4; i++) {
@@ -335,7 +377,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     @Test
     void login_unknownEmail_sameErrorShapeAsWrongPassword() throws Exception {
         // Both wrong-email and wrong-password must return the same message to avoid leaking account existence
-        var regReq = new RegisterRequest("grace@example.com", "correctpass", null);
+        var regReq = new RegisterRequest("grace@example.com", "correctpass", createInvitation("grace@example.com"));
         mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(regReq)))

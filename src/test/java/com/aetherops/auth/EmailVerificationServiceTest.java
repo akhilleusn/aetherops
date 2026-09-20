@@ -12,7 +12,6 @@ import com.aetherops.auth.service.InvitationService;
 import com.aetherops.auth.service.JwtService;
 import com.aetherops.auth.service.LoginAttemptService;
 import com.aetherops.common.exception.InvalidVerificationTokenException;
-import com.aetherops.tenant.service.TenantService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -140,12 +139,11 @@ class EmailVerificationServiceTest {
         JwtService mockJwt = mock(JwtService.class);
         LoginAttemptService mockLas = mock(LoginAttemptService.class);
         EmailVerificationService mockEvs = mock(EmailVerificationService.class);
-        TenantService mockTenantService = mock(TenantService.class);
         InvitationService mockInvitationService = mock(InvitationService.class);
 
-        // login() never touches tenantService/invitationService — only register() does.
+        // login() never touches invitationService — only register() does.
         AuthService authService = new AuthService(
-                mockRepo, mockTenantService, mockInvitationService,
+                mockRepo, mockInvitationService,
                 mockEncoder, mockJwt, mockLas, mockEvs);
 
         String email = "verifieduser@example.com";

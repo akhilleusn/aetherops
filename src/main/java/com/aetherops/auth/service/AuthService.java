@@ -13,9 +13,6 @@ import com.aetherops.common.exception.DuplicateEmailException;
 import com.aetherops.common.exception.EmailNotVerifiedException;
 import com.aetherops.common.exception.InvalidCredentialsException;
 import com.aetherops.common.exception.ResourceNotFoundException;
-import com.aetherops.tenant.model.CreateTenantRequest;
-import com.aetherops.tenant.model.TenantResponse;
-import com.aetherops.tenant.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,7 +24,6 @@ import java.util.UUID;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final TenantService tenantService;
     private final InvitationService invitationService;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -35,27 +31,16 @@ public class AuthService {
     private final EmailVerificationService emailVerificationService;
 
     /**
-     * The caller never chooses which tenant they join (see RegisterRequest). An
-     * invitationToken binds this registration to the tenant it was issued for; without one,
-     * registration always creates a brand-new tenant with this user as its OWNER.
+     * The caller never chooses which tenant they join (see RegisterRequest). Registration is by
+     * invitation only -- {@code invitationToken} is required ({@code @NotBlank} on
+     * {@link RegisterRequest}), so this always binds to the tenant the invitation names.
+     * Creating a brand-new tenant is a separate, authenticated action via
+     * {@code POST /api/v1/tenants} -- not something an unauthenticated registration triggers.
      */
     @Transactional
     public RegistrationResult register(RegisterRequest req) {
-        UUID tenantId;
-        Role role;
-
-        if (req.invitationToken() != null && !req.invitationToken().isBlank()) {
-            Invitation invitation = invitationService.redeem(req.invitationToken(), req.email());
-            tenantId = invitation.getTenantId();
-            role = invitation.getRole();
-        } else {
-            TenantResponse tenant = tenantService.create(
-                new CreateTenantRequest(defaultTenantName(req.email()), 30));
-            tenantId = tenant.getId();
-            role = Role.OWNER;
-        }
-
-        return registerUser(req.email(), req.password(), tenantId, role);
+        Invitation invitation = invitationService.redeem(req.invitationToken(), req.email());
+        return registerUser(req.email(), req.password(), invitation.getTenantId(), invitation.getRole());
     }
 
     private RegistrationResult registerUser(String email, String password, UUID tenantId, Role role) {
@@ -73,13 +58,6 @@ public class AuthService {
         emailVerificationService.sendVerificationEmail(user);
         return new RegistrationResult(user.getId(),
             "Registration successful. Please check your email to verify your account.");
-    }
-
-    private static String defaultTenantName(String email) {
-        int at = email.indexOf('@');
-        String localPart = at > 0 ? email.substring(0, at) : email;
-        String name = localPart + "'s Team";
-        return name.length() > 100 ? name.substring(0, 100) : name;
     }
 
     @Transactional(readOnly = true)
