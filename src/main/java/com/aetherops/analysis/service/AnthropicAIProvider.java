@@ -23,7 +23,7 @@ import java.util.stream.StreamSupport;
 @Slf4j
 public class AnthropicAIProvider implements AIProvider {
 
-    private static final String MODEL          = "claude-sonnet-4-20250514";
+    private static final String MODEL          = "claude-opus-5";
     private static final String PROMPT_VERSION = "2.0";
     private static final String API_URL        = "https://api.anthropic.com/v1/messages";
     private static final double CONFIDENCE_CAP = 0.65;
@@ -132,9 +132,14 @@ public class AnthropicAIProvider implements AIProvider {
     }
 
     private String callApi(String prompt) {
+        // Thinking is on by default for this model and its tokens count toward max_tokens,
+        // so the ceiling must leave room for reasoning plus the JSON answer.
+        // "fallbacks": "default" re-runs a safety-classifier refusal on Anthropic's
+        // recommended fallback model server-side instead of returning the refusal.
         Map<String, Object> body = Map.of(
             "model",      MODEL,
-            "max_tokens", 1000,
+            "max_tokens", 16000,
+            "fallbacks",  "default",
             "messages",   List.of(Map.of("role", "user", "content", prompt))
         );
 
@@ -143,19 +148,42 @@ public class AnthropicAIProvider implements AIProvider {
                 .uri(API_URL)
                 .header("x-api-key", apiKey)
                 .header("anthropic-version", "2023-06-01")
+                .header("anthropic-beta", "server-side-fallback-2026-07-01")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
                 .body(String.class);
 
-            JsonNode root = objectMapper.readTree(raw);
-            return root.at("/content/0/text").asText();
+            return extractText(objectMapper.readTree(raw));
 
         } catch (JsonProcessingException e) {
             throw new AIProviderException("Failed to parse Anthropic API response: " + e.getMessage(), e);
+        } catch (AIProviderException e) {
+            throw e;
         } catch (Exception e) {
             throw new AIProviderException("Anthropic API call failed: " + e.getMessage(), e);
         }
+    }
+
+    // package-private for unit testing. The response's content array starts with a thinking
+    // block (and may carry a fallback boundary block), so content[0] is not the answer —
+    // take the last text block instead.
+    String extractText(JsonNode root) {
+        if ("refusal".equals(root.path("stop_reason").asText())) {
+            throw new AIProviderException("Anthropic API declined the request (stop_reason=refusal, category="
+                + root.path("stop_details").path("category").asText("unknown") + ")");
+        }
+        String text = null;
+        for (JsonNode block : root.path("content")) {
+            if ("text".equals(block.path("type").asText())) {
+                text = block.path("text").asText();
+            }
+        }
+        if (text == null || text.isBlank()) {
+            throw new AIProviderException("Anthropic API response contained no text block (stop_reason="
+                + root.path("stop_reason").asText("unknown") + ")");
+        }
+        return text;
     }
 
     private List<String> toStringList(JsonNode node) {

@@ -68,7 +68,7 @@ class AnthropicAIProviderTest {
         assertThat(result.getEvidenceRefs()).containsExactly(EVIDENCE_ID_1);
         assertThat(result.getUnknowns()).hasSize(2);
         assertThat(result.getRecommendedNextChecks()).hasSize(1);
-        assertThat(result.getModel()).isEqualTo("claude-sonnet-4-20250514");
+        assertThat(result.getModel()).isEqualTo("claude-opus-5");
         assertThat(result.getPromptVersion()).isEqualTo("2.0");
     }
 
@@ -114,6 +114,40 @@ class AnthropicAIProviderTest {
         assertThatThrownBy(() ->
             provider.parseResponse("not valid json {{{", List.of(EVIDENCE_ID_1))
         ).isInstanceOf(AIProviderException.class);
+    }
+
+    // (7) A leading thinking block must be skipped — the answer is the text block after it
+    @Test
+    void extractText_skipsThinkingBlock() throws Exception {
+        var root = objectMapper.readTree("""
+            {"stop_reason":"end_turn","content":[
+              {"type":"thinking","thinking":"","signature":"sig"},
+              {"type":"text","text":"{\\"summary\\":\\"ok\\"}"}
+            ]}""");
+
+        assertThat(provider.extractText(root)).isEqualTo("{\"summary\":\"ok\"}");
+    }
+
+    // (8) A classifier refusal must surface as AIProviderException, not an empty parse
+    @Test
+    void extractText_throwsOnRefusal() throws Exception {
+        var root = objectMapper.readTree("""
+            {"stop_reason":"refusal","stop_details":{"type":"refusal","category":"cyber"},"content":[]}""");
+
+        assertThatThrownBy(() -> provider.extractText(root))
+            .isInstanceOf(AIProviderException.class)
+            .hasMessageContaining("refusal");
+    }
+
+    // (9) A response with no text block (e.g. max_tokens hit mid-thinking) must throw
+    @Test
+    void extractText_throwsWhenNoTextBlock() throws Exception {
+        var root = objectMapper.readTree("""
+            {"stop_reason":"max_tokens","content":[{"type":"thinking","thinking":"","signature":"sig"}]}""");
+
+        assertThatThrownBy(() -> provider.extractText(root))
+            .isInstanceOf(AIProviderException.class)
+            .hasMessageContaining("max_tokens");
     }
 
     // ── helper ───────────────────────────────────────────────────────────────
