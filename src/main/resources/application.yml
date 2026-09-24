@@ -74,6 +74,11 @@ app:
   http-client:
     default-connect-timeout-ms: ${APP_HTTP_CLIENT_DEFAULT_CONNECT_TIMEOUT_MS:2000}
     default-read-timeout-ms: ${APP_HTTP_CLIENT_DEFAULT_READ_TIMEOUT_MS:3000}
+  # The one deliberate exception to the short default above: the Anthropic Messages call
+  # (AIProviderConfig) generates the whole analysis, thinking included, before responding, so
+  # 3s always times out. Still bounded -- a call slower than this should fail, not hang.
+  anthropic:
+    read-timeout-ms: ${APP_ANTHROPIC_READ_TIMEOUT_MS:60000}
   # Step H2: dedicated, isolated thread pools for the three areas that used to share Spring
   # Boot's one default @Async executor (core size 8, effectively unbounded queue -- see
   # AsyncExecutorConfig's javadoc for why that means no isolation and no backpressure). Bounded

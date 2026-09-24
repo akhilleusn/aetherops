@@ -54,7 +54,7 @@ public class RestClientTimeoutConfig {
         return restTemplate -> restTemplate.setRequestFactory(buildFactory(connectTimeout, readTimeout));
     }
 
-    private static JdkClientHttpRequestFactory buildFactory(Duration connectTimeout, Duration readTimeout) {
+    public static JdkClientHttpRequestFactory buildFactory(Duration connectTimeout, Duration readTimeout) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
             HttpClient.newBuilder().connectTimeout(connectTimeout).build());
         factory.setReadTimeout(readTimeout);

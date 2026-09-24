@@ -150,6 +150,22 @@ class AnthropicAIProviderTest {
             .hasMessageContaining("max_tokens");
     }
 
+    // (10) A read timeout arrives as a message-less CancellationException — the error must still say what happened
+    @Test
+    void describe_namesTimeoutWhenMessageIsNull() {
+        assertThat(AnthropicAIProvider.describe(new java.util.concurrent.CancellationException()))
+            .isEqualTo("CancellationException (read timeout)");
+    }
+
+    // (11) Other exceptions keep their type and message
+    @Test
+    void describe_includesTypeAndMessage() {
+        assertThat(AnthropicAIProvider.describe(new IllegalStateException("boom")))
+            .isEqualTo("IllegalStateException: boom");
+        assertThat(AnthropicAIProvider.describe(new IllegalStateException()))
+            .isEqualTo("IllegalStateException");
+    }
+
     // ── helper ───────────────────────────────────────────────────────────────
 
     private AIAnalysisContext buildContext() {

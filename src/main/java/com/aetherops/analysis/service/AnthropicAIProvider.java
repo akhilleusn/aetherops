@@ -12,10 +12,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -161,8 +164,20 @@ public class AnthropicAIProvider implements AIProvider {
         } catch (AIProviderException e) {
             throw e;
         } catch (Exception e) {
-            throw new AIProviderException("Anthropic API call failed: " + e.getMessage(), e);
+            throw new AIProviderException("Anthropic API call failed: " + describe(e), e);
         }
+    }
+
+    // package-private for unit testing. Always names the exception type: Spring 6.2's
+    // JdkClientHttpRequest surfaces a read timeout as a bare CancellationException whose
+    // message is null, which previously logged as just "Anthropic API call failed: null".
+    static String describe(Throwable e) {
+        String type = e.getClass().getSimpleName();
+        if (e instanceof CancellationException || e instanceof TimeoutException
+                || e instanceof HttpTimeoutException) {
+            return type + " (read timeout)";
+        }
+        return e.getMessage() == null ? type : type + ": " + e.getMessage();
     }
 
     // package-private for unit testing. The response's content array starts with a thinking
