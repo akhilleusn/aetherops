@@ -175,6 +175,7 @@ public class IncidentService {
         IncidentSeverity previousSeverity = incident.getSeverity();
 
         boolean justResolved = request.getStatus() == IncidentStatus.RESOLVED && incident.getResolvedAt() == null;
+        boolean justClosed   = request.getStatus() == IncidentStatus.CLOSED && incident.getStatus() != IncidentStatus.CLOSED;
 
         if (request.getTitle() != null)       incident.setTitle(request.getTitle());
         if (request.getDescription() != null) incident.setDescription(request.getDescription());
@@ -199,6 +200,10 @@ public class IncidentService {
         if (justResolved) {
             timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.RESOLVED,
                     saved.getSeverity(), "Incident resolved");
+        }
+        if (justClosed) {
+            timelineService.record(saved.getTenantId(), saved.getId(), IncidentTimeline.TimelineEventType.CLOSED,
+                    saved.getSeverity(), "Incident closed");
         }
 
         if (request.getSeverity() != null

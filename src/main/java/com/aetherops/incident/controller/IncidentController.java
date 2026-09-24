@@ -7,6 +7,8 @@ import com.aetherops.evidence.model.IncidentEvidencePackResponse;
 import com.aetherops.evidence.service.EvidencePackService;
 import com.aetherops.incident.model.*;
 import com.aetherops.incident.service.IncidentService;
+import com.aetherops.oncall.IncidentTimelineResponse;
+import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.postmortem.model.PostmortemDraftResponse;
 import com.aetherops.postmortem.service.PostmortemService;
 import com.aetherops.runbook.model.RunbookSuggestionResponse;
@@ -24,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -37,6 +40,7 @@ public class IncidentController {
     private final AIAnalysisService aiAnalysisService;
     private final RunbookService runbookService;
     private final PostmortemService postmortemService;
+    private final IncidentTimelineService incidentTimelineService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -163,6 +167,19 @@ public class IncidentController {
     ) {
         TenantContext.requireOwn(tenantId);
         return ApiResponse.success(postmortemService.getLatest(id, tenantId));
+    }
+
+    @GetMapping("/{id}/timeline")
+    @Operation(summary = "List the incident's lifecycle timeline (created, severity changes, pages, resolution), oldest first.")
+    public ApiResponse<List<IncidentTimelineResponse>> getTimeline(
+        @PathVariable UUID id,
+        @RequestParam UUID tenantId
+    ) {
+        TenantContext.requireOwn(tenantId);
+        // 404 for an unknown or other-tenant incident, rather than an empty list that looks
+        // like an incident with no history. findById filters by TenantContext.get().
+        incidentService.findById(id);
+        return ApiResponse.success(incidentTimelineService.findForIncident(tenantId, id));
     }
 
     @DeleteMapping("/{id}")

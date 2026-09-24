@@ -8,10 +8,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class IncidentTimelineServiceTest {
@@ -50,6 +53,42 @@ class IncidentTimelineServiceTest {
         ArgumentCaptor<IncidentTimeline> captor = ArgumentCaptor.forClass(IncidentTimeline.class);
         verify(timelineRepository).save(captor.capture());
         assertThat(captor.getValue().getSeverity()).isEqualTo(SeverityLevel.P1);
+    }
+
+    @Test
+    void findForIncident_mapsEntriesInRepositoryOrder() {
+        UUID tenantId = UUID.randomUUID();
+        UUID incidentId = UUID.randomUUID();
+        Instant t0 = Instant.parse("2026-09-24T10:00:00Z");
+        when(timelineRepository.findByTenantIdAndIncidentIdOrderByCreatedAtAsc(tenantId, incidentId)).thenReturn(List.of(
+            entry(incidentId, IncidentTimeline.TimelineEventType.CREATED, SeverityLevel.P3, "Incident created", t0),
+            entry(incidentId, IncidentTimeline.TimelineEventType.RESOLVED, SeverityLevel.P2, "Incident resolved", t0.plusSeconds(600))));
+
+        List<IncidentTimelineResponse> result = timelineService.findForIncident(tenantId, incidentId);
+
+        assertThat(result).extracting(IncidentTimelineResponse::getEventType)
+            .containsExactly(IncidentTimeline.TimelineEventType.CREATED, IncidentTimeline.TimelineEventType.RESOLVED);
+        assertThat(result.get(0).getIncidentId()).isEqualTo(incidentId);
+        assertThat(result.get(0).getSeverity()).isEqualTo(SeverityLevel.P3);
+        assertThat(result.get(0).getDetail()).isEqualTo("Incident created");
+        assertThat(result.get(1).getCreatedAt()).isEqualTo(t0.plusSeconds(600));
+    }
+
+    @Test
+    void findForIncident_noEntries_returnsEmptyList() {
+        assertThat(timelineService.findForIncident(UUID.randomUUID(), UUID.randomUUID())).isEmpty();
+    }
+
+    private static IncidentTimeline entry(UUID incidentId, IncidentTimeline.TimelineEventType type,
+                                          SeverityLevel severity, String detail, Instant at) {
+        return IncidentTimeline.builder()
+            .id(UUID.randomUUID())
+            .incidentId(incidentId)
+            .eventType(type)
+            .severity(severity)
+            .detail(detail)
+            .createdAt(at)
+            .build();
     }
 
     @Test

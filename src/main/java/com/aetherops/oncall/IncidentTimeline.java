@@ -52,6 +52,9 @@ public class IncidentTimeline {
          *  provider actually accepted a send; this is what gets recorded instead when none did. */
         PAGE_FAILED,
         RESOLVED,
+        /** Recorded when an incident's status changes to CLOSED (recorded once; re-sending
+         *  CLOSED for an already-closed incident adds nothing). */
+        CLOSED,
         /** Step H1 Part 2 (see STEP_REPORT.md): a Slack workspace member clicked "Acknowledge"
          *  or "Resolve" on an incident message. Neither action executes anymore -- no
          *  Slack-user-to-AetherOps-user mapping exists to authorize either, so both redirect to

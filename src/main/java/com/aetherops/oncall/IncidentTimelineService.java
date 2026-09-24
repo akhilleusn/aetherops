@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -35,5 +36,16 @@ public class IncidentTimelineService {
     public void record(UUID tenantId, UUID incidentId, IncidentTimeline.TimelineEventType eventType,
                         IncidentSeverity incidentSeverity, String detail) {
         record(tenantId, incidentId, eventType, SeverityLevel.fromIncidentSeverity(incidentSeverity), detail);
+    }
+
+    // @Transactional for the same reason as the writes: incident_timeline has FORCE ROW LEVEL
+    // SECURITY, and TenantContextInterceptor only sets app.tenant_id on entry to a method carrying
+    // the annotation itself. Calling the repository directly from a controller would read with no
+    // tenant set and silently return nothing.
+    @Transactional(readOnly = true)
+    public List<IncidentTimelineResponse> findForIncident(UUID tenantId, UUID incidentId) {
+        return timelineRepository.findByTenantIdAndIncidentIdOrderByCreatedAtAsc(tenantId, incidentId).stream()
+            .map(IncidentTimelineResponse::from)
+            .toList();
     }
 }

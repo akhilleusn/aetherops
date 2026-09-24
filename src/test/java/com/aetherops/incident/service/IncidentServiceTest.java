@@ -11,6 +11,7 @@ import com.aetherops.incident.repository.IdempotencyKeyRepository;
 import com.aetherops.incident.repository.IncidentRepository;
 import com.aetherops.incident.severity.SeverityDetector;
 import com.aetherops.oncall.IncidentPagingService;
+import com.aetherops.oncall.IncidentTimeline;
 import com.aetherops.oncall.IncidentTimelineService;
 import com.aetherops.slack.IncidentSlackNotificationService;
 import com.aetherops.tenant.TenantContext;
@@ -139,5 +140,62 @@ class IncidentServiceTest {
         assertThatThrownBy(() -> incidentService.update(id, request))
             .isInstanceOf(ResourceNotFoundException.class);
         verify(incidentRepository, never()).save(any());
+    }
+
+    // ── timeline entries on status changes ───────────────────────────────
+
+    @Test
+    void update_toResolved_recordsResolvedTimelineEntry() {
+        UUID id = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        TenantContext.set(tenantId);
+        when(incidentRepository.findByIdAndTenantId(id, tenantId))
+            .thenReturn(Optional.of(sampleIncident(id, tenantId)));
+        when(incidentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        incidentService.update(id, statusRequest(IncidentStatus.RESOLVED));
+
+        verify(timelineService).record(tenantId, id, IncidentTimeline.TimelineEventType.RESOLVED,
+            IncidentSeverity.LOW, "Incident resolved");
+    }
+
+    @Test
+    void update_toClosed_recordsClosedTimelineEntry() {
+        UUID id = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        TenantContext.set(tenantId);
+        Incident resolved = sampleIncident(id, tenantId);
+        resolved.setStatus(IncidentStatus.RESOLVED);
+        resolved.setResolvedAt(Instant.now());
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(resolved));
+        when(incidentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        IncidentResponse response = incidentService.update(id, statusRequest(IncidentStatus.CLOSED));
+
+        assertThat(response.getStatus()).isEqualTo(IncidentStatus.CLOSED);
+        verify(timelineService).record(tenantId, id, IncidentTimeline.TimelineEventType.CLOSED,
+            IncidentSeverity.LOW, "Incident closed");
+    }
+
+    @Test
+    void update_toClosed_whenAlreadyClosed_recordsNothing() {
+        UUID id = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        TenantContext.set(tenantId);
+        Incident closed = sampleIncident(id, tenantId);
+        closed.setStatus(IncidentStatus.CLOSED);
+        closed.setResolvedAt(Instant.now());
+        when(incidentRepository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(closed));
+        when(incidentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        incidentService.update(id, statusRequest(IncidentStatus.CLOSED));
+
+        verifyNoInteractions(timelineService);
+    }
+
+    private static UpdateIncidentRequest statusRequest(IncidentStatus status) {
+        UpdateIncidentRequest request = new UpdateIncidentRequest();
+        request.setStatus(status);
+        return request;
     }
 }
