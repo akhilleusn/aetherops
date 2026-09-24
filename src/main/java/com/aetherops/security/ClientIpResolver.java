@@ -18,10 +18,19 @@ import org.springframework.stereotype.Component;
  * sending a different fake value on every request.
  *
  * With N trusted hops, the real client is at index (chain.length - N): e.g. one trusted proxy
- * (the default — Railway is the live deployment target) appends the client's own address as
- * the LAST entry, so chain.length - 1 is correct. Bounds-checked: if the chain is shorter than
- * trustedProxyCount (or trustedProxyCount is 0, disabling XFF trust entirely), fall back to
- * request.getRemoteAddr() rather than reading out of range.
+ * that appends the client's own address as the LAST entry needs N = 1. The live deployment is
+ * a GCP external Application Load Balancer in front of Cloud Run (ingress restricted to the
+ * load balancer, so no other path reaches the app), which appends "&lt;client&gt;, &lt;lb-ip&gt;"
+ * -- two trusted entries, so production sets N via APP_SECURITY_TRUSTED_PROXY_COUNT rather
+ * than relying on the default of 1. The right N depends on every path that can reach the app:
+ * with two paths that append different numbers of entries, no single N is correct. Bounds-
+ * checked: if the chain is shorter than trustedProxyCount (or trustedProxyCount is 0,
+ * disabling XFF trust entirely), fall back to request.getRemoteAddr() rather than reading out
+ * of range.
+ *
+ * DEBUG logging (off by default) records each resolution -- chain length, resolved IP, and
+ * socket address -- so N can be verified against real traffic: enable it on
+ * {@code com.aetherops.security.ClientIpResolver} only while checking, since it logs IPs.
  */
 @Component
 @Slf4j
@@ -36,6 +45,7 @@ public class ClientIpResolver {
     public String resolve(HttpServletRequest request) {
         String header = request.getHeader("X-Forwarded-For");
         if (header == null || header.isBlank()) {
+            log.debug("No X-Forwarded-For; resolved={} (remote address)", request.getRemoteAddr());
             return request.getRemoteAddr();
         }
 
@@ -46,6 +56,11 @@ public class ClientIpResolver {
                 chain.length, trustedProxyCount);
             return request.getRemoteAddr();
         }
-        return chain[index].trim();
+        String resolved = chain[index].trim();
+        if (log.isDebugEnabled()) {
+            log.debug("X-Forwarded-For entries={} trustedProxyCount={} resolved={} remoteAddr={} chain=[{}]",
+                chain.length, trustedProxyCount, resolved, request.getRemoteAddr(), header);
+        }
+        return resolved;
     }
 }

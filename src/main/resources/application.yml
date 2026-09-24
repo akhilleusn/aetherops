@@ -108,9 +108,11 @@ app:
   security:
     # Phase 1 Step C, item 1: number of trusted reverse-proxy hops in front of the app.
     # ClientIpResolver counts this many entries in from the RIGHT of X-Forwarded-For to find
-    # the real client IP — everything to the left is attacker-suppliable. Default 1 because
-    # Railway (the live deployment target) puts exactly one proxy hop in front of the app;
-    # see kubernetes/ingress.yaml for the (also one-hop) alternative path.
+    # the real client IP — everything to the left is attacker-suppliable. Default 1 suits a
+    # single appending proxy (e.g. kubernetes/ingress.yaml). Production (GCP external
+    # Application Load Balancer -> Cloud Run, ingress restricted to the load balancer) sets
+    # APP_SECURITY_TRUSTED_PROXY_COUNT instead: the load balancer appends "<client>, <lb-ip>".
+    # Verify against live traffic with DEBUG logging on ClientIpResolver (see its javadoc).
     trusted-proxy-count: ${APP_SECURITY_TRUSTED_PROXY_COUNT:1}
   rate-limit:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
