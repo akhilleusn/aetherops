@@ -5,6 +5,7 @@ import com.aetherops.auth.security.CurrentUserContextFilter;
 import com.aetherops.auth.security.JwtAuthFilter;
 import com.aetherops.auth.service.JwtService;
 import com.aetherops.common.response.ErrorResponse;
+import com.aetherops.publicdemo.PublicDemoFilter;
 import com.aetherops.tenant.TenantContextFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -36,6 +38,7 @@ public class SecurityConfig {
     private final JwtService jwtService;
     private final ObjectMapper objectMapper;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
+    private final PublicDemoFilter publicDemoFilter;
     private final TenantContextFilter tenantContextFilter;
     private final CurrentUserContextFilter currentUserContextFilter;
 
@@ -64,6 +67,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/slack/commands").permitAll()
                 .requestMatchers(HttpMethod.POST, "/webhooks/stripe").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/status-pages/**").permitAll()
+                // Public read-only demo: GET only, same matcher PublicDemoFilter uses. That filter
+                // (registered below) rejects every other method, any credential, and over-limit
+                // callers, then pins TenantContext to the configured demo tenant.
+                .requestMatchers(new AntPathRequestMatcher(PublicDemoFilter.PATTERN, HttpMethod.GET.name())).permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/").permitAll()
                 .requestMatchers("/*.html").permitAll()
@@ -81,6 +88,9 @@ public class SecurityConfig {
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyAuthFilter, JwtAuthFilter.class)
+            // Before both credential filters: a JWT or API key on a demo request is rejected
+            // here and never parsed.
+            .addFilterBefore(publicDemoFilter, ApiKeyAuthFilter.class)
             .addFilterAfter(tenantContextFilter, JwtAuthFilter.class)
             .addFilterAfter(currentUserContextFilter, JwtAuthFilter.class)
             .exceptionHandling(ex -> ex

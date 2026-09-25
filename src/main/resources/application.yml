@@ -117,6 +117,12 @@ app:
   rate-limit:
     requests-per-window: ${RATE_LIMIT_REQUESTS_PER_WINDOW:100}
     window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+  # Public read-only demo (PublicDemoFilter / PublicDemoController). Off unless tenant-id is set.
+  # Point it ONLY at a dedicated demo tenant: everything in that tenant becomes public.
+  public-demo:
+    tenant-id: ${APP_PUBLIC_DEMO_TENANT_ID:}
+    requests-per-window: ${APP_PUBLIC_DEMO_REQUESTS_PER_WINDOW:60}
+    window-seconds: ${APP_PUBLIC_DEMO_WINDOW_SECONDS:60}
   dashboard-base-url: ${DASHBOARD_BASE_URL:http://localhost:8080}
   base-url: ${APP_BASE_URL:http://localhost:8080}
   sso:
